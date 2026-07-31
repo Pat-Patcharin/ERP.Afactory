@@ -10,6 +10,7 @@ import { DASH, fmt } from "@/lib/format";
 import { qcDecide, qcStart } from "@/lib/workflows";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, Thumb } from "@/components/ui";
+import { QC_FORM } from "./forms/qc-inspection";
 
 /* ============================================================
    QC INSPECTION
@@ -396,4 +397,8 @@ export const QC_DETAIL: DetailSchema<QcRow> = {
   ],
 };
 
-export const qcSchemas: EntitySchemas<QcRow> = { list: QC_LIST, detail: QC_DETAIL };
+export const qcSchemas: EntitySchemas<QcRow> = {
+  list: QC_LIST,
+  detail: QC_DETAIL,
+  form: QC_FORM,
+};

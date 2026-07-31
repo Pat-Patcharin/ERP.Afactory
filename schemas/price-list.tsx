@@ -16,6 +16,7 @@ import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { Icon } from "@/lib/icons";
 import { PriorityLadder } from "@/components/pricing/PriorityLadder";
+import { PRICE_LIST_FORM } from "./forms/price-list";
 
 /* ============================================================
    PRICE LIST — pricing POLICY: scope, validity and priority
@@ -386,4 +387,5 @@ export const PL_DETAIL: DetailSchema<PriceListRow> = {
 export const priceListSchemas: EntitySchemas<PriceListRow> = {
   list: PL_LIST,
   detail: PL_DETAIL,
+  form: PRICE_LIST_FORM,
 };

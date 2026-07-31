@@ -17,6 +17,7 @@ import {
 } from "@/lib/workflows";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, Thumb } from "@/components/ui";
+import { PR_FORM } from "./forms/purchase-request";
 
 /* ============================================================
    PURCHASE REQUEST — the first transactional document.
@@ -354,4 +355,8 @@ export const PR_DETAIL: DetailSchema<PrRow> = {
   ],
 };
 
-export const prSchemas: EntitySchemas<PrRow> = { list: PR_LIST, detail: PR_DETAIL };
+export const prSchemas: EntitySchemas<PrRow> = {
+  list: PR_LIST,
+  detail: PR_DETAIL,
+  form: PR_FORM,
+};

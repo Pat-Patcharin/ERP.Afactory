@@ -11,6 +11,7 @@ import { checkPermission, maskAccount } from "@/lib/permissions";
 import type { BadgeTone, DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { Icon } from "@/lib/icons";
+import { BP_FORM } from "./forms/business-partner";
 
 /* ============================================================
    BUSINESS PARTNER
@@ -795,4 +796,8 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
   ],
 };
 
-export const bpSchemas: EntitySchemas<BpRow> = { list: BP_LIST, detail: BP_DETAIL };
+export const bpSchemas: EntitySchemas<BpRow> = {
+  list: BP_LIST,
+  detail: BP_DETAIL,
+  form: BP_FORM,
+};

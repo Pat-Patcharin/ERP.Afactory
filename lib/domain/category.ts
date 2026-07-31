@@ -48,6 +48,15 @@ export function catPath(cat: Category): string {
 export const catChildren = (code: string) =>
   CATEGORIES.filter((c) => c.parent === code);
 
+/** Next code in the CAT-001 sequence. The existing numbering has gaps by design. */
+export function nextCategoryCode(): string {
+  const n = CATEGORIES.reduce(
+    (m, c) => Math.max(m, parseInt(c.code.replace(/\D/g, ""), 10) || 0),
+    0,
+  );
+  return `CAT-${String(n + 1).padStart(3, "0")}`;
+}
+
 /** Which products reference this category? Matched on the English name. */
 export const catProducts = (cat: Category) =>
   PRODUCTS.filter((p) => p.cat === (cat.nameEn || cat.nameTh));

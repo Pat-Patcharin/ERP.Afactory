@@ -14,7 +14,16 @@
       "Bash(git ls-files *)",
       "Bash(git ls-remote *)",
       "Bash(pkill -f \"next dev\")",
-      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*next*dev*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')"
+      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*next*dev*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')",
+      "PowerShell(npm run typecheck 2>&1)",
+      "PowerShell(npm run lint 2>&1)",
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell(Start-Process -FilePath \"npm\" -ArgumentList \"run\",\"start\" -WorkingDirectory \"c:\\\\Users\\\\user\\\\Documents\\\\GitHub\\\\ERP.Afactory\" -WindowStyle Hidden; Start-Sleep -Seconds 12; try { \\(Invoke-WebRequest -Uri \"http://localhost:3000/dashboard\" -UseBasicParsing -TimeoutSec 20\\).StatusCode } catch { \"server not up: $_\" })",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(\"stopped\")",
+      "Bash(ls -la \"C:/Users/user/.claude/projects/c--Users-user-Documents-GitHub-ERP-Afactory/memory/\" 2>/dev/null && echo \"--- MEMORY.md ---\" && cat \"C:/Users/user/.claude/projects/c--Users-user-Documents-GitHub-ERP-Afactory/memory/MEMORY.md\" 2>/dev/null || echo \"\\(no MEMORY.md yet\\)\")",
+      "Read(//c/Users/user/.claude/projects/c--Users-user-Documents-GitHub-ERP-Afactory/**)"
     ]
   }
 }

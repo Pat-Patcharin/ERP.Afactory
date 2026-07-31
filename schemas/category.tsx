@@ -10,6 +10,7 @@ import { STATUS_TONE, tone } from "@/lib/badges";
 import { DASH, fmt } from "@/lib/format";
 import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
 import { Badge, CellMedia, CellSub, LinkButton, Thumb } from "@/components/ui";
+import { CATEGORY_FORM } from "./forms/category";
 
 /* ============================================================
    CATEGORY — hierarchical lookup master. Proves the engines are
@@ -373,6 +374,7 @@ export const CATEGORY_DETAIL: DetailSchema<CategoryRow> = {
 export const categorySchemas: EntitySchemas<CategoryRow> = {
   list: CATEGORY_LIST,
   detail: CATEGORY_DETAIL,
+  form: CATEGORY_FORM,
 };
 
 export { catByCode };

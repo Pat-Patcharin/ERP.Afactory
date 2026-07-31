@@ -11,6 +11,7 @@ import { SR_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
 import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Sparkline, UtilBar } from "@/components/ui";
+import { SALES_REP_FORM } from "./forms/sales-rep";
 
 /* ============================================================
    SALES REPRESENTATIVE — person-centric master. Used by Business
@@ -521,4 +522,5 @@ export const SR_DETAIL: DetailSchema<SalesRepRow> = {
 export const salesRepSchemas: EntitySchemas<SalesRepRow> = {
   list: SR_LIST,
   detail: SR_DETAIL,
+  form: SALES_REP_FORM,
 };

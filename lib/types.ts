@@ -389,6 +389,18 @@ export interface DetailSchema<T extends RecordBase = RecordBase> {
 
 /* ---------- Form ---------- */
 
+/**
+ * The mutable draft the form engine edits. Schemas read and write it by
+ * dot-path ("pricing.retail", "items.0.qty"), so it stays deliberately loose —
+ * the record type only reappears at the `toState` / `save` boundary.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type FormState = Record<string, any>;
+
+/** One line inside a `grid` field. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type GridRow = Record<string, any>;
+
 export type FieldType =
   | "text"
   | "number"
@@ -434,8 +446,8 @@ export interface GridCol {
   /** Lookup source key, resolved through FormSchema.lookup. */
   source?: string;
   /** Read-only derived cell. */
-  get?: (row: Record<string, never>) => ReactNode;
-  cls?: (row: Record<string, never>) => string;
+  get?: (row: GridRow) => ReactNode;
+  cls?: (row: GridRow) => string;
 }
 
 export interface FormField {
@@ -453,9 +465,9 @@ export interface FormField {
   rows?: number;
   options?: (string | SelectOption)[];
   /** Conditional field — hidden when this returns false. */
-  when?: (state: never) => boolean;
+  when?: (state: FormState) => boolean;
   /** static fields compute their display value from state. */
-  value?: (state: never) => ReactNode;
+  value?: (state: FormState) => ReactNode;
   /** secure fields render `as` when the permission passes. */
   as?: FieldType;
   permission?: string;
@@ -473,15 +485,20 @@ export interface FormField {
   offText?: string;
 }
 
-export interface FormBlock {
-  type: "card" | FieldType;
+/** A group of fields laid out on a `cols`-wide grid inside one card. */
+export interface FormCard {
+  type: "card";
   title?: string;
   cols?: "2" | "3" | "4" | "5";
   badge?: ReactNode;
-  fields?: (FormField | null | false | undefined)[];
-  /** Non-card blocks carry the field's own props. */
-  [key: string]: unknown;
+  fields: (FormField | null | false | undefined)[];
 }
+
+/**
+ * A block is either a card of fields, or a single field standing on its own —
+ * how grids, trees and role pickers get the full width of the step.
+ */
+export type FormBlock = FormCard | FormField;
 
 export interface FormStep {
   key: string;
@@ -489,8 +506,9 @@ export interface FormStep {
   railLabel?: string;
   labelTh?: string;
   /** Progressive disclosure — step only exists when this passes. */
-  when?: (state: never) => boolean;
-  blocks: (state: never) => FormBlock[];
+  when?: (state: FormState) => boolean;
+  /** Falsy entries are dropped, so a step can inline `isSupplier && {...}`. */
+  blocks: (state: FormState) => (FormBlock | null | false | undefined)[];
   /** The final summary step. */
   review?: boolean;
 }
@@ -500,19 +518,27 @@ export interface RequiredRule {
   label: string;
   step: string;
   /** Custom satisfaction test for collection fields. */
-  test?: (state: never) => boolean;
+  test?: (state: FormState) => boolean;
 }
 
+/** A cross-field constraint. `test` returns true when the rule is SATISFIED. */
 export interface BusinessRule {
   label: string;
   step: string;
-  test: (state: never) => boolean;
+  test: (state: FormState) => boolean;
 }
 
 export interface DuplicateHit {
   code: string;
   name: string;
   why: string;
+}
+
+/** One row of a lookup dropdown inside a grid cell. */
+export interface LookupHit {
+  code: string;
+  name: string;
+  meta?: string;
 }
 
 export interface FormSchema<T extends RecordBase = RecordBase> {
@@ -525,49 +551,49 @@ export interface FormSchema<T extends RecordBase = RecordBase> {
   savedLabel?: string;
   statusBadge?: Record<string, BadgeTone>;
 
-  blank: () => Record<string, unknown>;
-  toState: (rec: T) => Record<string, unknown>;
-  save: (state: never, ctx: ActionCtx) => void;
+  blank: () => FormState;
+  toState: (rec: T) => FormState;
+  save: (state: FormState, ctx: ActionCtx) => void;
 
   steps: FormStep[];
   required: RequiredRule[];
   rules?: BusinessRule[];
 
-  /** Paths whose change re-renders their own section (computed siblings). */
-  recompute?: string[];
-  /** Paths whose change re-renders the whole form (structural). */
-  structural?: string[];
-  /** Grid paths that recompute line totals. */
-  gridPaths?: string[];
-  onGridChange?: (path: string, state: never) => void;
-  newRow?: (path: string, isFirst: boolean) => Record<string, unknown> | null;
+  /**
+   * Fired after any field write, with the path that changed and the draft.
+   * This is how a document reacts to its own header: choosing a PO on a Goods
+   * Receipt pulls the ordered lines, choosing a supplier on a PO adopts that
+   * supplier's currency and payment term.
+   */
+  onChange?: (path: string, state: FormState) => void;
+  /** Recalculate derived line values after any cell edit in a grid. */
+  onGridChange?: (path: string, state: FormState) => void;
+  /** Blank line for the Add button; return null to refuse (nothing to add). */
+  newRow?: (path: string, isFirst: boolean) => GridRow | null;
 
-  lookup?: Record<
-    string,
-    (q: string) => { code: string; name: string; meta?: string }[]
-  >;
+  lookup?: Record<string, (q: string) => LookupHit[]>;
   onLookupPick?: (
     source: string,
     gridPath: string,
     index: number,
-    rec: { code: string; name: string },
-    state: never,
+    rec: LookupHit,
+    state: FormState,
   ) => void;
 
-  findDuplicates?: (state: never) => DuplicateHit[];
+  findDuplicates?: (state: FormState) => DuplicateHit[];
   openDuplicate?: (code: string, ctx: ActionCtx) => void;
 
   /** Right rail: purchasing recommendation, QC insights, validation checklist. */
-  sidePanel?: (state: never) => ReactNode;
+  sidePanel?: (state: FormState) => ReactNode;
   /** Live document preview card (PR/PO/GR totals). */
-  previewCard?: (state: never) => ReactNode;
+  previewCard?: (state: FormState) => ReactNode;
   /** Review step layout; falls back to listing every required field. */
   reviewCards?: (
-    state: never,
+    state: FormState,
     row: (label: string, value: unknown, step: string) => ReactNode,
   ) => ReactNode;
   /** Confirmation step before committing (GR post-receipt). */
-  beforeSave?: (state: never, proceed: () => void, ctx: ActionCtx) => void;
+  beforeSave?: (state: FormState, proceed: () => void, ctx: ActionCtx) => void;
 }
 
 /** The three schemas that make one entity work end to end. */

@@ -5,6 +5,7 @@ import { checkPermission } from "@/lib/permissions";
 import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
 import { Badge, Barcode, CellMedia, LinkButton, Thumb } from "@/components/ui";
 import { Icon } from "@/lib/icons";
+import { PRODUCT_FORM } from "./forms/product";
 
 /* ============================================================
    PRODUCT — the reference implementation. Every other master
@@ -1044,6 +1045,7 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
 export const productSchemas: EntitySchemas<ProductRow> = {
   list: PRODUCT_LIST,
   detail: PRODUCT_DETAIL,
+  form: PRODUCT_FORM,
 };
 
 export { getProduct, productStock };

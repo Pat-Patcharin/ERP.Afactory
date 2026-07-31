@@ -14,6 +14,7 @@ import { DASH, daysUntil, fmt } from "@/lib/format";
 import { grCancel, grDelete, grPassQC, grPutAway } from "@/lib/workflows";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, Thumb } from "@/components/ui";
+import { GR_FORM } from "./forms/goods-receipt";
 
 /* ============================================================
    GOODS RECEIPT
@@ -550,4 +551,8 @@ export const GR_DETAIL: DetailSchema<GrRow> = {
   ],
 };
 
-export const grSchemas: EntitySchemas<GrRow> = { list: GR_LIST, detail: GR_DETAIL };
+export const grSchemas: EntitySchemas<GrRow> = {
+  list: GR_LIST,
+  detail: GR_DETAIL,
+  form: GR_FORM,
+};

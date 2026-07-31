@@ -12,6 +12,7 @@ import { paAssign, paCancel, paConfirm } from "@/lib/workflows";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { WarehouseMap } from "@/components/warehouse/WarehouseMap";
+import { PA_FORM } from "./forms/put-away";
 
 /* ============================================================
    PUT AWAY — final inbound step. Moves goods from the receiving
@@ -452,4 +453,8 @@ export const PA_DETAIL: DetailSchema<PaRow> = {
   ],
 };
 
-export const paSchemas: EntitySchemas<PaRow> = { list: PA_LIST, detail: PA_DETAIL };
+export const paSchemas: EntitySchemas<PaRow> = {
+  list: PA_LIST,
+  detail: PA_DETAIL,
+  form: PA_FORM,
+};

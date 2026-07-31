@@ -2,6 +2,7 @@
 
 import { notFound, useParams } from "next/navigation";
 import { getSchemas } from "@/schemas/registry";
+import { MasterForm } from "@/components/engine/MasterForm";
 import { FormPlaceholder } from "@/components/engine/FormPlaceholder";
 
 /** Create route: /m/{entity}/new */
@@ -10,5 +11,11 @@ export default function EntityCreatePage() {
   const schemas = getSchemas(entity);
   if (!schemas) notFound();
 
-  return <FormPlaceholder entity={entity} label={schemas.list.entity} mode="create" />;
+  /* An entity registered without a form schema degrades to a named
+     placeholder rather than a broken screen. */
+  if (!schemas.form) {
+    return <FormPlaceholder entity={entity} label={schemas.list.entity} mode="create" />;
+  }
+
+  return <MasterForm schema={schemas.form} />;
 }

@@ -15,6 +15,7 @@ import { DASH, fmt, money0 } from "@/lib/format";
 import { poCancel, poDelete, poIssue, poReceive } from "@/lib/workflows";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
+import { PO_FORM } from "./forms/purchase-order";
 
 /* ============================================================
    PURCHASE ORDER
@@ -438,4 +439,8 @@ export const PO_DETAIL: DetailSchema<PoRow> = {
   ],
 };
 
-export const poSchemas: EntitySchemas<PoRow> = { list: PO_LIST, detail: PO_DETAIL };
+export const poSchemas: EntitySchemas<PoRow> = {
+  list: PO_LIST,
+  detail: PO_DETAIL,
+  form: PO_FORM,
+};

@@ -11,6 +11,7 @@ import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
 import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
 import { Icon } from "@/lib/icons";
+import { WAREHOUSE_FORM } from "./forms/warehouse";
 
 /* ============================================================
    WAREHOUSE — WMS-ready. The location tree is
@@ -545,4 +546,5 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
 export const warehouseSchemas: EntitySchemas<WarehouseRow> = {
   list: WAREHOUSE_LIST,
   detail: WAREHOUSE_DETAIL,
+  form: WAREHOUSE_FORM,
 };
