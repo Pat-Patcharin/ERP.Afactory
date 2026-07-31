@@ -64,7 +64,8 @@ export const NAV: NavGroup[] = [
       { label: "Picking", href: "/m/picking", icon: "picking" },
       { label: "Packing", href: "/m/packing", icon: "packing" },
       { label: "Delivery Order", href: "/m/delivery-order", icon: "delivery" },
-      { label: "Invoice", href: "/soon?m=Invoice", icon: "invoice", soon: true },
+      { label: "Sales Invoice", href: "/m/sales-invoice", icon: "invoice" },
+      { label: "Shipment", href: "/soon?m=Shipment", icon: "truck", soon: true },
       { label: "Return", href: "/soon?m=Return", icon: "return", soon: true },
       {
         label: "Credit Note",

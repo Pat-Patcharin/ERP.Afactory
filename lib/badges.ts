@@ -175,6 +175,29 @@ export const PACK_TONE: Record<string, BadgeTone> = {
   Cancelled: "neutral",
 };
 
+/** Sales Invoice document status. */
+export const INV_TONE: Record<string, BadgeTone> = {
+  Draft: "neutral",
+  "Pending Review": "warning",
+  Approved: "info",
+  Issued: "success",
+  "Partially Paid": "warning",
+  Paid: "success",
+  Overdue: "danger",
+  Cancelled: "neutral",
+  Void: "danger",
+  Credited: "info",
+};
+
+/** Payment status is derived from paid amount against the total. */
+export const PAY_TONE: Record<string, BadgeTone> = {
+  Unpaid: "warning",
+  "Partially Paid": "info",
+  Paid: "success",
+  Overdue: "danger",
+  "Written Off": "neutral",
+};
+
 export const DO_TONE: Record<string, BadgeTone> = {
   Draft: "neutral",
   Ready: "info",

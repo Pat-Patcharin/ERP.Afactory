@@ -132,6 +132,15 @@ export interface ListSchema<T extends RecordBase = RecordBase> {
   rowActions: (rec: T, ctx: ActionCtx) => RowAction<T>[];
   hero?: (ctx: ActionCtx) => Hero | undefined;
   secondaryActions?: (ctx: ActionCtx) => { label: string; icon?: IconName; run: () => void }[];
+  /**
+   * Actions offered while rows are ticked. Documents need their own verbs —
+   * a batch of invoices is issued, not activated. Omit to keep the generic
+   * Activate / Deactivate pair master data uses.
+   */
+  bulkActions?: (
+    rows: T[],
+    ctx: ActionCtx,
+  ) => { label: string; icon?: IconName; danger?: boolean; run: () => void }[];
 
   /** Defaults to opening the Quick View drawer. */
   onRowClick?: (rec: T, ctx: ActionCtx) => void;
@@ -554,6 +563,13 @@ export interface FormSchema<T extends RecordBase = RecordBase> {
   blank: () => FormState;
   toState: (rec: T) => FormState;
   save: (state: FormState, ctx: ActionCtx) => void;
+
+  /**
+   * Refuse to open the edit form for a record the process has locked — an
+   * issued invoice, a completed task. Returning a reason shows it instead of
+   * the form, so nobody types into a document that cannot be saved.
+   */
+  editGuard?: (rec: T) => string | null;
 
   steps: FormStep[];
   required: RequiredRule[];

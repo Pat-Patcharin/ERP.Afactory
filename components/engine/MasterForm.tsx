@@ -61,6 +61,7 @@ export function MasterForm<T extends RecordBase>({
   const ctx = useActionCtx();
   const mode = record ? "edit" : "create";
   const key = draftKey(schema.key, record?.code);
+  const locked = record ? (schema.editGuard?.(record) ?? null) : null;
 
   const [state, setState] = useState<FormState>(() =>
     record ? schema.toState(record) : schema.blank(),
@@ -286,6 +287,45 @@ export function MasterForm<T extends RecordBase>({
     showErrors,
     ctx,
   };
+
+  /* A locked record never renders the form — hooks above have all run, so this
+     early return is safe. */
+  if (locked && record) {
+    return (
+      <div>
+        <header className="border-b border-line bg-card px-6 py-4 max-md:px-4">
+          <button
+            onClick={() => ctx.goto(`/m/${schema.key}`)}
+            className="mb-3 inline-flex items-center gap-1 rounded-sm px-2 py-1 font-medium text-ink-2 transition-colors hover:bg-neutral-soft hover:text-ink"
+          >
+            <Icon name="arrowLeft" size={16} />
+            Back to {schema.entityLabel} List
+          </button>
+          <h1 className="text-h2 font-semibold">Edit {schema.entityLabel}</h1>
+        </header>
+        <main className="px-6 py-12 max-md:px-4">
+          <div className="mx-auto max-w-2xl rounded-card border border-line bg-card p-8 text-center shadow-xs">
+            <div className="mx-auto mb-4 grid h-[52px] w-[52px] place-items-center rounded-btn bg-warning-soft text-warning">
+              <Icon name="lock" size={24} />
+            </div>
+            <h2 className="mb-2 text-h3 font-semibold">แก้ไขเอกสารนี้ไม่ได้</h2>
+            <p className="mb-6 leading-relaxed text-ink-2">{locked}</p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Button onClick={() => ctx.goto(`/m/${schema.key}`)}>กลับไปหน้ารายการ</Button>
+              <Button
+                variant="primary"
+                onClick={() =>
+                  ctx.goto(`/m/${schema.key}/${encodeURIComponent(record.code)}`)
+                }
+              >
+                ดูรายละเอียด {record.code}
+              </Button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   const entityLabel = schema.entityLabel;
   const title =

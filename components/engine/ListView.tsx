@@ -138,6 +138,10 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
 
   const hero = schema.hero?.(ctx);
   const secondary = schema.secondaryActions?.(ctx) ?? [];
+  /* Documents supply their own batch verbs; master data falls back below. */
+  const bulk = selectedRows.length
+    ? schema.bulkActions?.(selectedRows, ctx)
+    : undefined;
 
   return (
     <main className="max-w-[1600px] px-6 pb-12 pt-8 max-md:px-4 max-md:pb-10 max-md:pt-5">
@@ -253,13 +257,32 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
           <span className="font-semibold text-primary-active">
             {selected.size} selected
           </span>
-          <div className="ml-auto flex gap-2">
-            <Button size="sm" onClick={() => bulkSetStatus("Active", "เปิดใช้งาน")}>
-              Activate
-            </Button>
-            <Button size="sm" onClick={() => bulkSetStatus("Inactive", "ปิดใช้งาน")}>
-              Deactivate
-            </Button>
+          <div className="ml-auto flex flex-wrap gap-2">
+            {bulk ? (
+              bulk.map((a) => (
+                <Button
+                  key={a.label}
+                  size="sm"
+                  variant={a.danger ? "danger" : "secondary"}
+                  onClick={() => {
+                    a.run();
+                    setSelected(new Set());
+                  }}
+                >
+                  {a.icon && <Icon name={a.icon} size={15} />}
+                  {a.label}
+                </Button>
+              ))
+            ) : (
+              <>
+                <Button size="sm" onClick={() => bulkSetStatus("Active", "เปิดใช้งาน")}>
+                  Activate
+                </Button>
+                <Button size="sm" onClick={() => bulkSetStatus("Inactive", "ปิดใช้งาน")}>
+                  Deactivate
+                </Button>
+              </>
+            )}
             <Button
               size="sm"
               onClick={() =>
