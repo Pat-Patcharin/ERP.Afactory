@@ -42,9 +42,9 @@ const num = (v: unknown) => Number(v) || 0;
 
 const draftTotal = (rows: GridRow[]) => docGrandTotal({ items: rows });
 
-/** Quotations that were accepted but not yet turned into an order. */
-const acceptedQuotes = () =>
-  SALES_REQUESTS.filter((s) => s.status === "Accepted" && !s.soRef).map((s) => s.code);
+/** Approved sales requests that have not become an order yet. */
+const approvedRequests = () =>
+  SALES_REQUESTS.filter((s) => s.status === "Approved" && !s.soRef).map((s) => s.code);
 
 export const SO_FORM: FormSchema<SoRow> = {
   key: "sales-order",
@@ -149,15 +149,15 @@ export const SO_FORM: FormSchema<SoRow> = {
             {
               type: "select",
               path: "srRef",
-              label: "Source Quotation",
-              options: acceptedQuotes(),
-              hint: "เลือกใบเสนอราคาที่ลูกค้าตอบรับแล้ว เพื่อดึงรายการมาทั้งชุด",
+              label: "Source Sales Request",
+              options: approvedRequests(),
+              hint: "เลือกคำขอขายที่อนุมัติแล้ว เพื่อดึงลูกค้าและรายการมาทั้งชุด",
               when: (st) => st._mode === "create",
             },
             {
               type: "static",
               path: "srRef",
-              label: "Source Quotation",
+              label: "Source Sales Request",
               when: (st) => st._mode !== "create",
             },
             { type: "text", path: "customerPo", label: "Customer PO No.", placeholder: "PO-DS-69-0331" },
@@ -293,6 +293,14 @@ export const SO_FORM: FormSchema<SoRow> = {
   ],
 
   required: [
+    {
+      path: "srRef",
+      label: "Source Sales Request",
+      step: "customer",
+      /* Sales Request is required by the process; only pre-existing orders
+         raised before this rule existed are allowed through without one. */
+      test: (s) => s._mode !== "create" || Boolean(String(s.srRef ?? "").trim()),
+    },
     { path: "customerPick", label: "Customer", step: "customer" },
     { path: "salesRep", label: "Sales Representative", step: "customer" },
     { path: "orderDate", label: "Order Date", step: "customer" },
@@ -415,7 +423,7 @@ export const SO_FORM: FormSchema<SoRow> = {
       s.channel = sr.channel;
       s.priority = sr.priority;
       s.customerPo = sr.customerRef;
-      s.deliveryDate = toInputDate(sr.validUntil);
+      s.deliveryDate = toInputDate(sr.requiredDate);
       const addresses = shipToOptions(s.customerPick);
       s.shipTo = addresses[0] ?? "";
       s.items = (sr.items ?? []).map((it) => ({

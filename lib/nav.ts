@@ -58,6 +58,7 @@ export const NAV: NavGroup[] = [
     label: "Outbound",
     items: [
       { label: "Outbound Workspace", href: "/outbound", icon: "outbound" },
+      { label: "Quotation", href: "/m/quotation", icon: "quotation" },
       { label: "Sales Request", href: "/m/sales-request", icon: "salesRequest" },
       { label: "Sales Order", href: "/m/sales-order", icon: "salesOrder" },
       { label: "Picking", href: "/m/picking", icon: "picking" },

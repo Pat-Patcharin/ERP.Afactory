@@ -28,7 +28,8 @@
       "Bash(awk '{print \"behind origin: \"$1\"   ahead of origin: \"$2}')",
       "PowerShell(Move-Item -Path \"c:\\\\Users\\\\user\\\\Documents\\\\GitHub\\\\ERP.Afactory\\\\lib\\\\workflows-outbound.ts\" -Destination \"c:\\\\Users\\\\user\\\\Documents\\\\GitHub\\\\ERP.Afactory\\\\lib\\\\workflows-outbound.tsx\" -Force)",
       "PowerShell(\"moved\")",
-      "PowerShell(\"server stopped\")"
+      "PowerShell(\"server stopped\")",
+      "Bash(awk '{print $5, $9}')"
     ]
   }
 }

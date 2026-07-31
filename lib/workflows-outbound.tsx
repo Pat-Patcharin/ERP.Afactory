@@ -4,6 +4,7 @@ import {
   DELIVERY_ORDERS,
   PACKING_TASKS,
   PICKING_TASKS,
+  QUOTATIONS,
   SALES_ORDERS,
   SALES_REQUESTS,
   creditCheck,
@@ -15,10 +16,12 @@ import {
   nextPackCode,
   nextPickCode,
   nextSOCode,
+  nextSalesRequestCode,
   soLinkedDocs,
   type DoRow,
   type PackRow,
   type PickRow,
+  type QtRow,
   type SoRow,
   type SrRow,
 } from "./domain/outbound";
@@ -53,42 +56,242 @@ function commit(ctx: ActionCtx, title: string, message: string, tone: "success" 
 }
 
 /* ============================================================
-   SALES REQUEST
+   QUOTATION — optional price offer. Nothing here touches stock
+   or commits the company to anything.
    ============================================================ */
 
-export function srSend(sr: SrRow, ctx: ActionCtx) {
-  sr.status = "Sent";
-  sr.updated = stamp();
-  sr.updatedBy = USER;
-  log(sr, "Sent to customer", "ส่งใบเสนอราคาให้ลูกค้าแล้ว", "info");
-  commit(ctx, "ส่งใบเสนอราคาแล้ว", `${sr.code} — รอลูกค้าตอบกลับ`);
+export function qtSend(qt: QtRow, ctx: ActionCtx) {
+  qt.status = "Sent";
+  qt.updated = stamp();
+  qt.updatedBy = USER;
+  log(qt, "Sent to customer", "ส่งใบเสนอราคาให้ลูกค้าแล้ว", "info");
+  commit(ctx, "ส่งใบเสนอราคาแล้ว", `${qt.code} — รอลูกค้าตอบกลับ`);
 }
 
-export function srAccept(sr: SrRow, ctx: ActionCtx) {
-  sr.status = "Accepted";
-  sr.updated = stamp();
-  sr.updatedBy = USER;
-  log(sr, "Accepted by customer", "ลูกค้ายืนยันราคาแล้ว พร้อมแปลงเป็นใบสั่งขาย");
-  commit(ctx, "ลูกค้ายอมรับแล้ว", `${sr.code} — พร้อมแปลงเป็นใบสั่งขาย`);
+export function qtAccept(qt: QtRow, ctx: ActionCtx) {
+  qt.status = "Accepted";
+  qt.updated = stamp();
+  qt.updatedBy = USER;
+  log(qt, "Accepted by customer", "ลูกค้ายืนยันราคาแล้ว พร้อมเปิดคำขอขาย");
+  commit(ctx, "ลูกค้ายอมรับแล้ว", `${qt.code} — พร้อมแปลงเป็นคำขอขาย`);
 }
 
-export function srReject(sr: SrRow, ctx: ActionCtx) {
+export function qtReject(qt: QtRow, ctx: ActionCtx) {
   ctx.confirm({
     title: "Reject this quotation?",
-    message: `${sr.code} จะถูกปิดเป็น Rejected — บันทึกเหตุผลไว้ในประวัติเอกสาร`,
+    message: `${qt.code} จะถูกปิดเป็น Rejected — เหตุผลที่บันทึกไว้จะใช้ทำรายงาน win/loss ต่อไป`,
     confirmText: "Reject quotation",
     onConfirm: () => {
-      sr.status = "Rejected";
-      sr.updated = stamp();
-      sr.updatedBy = USER;
-      log(sr, "Rejected by customer", "ลูกค้าไม่รับข้อเสนอ", "warn");
-      commit(ctx, "ปิดใบเสนอราคาแล้ว", `${sr.code} — Rejected`, "danger");
+      qt.status = "Rejected";
+      if (!qt.rejectReason) qt.rejectReason = "อื่น ๆ";
+      qt.updated = stamp();
+      qt.updatedBy = USER;
+      log(qt, "Rejected by customer", `เหตุผล: ${qt.rejectReason}`, "warn");
+      commit(ctx, "ปิดใบเสนอราคาแล้ว", `${qt.code} — ${qt.rejectReason}`, "danger");
     },
   });
 }
 
-/** Accepted quotation → a real Sales Order carrying the same priced lines. */
+/**
+ * Accepted quotation → a Sales Request. The quote decided the price; the
+ * request is what goes through internal approval.
+ */
+export function qtConvert(qt: QtRow, ctx: ActionCtx) {
+  ctx.confirm({
+    title: "Convert to Sales Request?",
+    message: (
+      <>
+        สร้างคำขอขายจาก <strong>{qt.code}</strong> — ระบบจะออกเลข SR ให้อัตโนมัติ
+        <br />
+        มูลค่า {money0(qt.amount)} บาท · คำขอขายยังไม่จองสต๊อก
+      </>
+    ),
+    confirmText: "Convert to Sales Request",
+    tone: "primary",
+    onConfirm: () => {
+      const now = stamp();
+      const srCode = nextSalesRequestCode();
+
+      SALES_REQUESTS.unshift({
+        code: srCode,
+        customer: qt.customer,
+        customerCode: qt.customerCode,
+        salesRep: qt.salesRep,
+        requestDate: now.split(" ")[0],
+        requiredDate: qt.validUntil,
+        status: "Draft",
+        priority: "Normal",
+        warehouse: "",
+        currency: qt.currency,
+        payTerm: qt.payTerm,
+        priceList: qt.priceList,
+        channel: qt.channel,
+        customerRef: qt.customerRef,
+        quotationRef: qt.code,
+        note: `สร้างจากใบเสนอราคา ${qt.code}`,
+        items: (qt.items ?? []).map((it) => ({ ...it })),
+        approvedBy: "",
+        approvedDate: "",
+        rejectReason: "",
+        soRef: "",
+        history: [
+          {
+            t: `Created from ${qt.code}`,
+            d: "สร้างคำขอขายจากใบเสนอราคาที่ลูกค้าตอบรับ",
+            u: USER,
+            when: now,
+            kind: "primary",
+          },
+        ],
+        created: now,
+        createdBy: USER,
+        updated: now,
+        updatedBy: USER,
+      } as unknown as SrRow);
+
+      qt.status = "Converted";
+      qt.srRef = srCode;
+      qt.updated = now;
+      qt.updatedBy = USER;
+      log(qt, "Converted to Sales Request", `สร้าง ${srCode} จากใบเสนอราคานี้`);
+
+      commit(ctx, "แปลงเป็นคำขอขายแล้ว", `${qt.code} → ${srCode}`);
+      ctx.goto(`/m/sales-request/${encodeURIComponent(srCode)}`);
+    },
+  });
+}
+
+export function qtCancel(qt: QtRow, ctx: ActionCtx) {
+  ctx.confirm({
+    title: "Cancel this quotation?",
+    message: `${qt.code} จะถูกยกเลิก`,
+    confirmText: "Cancel quotation",
+    onConfirm: () => {
+      qt.status = "Cancelled";
+      qt.updated = stamp();
+      log(qt, "Cancelled", "ยกเลิกใบเสนอราคา", "warn");
+      commit(ctx, "ยกเลิกใบเสนอราคาแล้ว", qt.code, "info");
+    },
+  });
+}
+
+export function qtDelete(qt: QtRow, ctx: ActionCtx) {
+  ctx.confirm({
+    title: "Delete this quotation?",
+    message: `${qt.code} จะถูกลบถาวร การกระทำนี้ย้อนกลับไม่ได้`,
+    confirmText: "Delete quotation",
+    onConfirm: () => {
+      const i = QUOTATIONS.indexOf(qt);
+      if (i > -1) QUOTATIONS.splice(i, 1);
+      commit(ctx, "ลบใบเสนอราคาแล้ว", qt.code, "danger");
+    },
+  });
+}
+
+/* ============================================================
+   SALES REQUEST — internal approval, then conversion.
+   Approving a request does NOT reserve stock.
+   ============================================================ */
+
+export function srSubmit(sr: SrRow, ctx: ActionCtx) {
+  if (!(sr.items ?? []).length) {
+    ctx.toast("ยังไม่มีรายการสินค้า", "เพิ่มรายการอย่างน้อย 1 บรรทัดก่อนส่งขออนุมัติ", "warning");
+    return;
+  }
+  sr.status = "Submitted";
+  sr.updated = stamp();
+  sr.updatedBy = USER;
+  log(sr, "Submitted for approval", "ส่งขออนุมัติภายใน", "info");
+  commit(ctx, "ส่งขออนุมัติแล้ว", `${sr.code} — รอผู้จัดการฝ่ายขายอนุมัติ`);
+}
+
+/** Internal approval. Credit is checked here so the order does not stall later. */
+export function srApprove(sr: SrRow, ctx: ActionCtx) {
+  const credit = creditCheck(`${sr.customerCode} - ${sr.customer}`, sr.amount);
+
+  ctx.confirm({
+    title: "Approve this sales request?",
+    message: (
+      <>
+        อนุมัติ <strong>{sr.code}</strong> — {sr.customer}
+        <br />
+        มูลค่า {money0(sr.amount)} บาท
+        {!credit.withinLimit && (
+          <>
+            <br />
+            <span className="font-semibold text-warning-text">
+              ลูกค้าเกินวงเงินเครดิต {money0(credit.overBy)} บาท — อนุมัติได้
+              แต่ใบสั่งขายจะถูกตั้งเป็น On Hold
+            </span>
+          </>
+        )}
+        <br />
+        <span className="text-ink-2">การอนุมัติคำขอขายยังไม่จองสต๊อก</span>
+      </>
+    ),
+    confirmText: "Approve request",
+    tone: "primary",
+    onConfirm: () => {
+      const now = stamp();
+      sr.status = "Approved";
+      sr.approvedBy = USER;
+      sr.approvedDate = now;
+      sr.rejectReason = "";
+      sr.updated = now;
+      sr.updatedBy = USER;
+      log(
+        sr,
+        "Approved",
+        credit.withinLimit
+          ? `อนุมัติภายในโดย ${USER} — เครดิตอยู่ในวงเงิน`
+          : `อนุมัติภายในโดย ${USER} — เกินวงเงิน ${money0(credit.overBy)} บาท`,
+      );
+      commit(ctx, "อนุมัติคำขอขายแล้ว", `${sr.code} — พร้อมแปลงเป็นใบสั่งขาย`);
+    },
+  });
+}
+
+export function srReject(sr: SrRow, ctx: ActionCtx) {
+  ctx.confirm({
+    title: "Reject this sales request?",
+    message: `${sr.code} จะถูกปิดเป็น Rejected — บันทึกเหตุผลไว้ให้พนักงานขายติดตามกับลูกค้า`,
+    confirmText: "Reject request",
+    onConfirm: () => {
+      sr.status = "Rejected";
+      if (!sr.rejectReason) sr.rejectReason = "อื่น ๆ";
+      sr.approvedBy = USER;
+      sr.approvedDate = "";
+      sr.updated = stamp();
+      sr.updatedBy = USER;
+      log(sr, "Rejected", `ไม่อนุมัติ: ${sr.rejectReason}`, "warn");
+      commit(ctx, "ไม่อนุมัติคำขอขาย", `${sr.code} — ${sr.rejectReason}`, "danger");
+    },
+  });
+}
+
+/** Send an approved request back for edits. */
+export function srReopen(sr: SrRow, ctx: ActionCtx) {
+  sr.status = "Draft";
+  sr.approvedBy = "";
+  sr.approvedDate = "";
+  sr.rejectReason = "";
+  sr.updated = stamp();
+  sr.updatedBy = USER;
+  log(sr, "Reopened", "ส่งกลับเป็นร่างเพื่อแก้ไข", "info");
+  commit(ctx, "ส่งกลับเป็นร่างแล้ว", `${sr.code} — แก้ไขได้อีกครั้ง`, "info");
+}
+
+/** Approved request → a real Sales Order carrying the same priced lines. */
 export function srConvert(sr: SrRow, ctx: ActionCtx) {
+  if (sr.status !== "Approved") {
+    ctx.toast(
+      "ต้องอนุมัติก่อน",
+      `${sr.code} อยู่ในสถานะ ${sr.status} — อนุมัติคำขอขายก่อนจึงจะแปลงเป็นใบสั่งขายได้`,
+      "warning",
+    );
+    return;
+  }
+
   const credit = creditCheck(`${sr.customerCode} - ${sr.customer}`, sr.amount);
 
   ctx.confirm({
@@ -106,6 +309,10 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
             </span>
           </>
         )}
+        <br />
+        <span className="text-ink-2">
+          สต๊อกจะถูกจองเมื่อยืนยันใบสั่งขาย ไม่ใช่ตอนนี้
+        </span>
       </>
     ),
     confirmText: "Convert to SO",
@@ -120,7 +327,7 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
         customerCode: sr.customerCode,
         salesRep: sr.salesRep,
         orderDate: now.split(" ")[0],
-        deliveryDate: sr.validUntil,
+        deliveryDate: sr.requiredDate,
         warehouse: sr.warehouse,
         currency: sr.currency,
         fx: 1,
@@ -185,27 +392,27 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
 
 export function srCancel(sr: SrRow, ctx: ActionCtx) {
   ctx.confirm({
-    title: "Cancel this quotation?",
+    title: "Cancel this sales request?",
     message: `${sr.code} จะถูกยกเลิก`,
-    confirmText: "Cancel quotation",
+    confirmText: "Cancel request",
     onConfirm: () => {
       sr.status = "Cancelled";
       sr.updated = stamp();
-      log(sr, "Cancelled", "ยกเลิกใบเสนอราคา", "warn");
-      commit(ctx, "ยกเลิกใบเสนอราคาแล้ว", sr.code, "info");
+      log(sr, "Cancelled", "ยกเลิกคำขอขาย", "warn");
+      commit(ctx, "ยกเลิกคำขอขายแล้ว", sr.code, "info");
     },
   });
 }
 
 export function srDelete(sr: SrRow, ctx: ActionCtx) {
   ctx.confirm({
-    title: "Delete this quotation?",
+    title: "Delete this sales request?",
     message: `${sr.code} จะถูกลบถาวร การกระทำนี้ย้อนกลับไม่ได้`,
-    confirmText: "Delete quotation",
+    confirmText: "Delete request",
     onConfirm: () => {
       const i = SALES_REQUESTS.indexOf(sr);
       if (i > -1) SALES_REQUESTS.splice(i, 1);
-      commit(ctx, "ลบใบเสนอราคาแล้ว", sr.code, "danger");
+      commit(ctx, "ลบคำขอขายแล้ว", sr.code, "danger");
     },
   });
 }

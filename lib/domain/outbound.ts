@@ -1,3 +1,4 @@
+import { QUOTATIONS as RAW_QT, type Quotation } from "@/data/quotations";
 import { SALES_REQUESTS as RAW_SR, type SalesRequest } from "@/data/sales-requests";
 import { SALES_ORDERS as RAW_SO, type SalesOrder } from "@/data/sales-orders";
 import { PICKING_TASKS as RAW_PK, type PickingTask } from "@/data/picking";
@@ -92,11 +93,20 @@ export function availabilityFor(code: string, qty: number) {
 
 export const productOptions = () => PRODUCTS.map((p) => p.code);
 
+const nextSeq = (codes: string[], prefix: string, pad: number) => {
+  const n = codes.reduce((m, c) => {
+    const digits = String(c).replace(/\D/g, "").slice(-4);
+    return Math.max(m, parseInt(digits, 10) || 0);
+  }, 0);
+  return `${prefix}${String(n + 1).padStart(pad, "0")}`;
+};
+
 /* ============================================================
-   SALES REQUEST
+   QUOTATION — optional, and the only outbound document that
+   carries a price validity window.
    ============================================================ */
 
-export interface SrRow extends SalesRequest {
+export interface QtRow extends Quotation {
   amount: number;
   itemCount: number;
   name: string;
@@ -104,6 +114,53 @@ export interface SrRow extends SalesRequest {
   daysLeft: number | null;
   isExpiring: boolean;
   isExpired: boolean;
+}
+
+export const QUOTATIONS = RAW_QT as QtRow[];
+
+export const qtTotal = (qt: { items?: Quotation["items"] }) => docGrandTotal(qt);
+
+export function decorateQuotations() {
+  for (const qt of QUOTATIONS) {
+    qt.amount = qtTotal(qt);
+    qt.itemCount = qt.items?.length ?? 0;
+    qt.name = qt.code;
+    qt.icon = "📝";
+    qt.daysLeft = daysUntil(qt.validUntil);
+    /* Only a quote still awaiting an answer can expire. */
+    const open = ["Draft", "Sent", "Accepted"].includes(qt.status);
+    qt.isExpired = open && qt.daysLeft !== null && qt.daysLeft < 0;
+    qt.isExpiring = open && qt.daysLeft !== null && qt.daysLeft >= 0 && qt.daysLeft <= 7;
+  }
+}
+
+decorateQuotations();
+
+export const getQT = (code: string) => QUOTATIONS.find((q) => q.code === code) ?? null;
+
+export const nextQuotationCode = () =>
+  nextSeq(QUOTATIONS.map((q) => q.code), "QT2507-", 4);
+
+/** Quotes the customer accepted that have not become a request yet. */
+export const convertibleQuotations = () =>
+  QUOTATIONS.filter((q) => q.status === "Accepted" && !q.srRef);
+
+/* ============================================================
+   SALES REQUEST — required, internal, and deliberately free of
+   any stock reservation. Availability shown against a request is
+   indicative; the Sales Order is what commits inventory.
+   ============================================================ */
+
+export interface SrRow extends SalesRequest {
+  amount: number;
+  itemCount: number;
+  name: string;
+  icon: string;
+  /** Days until the customer needs the goods; negative once overdue. */
+  daysToRequired: number | null;
+  isUrgent: boolean;
+  awaitingApproval: boolean;
+  isConvertible: boolean;
 }
 
 export const SALES_REQUESTS = RAW_SR as SrRow[];
@@ -116,10 +173,11 @@ export function decorateSalesRequests() {
     sr.itemCount = sr.items?.length ?? 0;
     sr.name = sr.code;
     sr.icon = "📄";
-    sr.daysLeft = daysUntil(sr.validUntil);
-    const open = ["Draft", "Sent", "Accepted"].includes(sr.status);
-    sr.isExpired = open && sr.daysLeft !== null && sr.daysLeft < 0;
-    sr.isExpiring = open && sr.daysLeft !== null && sr.daysLeft >= 0 && sr.daysLeft <= 7;
+    sr.daysToRequired = daysUntil(sr.requiredDate);
+    const open = ["Draft", "Submitted", "Approved"].includes(sr.status);
+    sr.isUrgent = open && sr.daysToRequired !== null && sr.daysToRequired <= 3;
+    sr.awaitingApproval = sr.status === "Submitted";
+    sr.isConvertible = sr.status === "Approved" && !sr.soRef;
   }
 }
 
@@ -127,17 +185,12 @@ decorateSalesRequests();
 
 export const getSR = (code: string) => SALES_REQUESTS.find((s) => s.code === code) ?? null;
 
-const nextSeq = (codes: string[], prefix: string, pad: number) => {
-  const n = codes.reduce((m, c) => {
-    const digits = String(c).replace(/\D/g, "").slice(-4);
-    return Math.max(m, parseInt(digits, 10) || 0);
-  }, 0);
-  return `${prefix}${String(n + 1).padStart(pad, "0")}`;
-};
-
 /** Named in full — `nextSRCode` already belongs to the Sales Rep master. */
 export const nextSalesRequestCode = () =>
   nextSeq(SALES_REQUESTS.map((s) => s.code), "SR2507-", 4);
+
+/** Approved requests waiting to become an order. */
+export const convertibleRequests = () => SALES_REQUESTS.filter((s) => s.isConvertible);
 
 /* ============================================================
    SALES ORDER
@@ -362,6 +415,7 @@ export function soLinkedDocs(code: string) {
 
 /** Re-run every decorator — used after a workflow touches several documents. */
 export function decorateOutbound() {
+  decorateQuotations();
   decorateSalesRequests();
   decorateSOs();
   decoratePicks();

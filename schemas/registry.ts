@@ -10,6 +10,7 @@ import { poSchemas } from "./purchase-order";
 import { grSchemas } from "./goods-receipt";
 import { qcSchemas } from "./qc-inspection";
 import { paSchemas } from "./put-away";
+import { qtSchemas } from "./quotation";
 import { srSchemas } from "./sales-request";
 import { soSchemas } from "./sales-order";
 import { pickSchemas } from "./picking";
@@ -39,6 +40,7 @@ export const REGISTRY: Record<string, EntitySchemas<any>> = {
   "put-away": paSchemas,
 
   /* Order-to-delivery documents */
+  quotation: qtSchemas,
   "sales-request": srSchemas,
   "sales-order": soSchemas,
   picking: pickSchemas,

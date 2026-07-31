@@ -122,13 +122,23 @@ export const SR_TONE: Record<string, BadgeTone> = {
 
 /* ---------- Outbound ---------- */
 
-/** Sales Request (quotation). Named SRQ so it never reads as Sales Rep. */
-export const SRQ_TONE: Record<string, BadgeTone> = {
+/** Quotation — the optional price offer sent to the customer. */
+export const QT_TONE: Record<string, BadgeTone> = {
   Draft: "neutral",
   Sent: "info",
   Accepted: "success",
   Rejected: "danger",
   Expired: "danger",
+  Converted: "info",
+  Cancelled: "neutral",
+};
+
+/** Sales Request — internal approval. Named SRQ so it never reads as Sales Rep. */
+export const SRQ_TONE: Record<string, BadgeTone> = {
+  Draft: "neutral",
+  Submitted: "warning",
+  Approved: "success",
+  Rejected: "danger",
   Converted: "info",
   Cancelled: "neutral",
 };

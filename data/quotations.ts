@@ -1,0 +1,262 @@
+/**
+ * Quotation — the OPTIONAL price offer sent to a customer before anything is
+ * committed. Accepting one converts it into a Sales Request; a Sales Request
+ * can equally be raised without a quotation ever existing.
+ *
+ * Draft → Sent → Accepted → Converted
+ *              → Rejected / Expired
+ *
+ * Nothing here touches stock. Mock dataset; mutating these arrays is how the
+ * prototype persists changes.
+ */
+
+export interface QtLine {
+  code: string;
+  name: string;
+  unit: string;
+  qty: number;
+  price: number;
+  disc: number;
+  tax: number;
+  note: string;
+}
+
+export interface Quotation {
+  code: string;
+  customer: string;
+  customerCode: string;
+  salesRep: string;
+  quoteDate: string;
+  validUntil: string;
+  status: string;
+  currency: string;
+  payTerm: string;
+  priceList: string;
+  channel: string;
+  customerRef: string;
+  /** Why the customer said no — kept for win/loss reporting later. */
+  rejectReason: string;
+  note: string;
+  items: QtLine[];
+  /** The Sales Request this quotation turned into, if any. */
+  srRef: string;
+  history: { t: string; d: string; u: string; when: string; kind: string }[];
+  created: string;
+  createdBy: string;
+  updated: string;
+  updatedBy: string;
+}
+
+export const QT_STATUS = [
+  "Draft",
+  "Sent",
+  "Accepted",
+  "Rejected",
+  "Expired",
+  "Converted",
+  "Cancelled",
+] as const;
+
+export const QT_PRICE_LISTS = [
+  "PL-STD-2026 Standard",
+  "PL-CLINIC-2026 Clinic",
+  "PL-DEALER-2026 Dealer",
+  "PL-GOV-2026 Government",
+] as const;
+
+export const QT_CHANNELS = ["Direct", "Dealer", "Online", "Government", "Export"] as const;
+
+export const QT_REJECT_REASONS = [
+  "ราคาสูงเกินไป",
+  "ลูกค้าเลื่อนการสั่งซื้อ",
+  "เลือกผู้ขายรายอื่น",
+  "สินค้าไม่ตรงความต้องการ",
+  "ระยะเวลาส่งมอบไม่ทัน",
+  "อื่น ๆ",
+] as const;
+
+/** How long a quote stays valid by default. */
+export const QT_VALIDITY_DAYS = 30;
+
+export const QUOTATIONS: Quotation[] = [
+  {
+    code: "QT2506-0001",
+    customer: "บริษัท เดนทัล สมายล์ จำกัด",
+    customerCode: "BP000123",
+    salesRep: "SALE001 - Patcharin Thiengkaew",
+    quoteDate: "22/06/2569",
+    validUntil: "22/07/2569",
+    status: "Converted",
+    currency: "THB",
+    payTerm: "เครดิต 30 วัน",
+    priceList: "PL-CLINIC-2026 Clinic",
+    channel: "Direct",
+    customerRef: "RFQ-DS-6806",
+    rejectReason: "",
+    note: "ลูกค้าขอราคาพิเศษสำหรับออร์เดอร์ประจำเดือน",
+    items: [
+      { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 120, price: 120, disc: 5, tax: 7, note: "" },
+      { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
+      { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 40, price: 95, disc: 0, tax: 7, note: "" },
+    ],
+    srRef: "SR2506-0001",
+    history: [
+      { t: "Converted to Sales Request", d: "สร้าง SR2506-0001 จากใบเสนอราคานี้", u: "Patcharin T.", when: "24/06/2569 14:05", kind: "primary" },
+      { t: "Accepted by customer", d: "ลูกค้ายืนยันราคาทางอีเมล", u: "Patcharin T.", when: "24/06/2569 09:40", kind: "primary" },
+      { t: "Sent to customer", d: "ส่งใบเสนอราคาให้ลูกค้า", u: "Patcharin T.", when: "22/06/2569 15:20", kind: "info" },
+      { t: "Created", d: "สร้างใบเสนอราคา", u: "Patcharin T.", when: "22/06/2569 14:05", kind: "" },
+    ],
+    created: "22/06/2569 14:05",
+    createdBy: "Patcharin T.",
+    updated: "24/06/2569 14:05",
+    updatedBy: "Patcharin T.",
+  },
+  {
+    code: "QT2506-0002",
+    customer: "โรงพยาบาลสมานบุญ 1",
+    customerCode: "BP000119",
+    salesRep: "SALE003 - Narin Chaiyawat",
+    quoteDate: "24/06/2569",
+    validUntil: "24/07/2569",
+    status: "Converted",
+    currency: "THB",
+    payTerm: "เครดิต 60 วัน",
+    priceList: "PL-GOV-2026 Government",
+    channel: "Government",
+    customerRef: "TOR-2569-114",
+    rejectReason: "",
+    note: "งานประมูลโรงพยาบาล ต้องแนบใบรับรอง อย. ทุกรายการ",
+    items: [
+      { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 7, note: "ราคาประมูล" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 7, note: "" },
+    ],
+    srRef: "SR2506-0002",
+    history: [
+      { t: "Converted to Sales Request", d: "สร้าง SR2506-0002 รออนุมัติภายใน", u: "Narin C.", when: "26/06/2569 11:15", kind: "primary" },
+      { t: "Accepted by customer", d: "โรงพยาบาลแจ้งผลประมูล — ได้งาน", u: "Narin C.", when: "26/06/2569 10:00", kind: "primary" },
+      { t: "Sent to customer", d: "ยื่นเอกสารประมูลพร้อมใบรับรอง", u: "Narin C.", when: "24/06/2569 16:30", kind: "info" },
+      { t: "Created", d: "สร้างใบเสนอราคาสำหรับงานประมูล", u: "Narin C.", when: "24/06/2569 11:15", kind: "" },
+    ],
+    created: "24/06/2569 11:15",
+    createdBy: "Narin C.",
+    updated: "26/06/2569 11:15",
+    updatedBy: "Narin C.",
+  },
+  {
+    code: "QT2506-0003",
+    customer: "ห้างหุ้นส่วนจำกัด เดนทัล แม็กซ์ ดีลเลอร์",
+    customerCode: "BP000120",
+    salesRep: "SALE002 - Somchai Srisuk",
+    quoteDate: "25/06/2569",
+    validUntil: "09/07/2569",
+    status: "Converted",
+    currency: "THB",
+    payTerm: "เครดิต 45 วัน",
+    priceList: "PL-DEALER-2026 Dealer",
+    channel: "Dealer",
+    customerRef: "DMD-Q-0455",
+    rejectReason: "",
+    note: "ดีลเลอร์ขอเติมสต๊อกไตรมาส 3",
+    items: [
+      { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 240, price: 120, disc: 18, tax: 7, note: "ราคาดีลเลอร์" },
+      { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 120, price: 150, disc: 18, tax: 7, note: "" },
+      { code: "AT-GL001", name: "A-GLASS IONOMER (Universal)", unit: "Set", qty: 30, price: 480, disc: 15, tax: 7, note: "" },
+    ],
+    srRef: "SR2506-0003",
+    history: [
+      { t: "Converted to Sales Request", d: "สร้าง SR2506-0003 จากใบเสนอราคานี้", u: "Somchai S.", when: "27/06/2569 13:10", kind: "primary" },
+      { t: "Accepted by customer", d: "ดีลเลอร์ยืนยันแล้ว", u: "Somchai S.", when: "27/06/2569 09:05", kind: "primary" },
+      { t: "Sent to customer", d: "ส่งใบเสนอราคาทาง LINE", u: "Somchai S.", when: "25/06/2569 14:40", kind: "info" },
+      { t: "Created", d: "สร้างใบเสนอราคา", u: "Somchai S.", when: "25/06/2569 13:10", kind: "" },
+    ],
+    created: "25/06/2569 13:10",
+    createdBy: "Somchai S.",
+    updated: "27/06/2569 13:10",
+    updatedBy: "Somchai S.",
+  },
+  {
+    code: "QT2506-0004",
+    customer: "ร้านทันตภัณฑ์ ก้าวหน้า",
+    customerCode: "BP000118",
+    salesRep: "SALE002 - Somchai Srisuk",
+    quoteDate: "18/06/2569",
+    validUntil: "25/06/2569",
+    status: "Rejected",
+    currency: "THB",
+    payTerm: "เครดิต 15 วัน",
+    priceList: "PL-STD-2026 Standard",
+    channel: "Direct",
+    customerRef: "",
+    rejectReason: "ราคาสูงเกินไป",
+    note: "ลูกค้าแจ้งว่าราคาสูงกว่าคู่แข่ง",
+    items: [
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 0, tax: 7, note: "" },
+    ],
+    srRef: "",
+    history: [
+      { t: "Rejected by customer", d: "เหตุผล: ราคาสูงเกินไป", u: "Somchai S.", when: "24/06/2569 11:20", kind: "warn" },
+      { t: "Sent to customer", d: "ส่งใบเสนอราคา", u: "Somchai S.", when: "18/06/2569 10:00", kind: "info" },
+      { t: "Created", d: "สร้างใบเสนอราคา", u: "Somchai S.", when: "18/06/2569 09:30", kind: "" },
+    ],
+    created: "18/06/2569 09:30",
+    createdBy: "Somchai S.",
+    updated: "24/06/2569 11:20",
+    updatedBy: "Somchai S.",
+  },
+  {
+    code: "QT2507-0005",
+    customer: "คลินิกทันตกรรม เอบีซี",
+    customerCode: "BP000122",
+    salesRep: "SALE004 - Supavita Yothapun",
+    quoteDate: "02/07/2569",
+    validUntil: "09/07/2569",
+    status: "Sent",
+    currency: "THB",
+    payTerm: "เงินสด",
+    priceList: "PL-CLINIC-2026 Clinic",
+    channel: "Direct",
+    customerRef: "",
+    rejectReason: "",
+    note: "เสนอราคาชุดวัสดุอุดฟันสำหรับคลินิกสาขาใหม่ รอลูกค้าตอบกลับ",
+    items: [
+      { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 48, price: 95, disc: 3, tax: 7, note: "" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 24, price: 110, disc: 3, tax: 7, note: "" },
+    ],
+    srRef: "",
+    history: [
+      { t: "Sent to customer", d: "ส่งใบเสนอราคาให้คลินิก", u: "Supavita Y.", when: "02/07/2569 10:30", kind: "info" },
+      { t: "Created", d: "สร้างใบเสนอราคา", u: "Supavita Y.", when: "02/07/2569 09:50", kind: "" },
+    ],
+    created: "02/07/2569 09:50",
+    createdBy: "Supavita Y.",
+    updated: "02/07/2569 10:30",
+    updatedBy: "Supavita Y.",
+  },
+  {
+    code: "QT2507-0006",
+    customer: "บริษัท เดนทัล สมายล์ จำกัด (สาขา 2)",
+    customerCode: "BP000089",
+    salesRep: "SALE001 - Patcharin Thiengkaew",
+    quoteDate: "03/07/2569",
+    validUntil: "02/08/2569",
+    status: "Draft",
+    currency: "THB",
+    payTerm: "เครดิต 30 วัน",
+    priceList: "PL-CLINIC-2026 Clinic",
+    channel: "Direct",
+    customerRef: "",
+    rejectReason: "",
+    note: "ร่างใบเสนอราคาสาขา 2 รอยืนยันจำนวนจากลูกค้า",
+    items: [
+      { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
+    ],
+    srRef: "",
+    history: [
+      { t: "Created", d: "สร้างร่างใบเสนอราคา", u: "Patcharin T.", when: "03/07/2569 14:15", kind: "" },
+    ],
+    created: "03/07/2569 14:15",
+    createdBy: "Patcharin T.",
+    updated: "03/07/2569 14:15",
+    updatedBy: "Patcharin T.",
+  },
+];

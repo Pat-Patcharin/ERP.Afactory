@@ -10,8 +10,6 @@ const EXTRA: Record<string, string> = {
   "Product Pricing": "/pricing",
   "Purchase Workspace": "/purchase",
   "Outbound Workspace": "/outbound",
-  /* The workspace calls a quotation a Quotation; the module is Sales Request. */
-  Quotation: "/m/sales-request",
 };
 
 export function pageHref(page: string): string {

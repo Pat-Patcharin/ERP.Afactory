@@ -1,51 +1,63 @@
 import {
   SALES_REQUESTS,
+  availabilityFor,
   creditCheck,
   getCustomer,
+  getQT,
   type SrRow,
 } from "@/lib/domain/outbound";
 import { docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
 import { SR_STATUS } from "@/data/sales-requests";
-import { PRIORITY_TONE, SRQ_TONE, tone } from "@/lib/badges";
+import { PRIORITY_TONE, QT_TONE, SRQ_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money0 } from "@/lib/format";
-import { srAccept, srCancel, srConvert, srDelete, srReject, srSend } from "@/lib/workflows-outbound";
+import {
+  srApprove,
+  srCancel,
+  srConvert,
+  srDelete,
+  srReject,
+  srReopen,
+  srSubmit,
+} from "@/lib/workflows-outbound";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { SR_FORM } from "./forms/sales-request";
 
 /* ============================================================
-   SALES REQUEST — the quotation sent to the customer.
-   Draft → Sent → Accepted → Converted to Sales Order
-                → Rejected / Expired
-   ============================================================ */
+   SALES REQUEST — the REQUIRED first operational document.
 
-const validityBadge = (sr: SrRow) => {
-  if (sr.isExpired) return <Badge tone="danger">Expired</Badge>;
-  if (sr.isExpiring) return <Badge tone="warning">อีก {sr.daysLeft} วัน</Badge>;
-  return <Badge tone={tone(SRQ_TONE, sr.status)}>{sr.status}</Badge>;
-};
+     Quotation (optional) → Sales Request → Sales Order
+
+   Draft → Submitted → Approved → Converted
+                     → Rejected
+
+   A Sales Request never reserves stock. Availability shown here is
+   indicative; the Sales Order is what commits inventory.
+   ============================================================ */
 
 export const SR_LIST: ListSchema<SrRow> = {
   key: "sales-request",
   entity: "Sales Request",
   entityPlural: "Sales Requests",
   title: "Sales Requests",
-  subtitle: "ใบขอเสนอราคาที่ส่งให้ลูกค้า ติดตามการตอบรับและแปลงเป็นใบสั่งขาย",
+  subtitle:
+    "คำขอขายจากลูกค้า ผ่านการอนุมัติภายในก่อนแปลงเป็นใบสั่งขาย — เอกสารนี้ยังไม่จองสต๊อก",
   crumb: "Sales Request",
-  primaryLabel: "New Quotation",
-  searchPlaceholder: "ค้นหาเลขที่ใบเสนอราคา ลูกค้า หรือพนักงานขาย...",
-  emptyTitle: "ไม่พบใบเสนอราคาที่ตรงกับเงื่อนไข",
+  primaryLabel: "New Sales Request",
+  searchPlaceholder: "ค้นหาเลขที่คำขอ ลูกค้า พนักงานขาย หรือใบเสนอราคา...",
+  emptyTitle: "ไม่พบคำขอขายที่ตรงกับเงื่อนไข",
   hideImportExport: true,
 
   source: () => SALES_REQUESTS,
-  searchFields: ["code", "customer", "salesRep", "customerRef", "note"],
+  searchFields: ["code", "customer", "salesRep", "customerRef", "quotationRef", "note"],
 
   tabs: [
     { key: "all", label: "All" },
     { key: "draft", label: "Draft", test: (s) => s.status === "Draft" },
-    { key: "sent", label: "Sent", test: (s) => s.status === "Sent" },
-    { key: "accepted", label: "Accepted", test: (s) => s.status === "Accepted" },
-    { key: "expiring", label: "ใกล้หมดอายุ", test: (s) => s.isExpiring || s.isExpired },
+    { key: "submitted", label: "รออนุมัติ", test: (s) => s.status === "Submitted" },
+    { key: "approved", label: "Approved", test: (s) => s.status === "Approved" },
+    { key: "urgent", label: "ใกล้ถึงกำหนด", test: (s) => s.isUrgent },
+    { key: "rejected", label: "Rejected", test: (s) => s.status === "Rejected" },
     { key: "converted", label: "Converted", test: (s) => s.status === "Converted" },
   ],
 
@@ -63,10 +75,10 @@ export const SR_LIST: ListSchema<SrRow> = {
       test: (s, v) => s.salesRep === v,
     },
     {
-      id: "channel",
-      label: "Channel",
-      options: () => [...new Set(SALES_REQUESTS.map((s) => s.channel))],
-      test: (s, v) => s.channel === v,
+      id: "source",
+      label: "Source",
+      options: () => ["จากใบเสนอราคา", "ลูกค้าติดต่อตรง"],
+      test: (s, v) => (v === "จากใบเสนอราคา" ? Boolean(s.quotationRef) : !s.quotationRef),
     },
     { id: "status", label: "Status", options: () => [...SR_STATUS], test: (s, v) => s.status === v },
   ],
@@ -74,7 +86,7 @@ export const SR_LIST: ListSchema<SrRow> = {
   columns: [
     {
       key: "code",
-      label: "Quotation No.",
+      label: "Request No.",
       sortable: true,
       cell: (s) => (
         <CellMedia>
@@ -94,17 +106,33 @@ export const SR_LIST: ListSchema<SrRow> = {
         </>
       ),
     },
-    { key: "salesRep", label: "Sales Rep", muted: true, cell: (s) => s.salesRep.split(" - ")[1] ?? s.salesRep },
+    {
+      key: "salesRep",
+      label: "Sales Rep",
+      muted: true,
+      cell: (s) => s.salesRep.split(" - ")[1] ?? s.salesRep,
+    },
+    {
+      key: "quotationRef",
+      label: "Quotation",
+      muted: true,
+      cell: (s) =>
+        s.quotationRef ? (
+          <Badge tone="info">{s.quotationRef}</Badge>
+        ) : (
+          <span className="text-ink-3">ติดต่อตรง</span>
+        ),
+    },
     { key: "requestDate", label: "Request Date", muted: true, sortable: true, cell: (s) => s.requestDate },
     {
-      key: "validUntil",
-      label: "Valid Until",
+      key: "requiredDate",
+      label: "Required Date",
       sortable: true,
       cell: (s) =>
-        s.isExpired || s.isExpiring ? (
-          <span className="font-semibold text-warning-text">{s.validUntil}</span>
+        s.isUrgent ? (
+          <span className="font-semibold text-warning-text">{s.requiredDate}</span>
         ) : (
-          s.validUntil
+          s.requiredDate
         ),
     },
     { key: "itemCount", label: "Items", align: "right", cell: (s) => fmt(s.itemCount) },
@@ -120,7 +148,11 @@ export const SR_LIST: ListSchema<SrRow> = {
         </>
       ),
     },
-    { key: "status", label: "Status", cell: (s) => validityBadge(s) },
+    {
+      key: "status",
+      label: "Status",
+      cell: (s) => <Badge tone={tone(SRQ_TONE, s.status)}>{s.status}</Badge>,
+    },
   ],
 
   rowActions: (sr, ctx) => {
@@ -133,21 +165,31 @@ export const SR_LIST: ListSchema<SrRow> = {
       },
     ];
 
-    if (["Draft", "Sent"].includes(sr.status))
+    if (["Draft", "Submitted"].includes(sr.status))
       acts.push({ label: "Edit", icon: "edit", run: (r) => ctx.goto(`/m/sales-request/${r.code}/edit`) });
 
     acts.push({ sep: true });
 
     if (sr.status === "Draft")
-      acts.push({ label: "Send to Customer", icon: "send", run: (r) => srSend(r, ctx) });
+      acts.push({ label: "Submit for Approval", icon: "send", run: (r) => srSubmit(r, ctx) });
 
-    if (sr.status === "Sent") {
-      acts.push({ label: "Mark Accepted", icon: "checkCircle", run: (r) => srAccept(r, ctx) });
-      acts.push({ label: "Mark Rejected", icon: "xCircle", danger: true, run: (r) => srReject(r, ctx) });
+    if (sr.status === "Submitted") {
+      acts.push({ label: "Approve", icon: "checkCircle", run: (r) => srApprove(r, ctx) });
+      acts.push({ label: "Reject", icon: "xCircle", danger: true, run: (r) => srReject(r, ctx) });
     }
 
-    if (sr.status === "Accepted")
+    if (sr.isConvertible)
       acts.push({ label: "Convert to Sales Order", icon: "salesOrder", run: (r) => srConvert(r, ctx) });
+
+    if (sr.status === "Approved" && !sr.soRef)
+      acts.push({ label: "Reopen as Draft", icon: "refresh", run: (r) => srReopen(r, ctx) });
+
+    if (sr.quotationRef)
+      acts.push({
+        label: `ดู ${sr.quotationRef}`,
+        icon: "quotation",
+        run: () => ctx.openEntity("quotation", sr.quotationRef),
+      });
 
     if (sr.soRef)
       acts.push({
@@ -157,9 +199,9 @@ export const SR_LIST: ListSchema<SrRow> = {
       });
 
     acts.push({
-      label: "Print Quotation",
+      label: "Print Request",
       icon: "printer",
-      run: (r) => ctx.toast("พิมพ์ใบเสนอราคา", `${r.code} — Future support`, "info"),
+      run: (r) => ctx.toast("พิมพ์คำขอขาย", `${r.code} — Future support`, "info"),
     });
 
     acts.push({ sep: true });
@@ -181,33 +223,37 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
     code: sr.code,
     title: sr.customer,
     copyFields: [
-      { label: "Quotation number", value: sr.code },
+      { label: "Request number", value: sr.code },
       { label: "Amount", value: `${money0(sr.amount)} ${sr.currency}` },
     ],
     badges: [
       { text: sr.status, tone: tone(SRQ_TONE, sr.status) },
-      ...(sr.isExpired ? ([{ text: "Expired", tone: "danger" }] as const) : []),
-      ...(sr.isExpiring ? ([{ text: `อีก ${sr.daysLeft} วัน`, tone: "warning" }] as const) : []),
+      ...(sr.isUrgent ? ([{ text: "ใกล้ถึงกำหนด", tone: "warning" }] as const) : []),
       { text: sr.priority, tone: tone(PRIORITY_TONE, sr.priority) },
     ],
-    tags: [sr.customerCode, sr.channel, sr.priceList].filter(Boolean),
+    tags: [sr.customerCode, sr.channel, sr.quotationRef || "ติดต่อตรง"].filter(Boolean),
   }),
 
   kpis: (sr) => [
-    { icon: "tag", label: "Quotation Value", value: money0(sr.amount), sub: sr.currency, goTab: "items" },
+    { icon: "tag", label: "Request Value", value: money0(sr.amount), sub: sr.currency, goTab: "items" },
     { icon: "box", label: "Line Items", value: fmt(sr.itemCount), sub: "รายการ", goTab: "items" },
     {
-      icon: "clock",
-      label: "Valid Until",
-      value: sr.validUntil,
-      sub: sr.daysLeft === null ? DASH : sr.daysLeft < 0 ? "หมดอายุแล้ว" : `อีก ${sr.daysLeft} วัน`,
+      icon: "calendar",
+      label: "Required Date",
+      value: sr.requiredDate,
+      sub:
+        sr.daysToRequired === null
+          ? DASH
+          : sr.daysToRequired < 0
+            ? "เลยกำหนดแล้ว"
+            : `อีก ${sr.daysToRequired} วัน`,
       goTab: "overview",
     },
     {
-      icon: "salesRep",
-      label: "Sales Rep",
-      value: sr.salesRep.split(" - ")[1] ?? sr.salesRep,
-      sub: sr.customerCode,
+      icon: "shield",
+      label: "Approval",
+      value: sr.status === "Approved" || sr.status === "Converted" ? "Approved" : sr.status,
+      sub: sr.approvedBy || "ยังไม่ได้อนุมัติ",
       wide: true,
       goTab: "overview",
     },
@@ -223,41 +269,62 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
           rows: [
             { icon: "partner", label: "Customer", value: sr.customer },
             { icon: "user", label: "Sales Rep", value: sr.salesRep.split(" - ")[1] ?? sr.salesRep },
-            { icon: "warehouse", label: "Warehouse", value: sr.warehouse },
-            { icon: "priceList", label: "Price List", value: sr.priceList },
-            { icon: "tag", label: "Payment Term", value: sr.payTerm },
             {
-              icon: "circleSlash",
+              icon: "quotation",
+              label: "Quotation",
+              value: sr.quotationRef || "ไม่มี (ติดต่อตรง)",
+              muted: !sr.quotationRef,
+            },
+            { icon: "warehouse", label: "Warehouse", value: sr.warehouse || DASH, muted: !sr.warehouse },
+            { icon: "priceList", label: "Price List", value: sr.priceList },
+            {
+              icon: "pricing",
               label: "Credit Available",
               value: credit.cashOnly ? "เงินสด" : money0(credit.available),
               muted: credit.cashOnly,
             },
-            { icon: "clock", label: "Last Updated", value: sr.updated, muted: true },
+            { icon: "salesOrder", label: "Sales Order", value: sr.soRef || DASH, muted: !sr.soRef },
           ],
         };
       },
       blocks: (sr) => {
         const credit = creditCheck(`${sr.customerCode} - ${sr.customer}`, sr.amount);
         const bp = getCustomer(`${sr.customerCode} - ${sr.customer}`);
+        const qt = sr.quotationRef ? getQT(sr.quotationRef) : null;
 
         return [
-          sr.isExpired && {
+          {
+            type: "note",
+            title: "คำขอขายไม่จองสต๊อก",
+            text: "จำนวนคงเหลือที่แสดงเป็นข้อมูลอ้างอิงเท่านั้น สต๊อกจะถูกจองเมื่อยืนยันใบสั่งขาย",
+          },
+          sr.status === "Submitted" && {
+            type: "alert",
+            tone: "info",
+            title: "รออนุมัติภายใน",
+            message: `ส่งขออนุมัติเมื่อ ${sr.updated} — ผู้อนุมัติต้องตรวจเครดิตและเงื่อนไขราคาก่อนกด Approve`,
+          },
+          sr.status === "Rejected" && {
             type: "alert",
             tone: "danger",
-            title: "ใบเสนอราคาหมดอายุแล้ว",
-            message: `หมดอายุเมื่อ ${sr.validUntil} — ต้องออกใบเสนอราคาใหม่ก่อนแปลงเป็นใบสั่งขาย`,
+            title: "คำขอขายไม่ได้รับอนุมัติ",
+            message: `เหตุผล: ${sr.rejectReason || "ไม่ระบุ"} — แก้ไขแล้วส่งขออนุมัติใหม่ได้`,
           },
-          sr.isExpiring && {
+          sr.isUrgent && {
             type: "alert",
             tone: "warn",
-            title: "ใบเสนอราคาใกล้หมดอายุ",
-            message: `เหลืออีก ${sr.daysLeft} วัน (หมดอายุ ${sr.validUntil}) — ควรติดตามลูกค้า`,
+            title: "ใกล้ถึงกำหนดที่ลูกค้าต้องการ",
+            message: `ลูกค้าต้องการของวันที่ ${sr.requiredDate}${
+              sr.daysToRequired !== null && sr.daysToRequired >= 0
+                ? ` — เหลืออีก ${sr.daysToRequired} วัน`
+                : " — เลยกำหนดแล้ว"
+            }`,
           },
           !credit.withinLimit && {
             type: "alert",
             tone: "warn",
             title: "มูลค่าเกินวงเงินเครดิตของลูกค้า",
-            message: `วงเงินคงเหลือ ${money0(credit.available)} บาท — หากแปลงเป็นใบสั่งขาย ระบบจะตั้งเป็น On Hold รอฝ่ายบัญชีอนุมัติ`,
+            message: `วงเงินคงเหลือ ${money0(credit.available)} บาท — อนุมัติได้ แต่ใบสั่งขายที่แปลงออกมาจะถูกตั้งเป็น On Hold`,
           },
           {
             type: "fields",
@@ -274,18 +341,53 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
           },
           {
             type: "fields",
-            title: "Quotation Information",
+            title: "Request Information",
             cols: 2,
             items: [
-              { label: "Quotation No.", value: sr.code },
+              { label: "Request No.", value: sr.code },
               { label: "Status", value: <Badge tone={tone(SRQ_TONE, sr.status)}>{sr.status}</Badge> },
               { label: "Sales Rep", value: sr.salesRep },
-              { label: "Priority", value: <Badge tone={tone(PRIORITY_TONE, sr.priority)}>{sr.priority}</Badge> },
+              {
+                label: "Priority",
+                value: <Badge tone={tone(PRIORITY_TONE, sr.priority)}>{sr.priority}</Badge>,
+              },
               { label: "Request Date", value: sr.requestDate },
-              { label: "Valid Until", value: sr.validUntil },
+              { label: "Required Date", value: sr.requiredDate },
               { label: "Price List", value: sr.priceList },
-              { label: "Warehouse", value: sr.warehouse },
+              { label: "Warehouse", value: sr.warehouse || DASH },
+              {
+                label: "Source Quotation",
+                value: qt ? (
+                  <Badge tone={tone(QT_TONE, qt.status)}>{qt.code}</Badge>
+                ) : (
+                  "ไม่มี — ลูกค้าติดต่อตรง"
+                ),
+              },
               sr.soRef ? { label: "Sales Order", value: <Badge tone="info">{sr.soRef}</Badge> } : null,
+            ],
+          },
+          {
+            type: "fields",
+            title: "Internal Approval",
+            cols: 2,
+            items: [
+              { label: "Approved By", value: sr.approvedBy || DASH, muted: !sr.approvedBy },
+              { label: "Approved Date", value: sr.approvedDate || DASH, muted: !sr.approvedDate },
+              {
+                label: "Credit Check",
+                value: (
+                  <Badge tone={credit.withinLimit ? "success" : "warning"}>
+                    {credit.cashOnly
+                      ? "เงินสด"
+                      : credit.withinLimit
+                        ? "อยู่ในวงเงิน"
+                        : `เกิน ${money0(credit.overBy)}`}
+                  </Badge>
+                ),
+              },
+              sr.rejectReason
+                ? { label: "Reject Reason", value: sr.rejectReason, span: true }
+                : null,
             ],
           },
           { type: "note", title: "Note", text: sr.note || DASH },
@@ -310,17 +412,37 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
       blocks: (sr) => [
         {
           type: "table",
-          title: `Quoted Items (${sr.itemCount})`,
-          rows: (sr.items ?? []).map((it) => ({ ...it, net: lineNet(it) })),
+          title: `Requested Items (${sr.itemCount})`,
+          rows: (sr.items ?? []).map((it) => {
+            const a = availabilityFor(it.code, it.qty);
+            return { ...it, net: lineNet(it), avail: a?.available ?? null, short: a?.shortBy ?? 0 };
+          }),
           empty: "ไม่มีรายการสินค้า",
           cols: [
             { key: "code", label: "Product Code", cell: (r) => <span className="tnum">{r.code}</span> },
             { key: "name", label: "Product Name" },
             { key: "qty", label: "Qty", align: "right", cell: (r) => fmt(r.qty) },
             { key: "unit", label: "UOM", muted: true },
+            {
+              key: "avail",
+              label: "Available",
+              align: "right",
+              muted: true,
+              cell: (r) => (r.avail === null ? DASH : fmt(r.avail)),
+            },
+            {
+              key: "short",
+              label: "ขาด",
+              align: "right",
+              cell: (r) =>
+                r.short > 0 ? (
+                  <span className="font-semibold text-warning-text">{fmt(r.short)}</span>
+                ) : (
+                  DASH
+                ),
+            },
             { key: "price", label: "Unit Price", align: "right", cell: (r) => money0(r.price) },
             { key: "disc", label: "Disc %", align: "right", cell: (r) => (r.disc ? `${r.disc}%` : DASH) },
-            { key: "tax", label: "Tax %", align: "right", cell: (r) => `${r.tax}%` },
             {
               key: "net",
               label: "Net Amount",
@@ -339,6 +461,11 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
             { label: "Tax", value: money0(docTaxTotal(sr)), unit: sr.currency },
             { label: "Grand Total", value: money0(sr.amount), unit: sr.currency, tone: "accent" },
           ],
+        },
+        {
+          type: "note",
+          title: "Stock",
+          text: "คอลัมน์ Available และ ขาด เป็นภาพสต๊อก ณ ขณะนี้ ไม่ได้ถูกจองไว้ให้คำขอนี้",
         },
       ],
     },
@@ -364,21 +491,24 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
 
   actions: (sr, ctx) => {
     const acts: RowAction<SrRow>[] = [];
-    if (sr.status === "Draft") acts.push({ label: "Send to Customer", icon: "send", run: () => srSend(sr, ctx) });
-    if (sr.status === "Sent") {
-      acts.push({ label: "Mark Accepted", icon: "checkCircle", run: () => srAccept(sr, ctx) });
-      acts.push({ label: "Mark Rejected", icon: "xCircle", danger: true, run: () => srReject(sr, ctx) });
+    if (sr.status === "Draft")
+      acts.push({ label: "Submit for Approval", icon: "send", run: () => srSubmit(sr, ctx) });
+    if (sr.status === "Submitted") {
+      acts.push({ label: "Approve", icon: "checkCircle", run: () => srApprove(sr, ctx) });
+      acts.push({ label: "Reject", icon: "xCircle", danger: true, run: () => srReject(sr, ctx) });
     }
-    if (sr.status === "Accepted")
+    if (sr.isConvertible)
       acts.push({ label: "Convert to Sales Order", icon: "salesOrder", run: () => srConvert(sr, ctx) });
+    if (sr.status === "Approved" && !sr.soRef)
+      acts.push({ label: "Reopen as Draft", icon: "refresh", run: () => srReopen(sr, ctx) });
     acts.push({
-      label: "Print Quotation",
+      label: "Print Request",
       icon: "printer",
-      run: () => ctx.toast("พิมพ์ใบเสนอราคา", `${sr.code} — Future support`, "info"),
+      run: () => ctx.toast("พิมพ์คำขอขาย", `${sr.code} — Future support`, "info"),
     });
     if (!["Cancelled", "Converted"].includes(sr.status)) {
       acts.push({ sep: true });
-      acts.push({ label: "Cancel Quotation", icon: "circleSlash", danger: true, run: () => srCancel(sr, ctx) });
+      acts.push({ label: "Cancel Request", icon: "circleSlash", danger: true, run: () => srCancel(sr, ctx) });
     }
     return acts;
   },
