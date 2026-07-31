@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx next build)",
+      "Bash(npx next dev *)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run build)",
+      "Bash(npm run dev)",
+      "Bash(curl -s -o /dev/null -w * http://localhost:3000*)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git ls-files *)",
+      "Bash(git ls-remote *)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*next*dev*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')"
+    ]
+  }
+}
