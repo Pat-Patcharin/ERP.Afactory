@@ -58,21 +58,11 @@ export const NAV: NavGroup[] = [
     label: "Outbound",
     items: [
       { label: "Outbound Workspace", href: "/outbound", icon: "outbound" },
-      {
-        label: "Sales Request",
-        href: "/soon?m=Sales%20Request",
-        icon: "salesRequest",
-        soon: true,
-      },
-      { label: "Sales Order", href: "/soon?m=Sales%20Order", icon: "salesOrder", soon: true },
-      { label: "Picking", href: "/soon?m=Picking", icon: "picking", soon: true },
-      { label: "Packing", href: "/soon?m=Packing", icon: "packing", soon: true },
-      {
-        label: "Delivery Order",
-        href: "/soon?m=Delivery%20Order",
-        icon: "delivery",
-        soon: true,
-      },
+      { label: "Sales Request", href: "/m/sales-request", icon: "salesRequest" },
+      { label: "Sales Order", href: "/m/sales-order", icon: "salesOrder" },
+      { label: "Picking", href: "/m/picking", icon: "picking" },
+      { label: "Packing", href: "/m/packing", icon: "packing" },
+      { label: "Delivery Order", href: "/m/delivery-order", icon: "delivery" },
       { label: "Invoice", href: "/soon?m=Invoice", icon: "invoice", soon: true },
       { label: "Return", href: "/soon?m=Return", icon: "return", soon: true },
       {

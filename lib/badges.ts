@@ -120,6 +120,60 @@ export const SR_TONE: Record<string, BadgeTone> = {
   Resigned: "danger",
 };
 
+/* ---------- Outbound ---------- */
+
+/** Sales Request (quotation). Named SRQ so it never reads as Sales Rep. */
+export const SRQ_TONE: Record<string, BadgeTone> = {
+  Draft: "neutral",
+  Sent: "info",
+  Accepted: "success",
+  Rejected: "danger",
+  Expired: "danger",
+  Converted: "info",
+  Cancelled: "neutral",
+};
+
+export const SO_TONE: Record<string, BadgeTone> = {
+  Draft: "neutral",
+  Confirmed: "info",
+  "On Hold": "danger",
+  Picking: "warning",
+  "Partially Delivered": "warning",
+  Completed: "success",
+  Cancelled: "neutral",
+};
+
+export const PICK_TONE: Record<string, BadgeTone> = {
+  Waiting: "info",
+  Assigned: "warning",
+  "In Progress": "warning",
+  Completed: "success",
+  Cancelled: "neutral",
+};
+
+export const PICK_LINE_TONE: Record<string, BadgeTone> = {
+  Pending: "neutral",
+  Picked: "success",
+  Short: "warning",
+  Substituted: "info",
+};
+
+export const PACK_TONE: Record<string, BadgeTone> = {
+  Waiting: "info",
+  "In Progress": "warning",
+  Completed: "success",
+  Cancelled: "neutral",
+};
+
+export const DO_TONE: Record<string, BadgeTone> = {
+  Draft: "neutral",
+  Ready: "info",
+  Shipped: "warning",
+  Delivered: "success",
+  Failed: "danger",
+  Cancelled: "neutral",
+};
+
 export const PL_TONE: Record<string, BadgeTone> = {
   Draft: "neutral",
   Active: "success",

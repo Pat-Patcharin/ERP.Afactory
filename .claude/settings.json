@@ -25,7 +25,10 @@
       "Bash(ls -la \"C:/Users/user/.claude/projects/c--Users-user-Documents-GitHub-ERP-Afactory/memory/\" 2>/dev/null && echo \"--- MEMORY.md ---\" && cat \"C:/Users/user/.claude/projects/c--Users-user-Documents-GitHub-ERP-Afactory/memory/MEMORY.md\" 2>/dev/null || echo \"\\(no MEMORY.md yet\\)\")",
       "Read(//c/Users/user/.claude/projects/c--Users-user-Documents-GitHub-ERP-Afactory/**)",
       "Bash(git rev-list *)",
-      "Bash(awk '{print \"behind origin: \"$1\"   ahead of origin: \"$2}')"
+      "Bash(awk '{print \"behind origin: \"$1\"   ahead of origin: \"$2}')",
+      "PowerShell(Move-Item -Path \"c:\\\\Users\\\\user\\\\Documents\\\\GitHub\\\\ERP.Afactory\\\\lib\\\\workflows-outbound.ts\" -Destination \"c:\\\\Users\\\\user\\\\Documents\\\\GitHub\\\\ERP.Afactory\\\\lib\\\\workflows-outbound.tsx\" -Force)",
+      "PowerShell(\"moved\")",
+      "PowerShell(\"server stopped\")"
     ]
   }
 }

@@ -8,6 +8,16 @@ import {
   type PurchaseOrder,
 } from "@/data/purchase-orders";
 import { DASH, daysUntil, stamp } from "@/lib/format";
+import {
+  docDiscTotal,
+  docGrandTotal,
+  docSubtotal,
+  docTaxTotal,
+  lineBase,
+  lineDisc,
+  lineNet,
+  type DocLine,
+} from "./lines";
 
 /* ============================================================
    PURCHASE REQUEST
@@ -90,25 +100,18 @@ export function poSupplierInfo(name: string) {
 
 export const PO_SUPPLIERS = Object.keys(PO_SUPPLIER_INFO);
 
-/* Line maths: net = qty × price × (1 − disc%) × (1 + tax%) */
-type PoLine = { qty?: number; price?: number; disc?: number; tax?: number; recv?: number };
+/* Line maths lives in ./lines — shared with the sell side so a PO and an SO
+   can never price a line differently. These aliases keep the po* names the
+   purchase schemas already import. */
+type PoLine = DocLine & { recv?: number };
 
-export const poLineBase = (it: PoLine) => (Number(it.qty) || 0) * (Number(it.price) || 0);
-export const poLineDisc = (it: PoLine) => poLineBase(it) * ((Number(it.disc) || 0) / 100);
-export const poLineNet = (it: PoLine) =>
-  (poLineBase(it) - poLineDisc(it)) * (1 + (Number(it.tax) || 0) / 100);
-
-export const poSubtotal = (po: { items?: PoLine[] }) =>
-  (po.items ?? []).reduce((s, it) => s + poLineBase(it), 0);
-export const poDiscTotal = (po: { items?: PoLine[] }) =>
-  (po.items ?? []).reduce((s, it) => s + poLineDisc(it), 0);
-export const poTaxTotal = (po: { items?: PoLine[] }) =>
-  (po.items ?? []).reduce(
-    (s, it) => s + (poLineBase(it) - poLineDisc(it)) * ((Number(it.tax) || 0) / 100),
-    0,
-  );
-export const poGrandTotal = (po: { items?: PoLine[] }) =>
-  (po.items ?? []).reduce((s, it) => s + poLineNet(it), 0);
+export const poLineBase = lineBase;
+export const poLineDisc = lineDisc;
+export const poLineNet = lineNet;
+export const poSubtotal = docSubtotal;
+export const poDiscTotal = docDiscTotal;
+export const poTaxTotal = docTaxTotal;
+export const poGrandTotal = docGrandTotal;
 
 export function poReceivedPct(po: { items?: PoLine[] }): number {
   const ordered = (po.items ?? []).reduce((s, it) => s + (Number(it.qty) || 0), 0);
