@@ -33,7 +33,10 @@
       "Bash(sed -i 's|import { shpSchemas } from \"./shipment\";|import { shpSchemas } from \"./shipment\";\\\\nimport { rtnSchemas } from \"./sales-return\";|' schemas/registry.ts)",
       "Bash(sed -i 's|^  shipment: shpSchemas,|  shipment: shpSchemas,\\\\n  \"sales-return\": rtnSchemas,|' schemas/registry.ts)",
       "Bash(sed -i 's|{ label: \"Return\", href: \"/soon?m=Return\", icon: \"return\", soon: true },|{ label: \"Sales Return\", href: \"/m/sales-return\", icon: \"return\" },|' lib/nav.ts)",
-      "Bash(sed -n '/label: \"Outbound\"/,/^  },/p' lib/nav.ts)"
+      "Bash(sed -n '/label: \"Outbound\"/,/^  },/p' lib/nav.ts)",
+      "Bash(sed -i 's|import { rtnSchemas } from \"./sales-return\";|import { rtnSchemas } from \"./sales-return\";\\\\nimport { cnSchemas } from \"./credit-note\";|' schemas/registry.ts)",
+      "Bash(sed -i 's|^  \"sales-return\": rtnSchemas,|  \"sales-return\": rtnSchemas,\\\\n  \"credit-note\": cnSchemas,|' schemas/registry.ts)",
+      "Bash(perl -0pi -e 's|\\\\{\\\\s*\\\\n\\\\s*label: \"Credit Note\",\\\\s*\\\\n\\\\s*href: \"/soon\\\\?m=Credit%20Note\",\\\\s*\\\\n\\\\s*icon: \"creditNote\",\\\\s*\\\\n\\\\s*soon: true,\\\\s*\\\\n\\\\s*\\\\},|{ label: \"Credit Note\", href: \"/m/credit-note\", icon: \"creditNote\" },|' lib/nav.ts)"
     ]
   }
 }

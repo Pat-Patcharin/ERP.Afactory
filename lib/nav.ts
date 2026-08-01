@@ -67,12 +67,7 @@ export const NAV: NavGroup[] = [
       { label: "Sales Invoice", href: "/m/sales-invoice", icon: "invoice" },
       { label: "Shipment", href: "/m/shipment", icon: "truck" },
       { label: "Sales Return", href: "/m/sales-return", icon: "return" },
-      {
-        label: "Credit Note",
-        href: "/soon?m=Credit%20Note",
-        icon: "creditNote",
-        soon: true,
-      },
+      { label: "Credit Note", href: "/m/credit-note", icon: "creditNote" },
     ],
   },
   {

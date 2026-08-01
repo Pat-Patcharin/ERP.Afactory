@@ -175,6 +175,26 @@ export const PACK_TONE: Record<string, BadgeTone> = {
   Cancelled: "neutral",
 };
 
+/** Credit Note document status. */
+export const CN_TONE: Record<string, BadgeTone> = {
+  Draft: "neutral",
+  "Pending Approval": "warning",
+  Approved: "info",
+  Issued: "success",
+  Applied: "success",
+  Cancelled: "neutral",
+  Void: "danger",
+};
+
+export const CN_APPROVAL_TONE: Record<string, BadgeTone> = {
+  "Not Required": "neutral",
+  "Not Submitted": "neutral",
+  "Pending Approval": "warning",
+  Approved: "success",
+  Rejected: "danger",
+  "Revision Requested": "warning",
+};
+
 /** Sales Return document status. */
 export const RTN_TONE: Record<string, BadgeTone> = {
   Draft: "neutral",
