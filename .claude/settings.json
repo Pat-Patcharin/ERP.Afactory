@@ -29,7 +29,11 @@
       "PowerShell(Move-Item -Path \"c:\\\\Users\\\\user\\\\Documents\\\\GitHub\\\\ERP.Afactory\\\\lib\\\\workflows-outbound.ts\" -Destination \"c:\\\\Users\\\\user\\\\Documents\\\\GitHub\\\\ERP.Afactory\\\\lib\\\\workflows-outbound.tsx\" -Force)",
       "PowerShell(\"moved\")",
       "PowerShell(\"server stopped\")",
-      "Bash(awk '{print $5, $9}')"
+      "Bash(awk '{print $5, $9}')",
+      "Bash(sed -i 's|import { shpSchemas } from \"./shipment\";|import { shpSchemas } from \"./shipment\";\\\\nimport { rtnSchemas } from \"./sales-return\";|' schemas/registry.ts)",
+      "Bash(sed -i 's|^  shipment: shpSchemas,|  shipment: shpSchemas,\\\\n  \"sales-return\": rtnSchemas,|' schemas/registry.ts)",
+      "Bash(sed -i 's|{ label: \"Return\", href: \"/soon?m=Return\", icon: \"return\", soon: true },|{ label: \"Sales Return\", href: \"/m/sales-return\", icon: \"return\" },|' lib/nav.ts)",
+      "Bash(sed -n '/label: \"Outbound\"/,/^  },/p' lib/nav.ts)"
     ]
   }
 }

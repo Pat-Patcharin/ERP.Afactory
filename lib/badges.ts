@@ -175,6 +175,65 @@ export const PACK_TONE: Record<string, BadgeTone> = {
   Cancelled: "neutral",
 };
 
+/** Sales Return document status. */
+export const RTN_TONE: Record<string, BadgeTone> = {
+  Draft: "neutral",
+  Submitted: "info",
+  "Pending Approval": "warning",
+  Approved: "success",
+  "Partially Approved": "warning",
+  Authorized: "info",
+  "Waiting Return": "info",
+  "Partially Received": "warning",
+  Received: "success",
+  "Pending QC": "warning",
+  "QC Completed": "success",
+  "Disposition Pending": "warning",
+  "Disposition Completed": "success",
+  "Credit Note Pending": "warning",
+  Credited: "success",
+  Closed: "neutral",
+  Rejected: "danger",
+  Cancelled: "neutral",
+};
+
+/** Approval / receiving / QC / disposition / credit — the five side dimensions. */
+export const RTN_APPROVAL_TONE: Record<string, BadgeTone> = {
+  "Not Submitted": "neutral",
+  "Pending Approval": "warning",
+  Approved: "success",
+  "Partially Approved": "warning",
+  Rejected: "danger",
+  "Revision Requested": "warning",
+};
+
+export const RTN_RECEIVING_TONE: Record<string, BadgeTone> = {
+  "Not Applicable": "neutral",
+  "Waiting Return": "info",
+  "Partially Received": "warning",
+  Received: "success",
+};
+
+export const RTN_QC_TONE: Record<string, BadgeTone> = {
+  "Not Applicable": "neutral",
+  "Pending QC": "warning",
+  "In Progress": "warning",
+  "QC Completed": "success",
+};
+
+export const RTN_DISPOSITION_TONE: Record<string, BadgeTone> = {
+  "Not Applicable": "neutral",
+  "Disposition Pending": "warning",
+  "Disposition Completed": "success",
+};
+
+export const RTN_CREDIT_TONE: Record<string, BadgeTone> = {
+  "Not Applicable": "neutral",
+  "Not Required": "neutral",
+  Pending: "warning",
+  Credited: "success",
+};
+
 /** Shipment document status. */
 export const SHP_TONE: Record<string, BadgeTone> = {
   Draft: "neutral",

@@ -1,0 +1,1842 @@
+/**
+ * Sales Return (RTN) — the operational return process after goods have shipped.
+ *
+ *   Shipment / Delivery Order / Invoice / Sales Order → Return Request
+ *     → Approval → Authorization → Receive → Return QC → Disposition
+ *     → Credit Note (separate module)
+ *
+ * Returned goods NEVER become available stock on receipt. They land in Return
+ * Receiving / QC Hold and only reach available stock through an accepted QC
+ * result plus a confirmed disposition. This module posts no accounting.
+ *
+ * Mock dataset; mutating these arrays is how the prototype persists changes.
+ */
+
+export interface RtnLine {
+  line: number;
+  code: string;
+  name: string;
+  sourceLine: number;
+  shippedQty: number;
+  prevReturnedQty: number;
+  requestedQty: number;
+  approvedQty: number;
+  receivedQty: number;
+  inspectedQty: number;
+  acceptedQty: number;
+  rejectedQty: number;
+  holdQty: number;
+  unit: string;
+  serial: string;
+  lot: string;
+  expiry: string;
+  condition: string;
+  reason: string;
+  unitPrice: number;
+  disposition: string;
+  destWarehouse: string;
+  destLocation: string;
+  /** Sterile seal broken — blocks a return to available stock outright. */
+  sealOpened: boolean;
+  note: string;
+}
+
+export interface RtnApprovalStep {
+  step: string;
+  role: string;
+  approver: string;
+  status: string;
+  requestedAt: string;
+  respondedAt: string;
+  comment: string;
+}
+
+export interface RtnReceiving {
+  receivedDate: string;
+  warehouse: string;
+  receiver: string;
+  packageCount: number;
+  packageCondition: string;
+  deliveryRef: string;
+  carrier: string;
+  trackingNo: string;
+  remark: string;
+}
+
+export interface RtnQc {
+  inspector: string;
+  inspectionDate: string;
+  result: string;
+  comment: string;
+  checklist: { item: string; result: string; comment: string }[];
+}
+
+export interface RtnException {
+  type: string;
+  when: string;
+  desc: string;
+  severity: string;
+  party: string;
+  resolution: string;
+  followUp: string;
+  status: string;
+}
+
+export interface SalesReturn {
+  code: string;
+  rmaNo: string;
+
+  sourceType: string;
+  sourceDoc: string;
+  shipmentRef: string;
+  invoiceRef: string;
+  soRef: string;
+
+  customer: string;
+  customerCode: string;
+  customerGroup: string;
+  contactPerson: string;
+  contactPhone: string;
+  email: string;
+  pickupAddress: string;
+  salesRep: string;
+
+  returnDate: string;
+  returnType: string;
+  returnReason: string;
+  priority: string;
+  branch: string;
+  returnWarehouse: string;
+  customerRef: string;
+
+  /* The six status dimensions the list surfaces as separate columns. */
+  status: string;
+  approvalStatus: string;
+  receivingStatus: string;
+  qcStatus: string;
+  dispositionStatus: string;
+  creditNoteStatus: string;
+
+  /* Authorization */
+  returnMethod: string;
+  pickupRequired: boolean;
+  expectedReturnDate: string;
+  authExpiryDate: string;
+  returnInstructions: string;
+  packingInstructions: string;
+  authorizedBy: string;
+  authorizedAt: string;
+
+  requestedResolution: string;
+  replacementRef: string;
+  creditNoteRef: string;
+  supplierClaimRef: string;
+
+  originalInvoiceDate: string;
+  originalAmount: number;
+
+  rejectReason: string;
+  cancelReason: string;
+
+  items: RtnLine[];
+  approvals: RtnApprovalStep[];
+  receiving: RtnReceiving | null;
+  qc: RtnQc | null;
+  exceptions: RtnException[];
+  evidence: { name: string; kind: string; by: string; when: string }[];
+
+  note: string;
+  history: { t: string; d: string; u: string; when: string; kind: string }[];
+  audit: { event: string; user: string; when: string; field: string; from: string; to: string; kind: string }[];
+  created: string;
+  createdBy: string;
+  updated: string;
+  updatedBy: string;
+}
+
+export const RTN_STATUS = [
+  "Draft",
+  "Submitted",
+  "Pending Approval",
+  "Approved",
+  "Partially Approved",
+  "Authorized",
+  "Waiting Return",
+  "Partially Received",
+  "Received",
+  "Pending QC",
+  "QC Completed",
+  "Disposition Pending",
+  "Disposition Completed",
+  "Credit Note Pending",
+  "Credited",
+  "Closed",
+  "Rejected",
+  "Cancelled",
+] as const;
+
+export const RTN_APPROVAL_STATUS = [
+  "Not Submitted",
+  "Pending Approval",
+  "Approved",
+  "Partially Approved",
+  "Rejected",
+  "Revision Requested",
+] as const;
+
+export const RTN_RECEIVING_STATUS = [
+  "Not Applicable",
+  "Waiting Return",
+  "Partially Received",
+  "Received",
+] as const;
+
+export const RTN_QC_STATUS = ["Not Applicable", "Pending QC", "In Progress", "QC Completed"] as const;
+
+export const RTN_DISPOSITION_STATUS = [
+  "Not Applicable",
+  "Disposition Pending",
+  "Disposition Completed",
+] as const;
+
+export const RTN_CREDIT_STATUS = ["Not Applicable", "Pending", "Credited", "Not Required"] as const;
+
+export const RTN_TYPES = [
+  "Customer Return",
+  "Delivery Rejection",
+  "Wrong Product",
+  "Wrong Quantity",
+  "Damaged Product",
+  "Defective Product",
+  "Expired / Near Expiry",
+  "Warranty Return",
+  "Product Recall",
+  "Commercial Return",
+  "Exchange Request",
+  "Transit Damage",
+  "Other",
+] as const;
+
+export const RTN_SOURCE_TYPES = [
+  "Shipment",
+  "Delivery Order",
+  "Sales Invoice",
+  "Sales Order",
+  "Manual",
+] as const;
+
+export const RTN_PRIORITY = ["Low", "Normal", "High", "Critical"] as const;
+
+export const RTN_REASONS = [
+  "สินค้าชำรุดจากการขนส่ง",
+  "สินค้าไม่ตรงรุ่นที่สั่ง",
+  "จำนวนไม่ตรงกับใบสั่งซื้อ",
+  "สินค้าใช้งานไม่ได้",
+  "สินค้าหมดอายุ / ใกล้หมดอายุ",
+  "ลูกค้าปฏิเสธรับของ",
+  "เคลมประกันสินค้า",
+  "ลูกค้าสั่งเกินความต้องการ",
+  "อื่น ๆ",
+] as const;
+
+export const RTN_CONDITIONS = [
+  "New / Unopened",
+  "Opened / Unused",
+  "Used",
+  "Damaged",
+  "Defective",
+  "Expired",
+  "Incomplete",
+] as const;
+
+export const RTN_METHODS = [
+  "Customer Ships Back",
+  "A-Factory Pickup",
+  "Courier Pickup",
+  "Sales Representative Pickup",
+  "Return at Branch",
+  "Return at Warehouse",
+] as const;
+
+export const RTN_RESOLUTIONS = [
+  "Credit Note",
+  "Refund",
+  "Replacement",
+  "Exchange",
+  "Repair",
+  "Warranty Claim",
+  "No Financial Adjustment",
+  "Pending Decision",
+] as const;
+
+export const RTN_WAREHOUSES = [
+  "Return Center",
+  "WH-QC Quality Hold",
+  "WH-QUARANTINE Quarantine",
+  "WH-CLAIM Claim Warehouse",
+] as const;
+
+export const RTN_QC_RESULTS = [
+  "Accept",
+  "Partial Accept",
+  "Reject",
+  "Hold",
+  "Repair Required",
+  "Supplier Claim Required",
+] as const;
+
+export const RTN_QC_CHECKLIST = [
+  "Product Identity",
+  "Serial / Lot Verification",
+  "Packaging Condition",
+  "Physical Condition",
+  "Functional Test",
+  "Accessories Complete",
+  "Expiry Condition",
+  "Sterile Seal",
+  "Resalable Condition",
+  "Warranty Status",
+  "Damage Cause",
+  "Customer Usage Evidence",
+] as const;
+
+export const RTN_DISPOSITIONS = [
+  "Return to Available Stock",
+  "Return to Saleable Stock with New Packaging",
+  "Quarantine",
+  "Repair",
+  "Rework",
+  "Warranty Replacement",
+  "Supplier Claim",
+  "Return to Supplier",
+  "Scrap",
+  "Customer Return Rejected",
+  "Hold for Management Decision",
+] as const;
+
+/** The only disposition that puts goods back into sellable inventory. */
+export const RTN_STOCK_DISPOSITIONS = [
+  "Return to Available Stock",
+  "Return to Saleable Stock with New Packaging",
+] as const;
+
+export const RTN_EXCEPTION_TYPES = [
+  "Return Arrived Without Authorization",
+  "Quantity Exceeds Authorization",
+  "Wrong Product Returned",
+  "Serial Mismatch",
+  "Lot Mismatch",
+  "Product Missing",
+  "Package Damaged",
+  "Return Period Expired",
+  "Product Not Eligible",
+  "Customer Dispute",
+  "Other",
+] as const;
+
+export const RTN_SEVERITY = ["Low", "Medium", "High", "Critical"] as const;
+
+export const RTN_RESPONSIBLE = ["ลูกค้า", "ผู้ขนส่ง", "คลังสินค้า", "ฝ่ายขาย", "ผู้ผลิต", "อื่น ๆ"] as const;
+
+export const RTN_REJECT_REASONS = [
+  "เกินระยะเวลารับคืน",
+  "สินค้าไม่อยู่ในเงื่อนไขรับคืน",
+  "หลักฐานไม่เพียงพอ",
+  "สินค้าถูกใช้งานแล้ว",
+  "ลูกค้าขอยกเลิกคำขอคืน",
+  "อื่น ๆ",
+] as const;
+
+export const RTN_CANCEL_REASONS = [
+  "ลูกค้ายกเลิกคำขอคืน",
+  "สร้างคำขอซ้ำ",
+  "ตกลงกันได้โดยไม่ต้องคืนของ",
+  "ข้อมูลไม่ถูกต้อง",
+  "อื่น ๆ",
+] as const;
+
+export const RTN_PACKAGE_CONDITIONS = ["Good", "Damaged", "Wet", "Opened", "Incomplete"] as const;
+
+export const RTN_INSPECTORS = ["S. Nattapong", "P. Patcharin", "K. Jirawat", "W. Warin"] as const;
+
+/** Return window in days; anything older needs an approval reason. */
+export const RTN_PERIOD_DAYS = 30;
+
+/* ---------- Builders ---------- */
+
+const ln = (
+  n: number,
+  code: string,
+  name: string,
+  unit: string,
+  price: number,
+  shipped: number,
+  requested: number,
+  opts: Partial<RtnLine> = {},
+): RtnLine => ({
+  line: n,
+  code,
+  name,
+  sourceLine: n,
+  shippedQty: shipped,
+  prevReturnedQty: 0,
+  requestedQty: requested,
+  approvedQty: 0,
+  receivedQty: 0,
+  inspectedQty: 0,
+  acceptedQty: 0,
+  rejectedQty: 0,
+  holdQty: 0,
+  unit,
+  serial: "",
+  lot: "",
+  expiry: "",
+  condition: "Damaged",
+  reason: "สินค้าชำรุดจากการขนส่ง",
+  unitPrice: price,
+  disposition: "",
+  destWarehouse: "",
+  destLocation: "",
+  sealOpened: false,
+  note: "",
+  ...opts,
+});
+
+const step = (
+  s: string,
+  role: string,
+  approver: string,
+  status: string,
+  requestedAt: string,
+  respondedAt = "",
+  comment = "",
+): RtnApprovalStep => ({ step: s, role, approver, status, requestedAt, respondedAt, comment });
+
+const hist = (t: string, d: string, u: string, when: string, kind = "primary") => ({ t, d, u, when, kind });
+
+const checklist = (results: Partial<Record<string, string>> = {}) =>
+  RTN_QC_CHECKLIST.map((item) => ({ item, result: results[item] ?? "", comment: "" }));
+
+export const SALES_RETURNS: SalesReturn[] = [
+  {
+    code: "RTN-2026-000021",
+    rmaNo: "RMA-2605-0021",
+    sourceType: "Shipment",
+    sourceDoc: "SHP-2026-000031",
+    shipmentRef: "SHP-2026-000031",
+    invoiceRef: "INV-2026-000025",
+    soRef: "SO-2026-000031",
+    customer: "KCMH Hospital",
+    customerCode: "CUST-00001",
+    customerGroup: "Hospital",
+    contactPerson: "Khun Somchai",
+    contactPhone: "02-123-4567",
+    email: "somchai@kcmh.co.th",
+    pickupAddress: "187/1 Phetchaburi Rd., Ratchathewi, Bangkok 10400",
+    salesRep: "Thanapol S.",
+    returnDate: "31/05/2026",
+    returnType: "Damaged Product",
+    returnReason: "สินค้าชำรุดจากการขนส่ง",
+    priority: "High",
+    branch: "Head Office",
+    returnWarehouse: "Return Center",
+    customerRef: "PO-0526-014",
+    status: "Pending Approval",
+    approvalStatus: "Pending Approval",
+    receivingStatus: "Not Applicable",
+    qcStatus: "Not Applicable",
+    dispositionStatus: "Not Applicable",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "A-Factory Pickup",
+    pickupRequired: true,
+    expectedReturnDate: "",
+    authExpiryDate: "",
+    returnInstructions: "",
+    packingInstructions: "",
+    authorizedBy: "",
+    authorizedAt: "",
+    requestedResolution: "Credit Note",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "28/07/2026",
+    originalAmount: 248240,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "CMP-A3-001", "Composite A3", "Syringe", 12000, 10, 2, { lot: "LOT-2607-A1", condition: "Damaged" }),
+      ln(2, "SCT-001", "Scaler Tip", "Box", 3500, 20, 8, { condition: "Damaged", reason: "สินค้าชำรุดจากการขนส่ง" }),
+      ln(3, "BND-001", "Bonding Agent", "Bottle", 2800, 15, 5, { lot: "LOT-2606-B7", condition: "Damaged" }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "31/05/2026 09:20", "31/05/2026 09:40", "หลักฐานภาพครบ"),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "pending", "31/05/2026 09:40"),
+    ],
+    receiving: null,
+    qc: null,
+    exceptions: [],
+    evidence: [
+      { name: "Defective Composite", kind: "photo", by: "Thanapol S.", when: "31/05/2026 09:15" },
+      { name: "Package damage", kind: "photo", by: "Thanapol S.", when: "31/05/2026 09:16" },
+    ],
+    note: "กล่องบุบระหว่างขนส่ง ลูกค้าถ่ายรูปยืนยันแล้ว",
+    history: [
+      hist("Submitted for approval", "ส่งขออนุมัติคำขอคืน", "Thanapol S.", "31/05/2026 09:40", "info"),
+      hist("Return request created", "สร้างจาก SHP-2026-000031", "Admin", "31/05/2026 09:15", ""),
+    ],
+    audit: [
+      { event: "Status changed", user: "Thanapol S.", when: "31/05/2026 09:40", field: "status", from: "Draft", to: "Pending Approval", kind: "info" },
+    ],
+    created: "31/05/2026 09:15",
+    createdBy: "Admin",
+    updated: "31/05/2026 09:40",
+    updatedBy: "Thanapol S.",
+  },
+  {
+    code: "RTN-2026-000022",
+    rmaNo: "RMA-2605-0022",
+    sourceType: "Sales Invoice",
+    sourceDoc: "INV-2026-000022",
+    shipmentRef: "SHP-2026-000034",
+    invoiceRef: "INV-2026-000022",
+    soRef: "SO-2026-000034",
+    customer: "Bangkok Dental Center",
+    customerCode: "CUST-00002",
+    customerGroup: "Clinic",
+    contactPerson: "Khun Preecha T.",
+    contactPhone: "02-661-8899",
+    email: "acc@bkkdental.co.th",
+    pickupAddress: "88/9 Sukhumvit 24, Khlong Toei, Bangkok 10110",
+    salesRep: "Thanapol S.",
+    returnDate: "30/05/2026",
+    returnType: "Wrong Product",
+    returnReason: "สินค้าไม่ตรงรุ่นที่สั่ง",
+    priority: "Normal",
+    branch: "Head Office",
+    returnWarehouse: "Return Center",
+    customerRef: "BDC-PO-2244",
+    status: "Waiting Return",
+    approvalStatus: "Approved",
+    receivingStatus: "Waiting Return",
+    qcStatus: "Not Applicable",
+    dispositionStatus: "Not Applicable",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "Customer Ships Back",
+    pickupRequired: false,
+    expectedReturnDate: "06/06/2026",
+    authExpiryDate: "13/06/2026",
+    returnInstructions: "กรุณาแนบสำเนาใบส่งของมากับกล่อง",
+    packingInstructions: "ห่อกันกระแทกและปิดผนึกให้เรียบร้อย",
+    authorizedBy: "Sales Admin",
+    authorizedAt: "30/05/2026 14:10",
+    requestedResolution: "Exchange",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "25/07/2026",
+    originalAmount: 508250,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "XRY-GT1", "Portable X-Ray GT1", "Set", 95000, 5, 1, {
+        serial: "XG1-2607-0021",
+        condition: "New / Unopened",
+        reason: "สินค้าไม่ตรงรุ่นที่สั่ง",
+        approvedQty: 1,
+      }),
+      ln(2, "SCT-001", "Scaler Tip", "Box", 3500, 5, 7, {
+        condition: "New / Unopened",
+        reason: "จำนวนไม่ตรงกับใบสั่งซื้อ",
+        approvedQty: 5,
+        note: "ขอคืน 7 แต่ส่งไปเพียง 5 — อนุมัติได้แค่ 5",
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "30/05/2026 10:00", "30/05/2026 10:20", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "30/05/2026 10:20", "30/05/2026 13:50", "อนุมัติบางส่วน — Scaler Tip คืนได้ 5"),
+    ],
+    receiving: null,
+    qc: null,
+    exceptions: [
+      {
+        type: "Quantity Exceeds Authorization",
+        when: "30/05/2026 10:15",
+        desc: "ลูกค้าขอคืน Scaler Tip 7 กล่อง แต่ส่งไปเพียง 5 กล่อง",
+        severity: "Medium",
+        party: "ลูกค้า",
+        resolution: "อนุมัติคืนได้ 5 กล่องตามจำนวนที่ส่งจริง",
+        followUp: "",
+        status: "Resolved",
+      },
+    ],
+    evidence: [{ name: "X-Ray unit not working", kind: "photo", by: "Thanapol S.", when: "30/05/2026 09:50" }],
+    note: "ลูกค้าขอเปลี่ยนรุ่นแทนการรับเงินคืน",
+    history: [
+      hist("Return authorized", "ออก RMA-2605-0022 — รอลูกค้าส่งของกลับ", "Sales Admin", "30/05/2026 14:10"),
+      hist("Approved", "อนุมัติบางส่วน", "Sales Manager", "30/05/2026 13:50"),
+      hist("Return request created", "สร้างจาก INV-2026-000022", "Admin", "30/05/2026 09:45", ""),
+    ],
+    audit: [
+      { event: "Status changed", user: "Sales Admin", when: "30/05/2026 14:10", field: "status", from: "Approved", to: "Waiting Return", kind: "primary" },
+    ],
+    created: "30/05/2026 09:45",
+    createdBy: "Admin",
+    updated: "30/05/2026 14:10",
+    updatedBy: "Sales Admin",
+  },
+  {
+    code: "RTN-2026-000023",
+    rmaNo: "RMA-2605-0023",
+    sourceType: "Shipment",
+    sourceDoc: "SHP-2026-000029",
+    shipmentRef: "SHP-2026-000029",
+    invoiceRef: "INV-2026-000019",
+    soRef: "SO-2026-000016",
+    customer: "Smile Gallery Dental Clinic",
+    customerCode: "CUST-00003",
+    customerGroup: "Clinic",
+    contactPerson: "Khun Somchai",
+    contactPhone: "02-123-4567",
+    email: "somchai@smilegallery.co.th",
+    pickupAddress: "88 Ratchadaphisek Rd., Huai Khwang, Bangkok 10310",
+    salesRep: "Thanapol S.",
+    returnDate: "29/05/2026",
+    returnType: "Defective Product",
+    returnReason: "สินค้าใช้งานไม่ได้",
+    priority: "High",
+    branch: "Head Office",
+    returnWarehouse: "Return Center",
+    customerRef: "SG-PO-0091",
+    status: "Pending QC",
+    approvalStatus: "Approved",
+    receivingStatus: "Received",
+    qcStatus: "Pending QC",
+    dispositionStatus: "Disposition Pending",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "A-Factory Pickup",
+    pickupRequired: true,
+    expectedReturnDate: "01/06/2026",
+    authExpiryDate: "08/06/2026",
+    returnInstructions: "ทีมขนส่งเข้ารับที่คลินิก",
+    packingInstructions: "",
+    authorizedBy: "Sales Admin",
+    authorizedAt: "29/05/2026 11:00",
+    requestedResolution: "Credit Note",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "22/07/2026",
+    originalAmount: 148900,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "CMP-A3-001", "Composite A3", "Syringe", 12000, 20, 10, {
+        lot: "LOT-2504-001",
+        condition: "Defective",
+        reason: "สินค้าใช้งานไม่ได้",
+        approvedQty: 10,
+        receivedQty: 10,
+      }),
+      ln(2, "SCT-001", "Scaler Tip", "Box", 3500, 10, 5, {
+        condition: "Defective",
+        reason: "สินค้าใช้งานไม่ได้",
+        approvedQty: 5,
+        receivedQty: 5,
+      }),
+      ln(3, "BND-001", "Bonding Agent", "Bottle", 2800, 15, 5, {
+        lot: "LOT-2503-044",
+        expiry: "30/06/2026",
+        condition: "Expired",
+        reason: "สินค้าหมดอายุ / ใกล้หมดอายุ",
+        approvedQty: 5,
+        receivedQty: 3,
+      }),
+      ln(4, "XRY-GT1", "Portable X-Ray GT1", "Unit", 95000, 4, 2, {
+        serial: "SN:XRY2504001",
+        condition: "Defective",
+        reason: "สินค้าใช้งานไม่ได้",
+        approvedQty: 2,
+        receivedQty: 0,
+        note: "ยังไม่ได้รับคืน",
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "29/05/2026 09:30", "29/05/2026 09:50", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "29/05/2026 09:50", "29/05/2026 10:20", "อนุมัติเต็มจำนวน"),
+    ],
+    receiving: {
+      receivedDate: "31/05/2026 09:40",
+      warehouse: "Return Center",
+      receiver: "Warehouse Staff",
+      packageCount: 3,
+      packageCondition: "Good",
+      deliveryRef: "RET-DN-0023",
+      carrier: "A-Factory Delivery",
+      trackingNo: "AF260531009",
+      remark: "ขาด X-Ray 2 เครื่อง ลูกค้าแจ้งจะส่งตามภายหลัง",
+    },
+    qc: null,
+    exceptions: [
+      {
+        type: "Product Missing",
+        when: "31/05/2026 09:45",
+        desc: "รับคืนได้ 18 จาก 22 หน่วย — ขาด Portable X-Ray 2 เครื่อง และ Bonding Agent 2 ขวด",
+        severity: "Medium",
+        party: "ลูกค้า",
+        resolution: "",
+        followUp: "05/06/2026",
+        status: "Open",
+      },
+    ],
+    evidence: [
+      { name: "Defective Composite", kind: "photo", by: "Thanapol S.", when: "29/05/2026 09:20" },
+      { name: "X-Ray unit not working", kind: "photo", by: "Thanapol S.", when: "29/05/2026 09:21" },
+      { name: "Scaler tip damaged", kind: "photo", by: "Thanapol S.", when: "29/05/2026 09:22" },
+      { name: "Expired product", kind: "photo", by: "Warehouse Staff", when: "31/05/2026 09:42" },
+      { name: "Package damage", kind: "photo", by: "Warehouse Staff", when: "31/05/2026 09:43" },
+    ],
+    note: "",
+    history: [
+      hist("Pending QC", "ส่งต่อฝ่าย QC ตรวจสอบสินค้าที่รับคืน", "QC Inspector", "31/05/2026 09:45", "info"),
+      hist("Received", "รับคืน 18 จาก 22 หน่วย", "Warehouse Staff", "31/05/2026 09:40"),
+      hist("Customer Shipped", "ลูกค้าจัดส่งของคืนแล้ว", "System", "30/05/2026 14:10", "info"),
+      hist("Authorized", "ออก RMA-2605-0023", "Sales Admin", "29/05/2026 11:00"),
+      hist("Approved", "อนุมัติคำขอคืน", "Sales Manager", "29/05/2026 10:20"),
+      hist("Submitted for Approval", "ส่งขออนุมัติ", "Thanapol S.", "29/05/2026 09:30", "info"),
+      hist("Return Request Created", "สร้างคำขอคืนสินค้า", "Admin", "29/05/2026 09:15", ""),
+    ],
+    audit: [
+      { event: "Goods received", user: "Warehouse Staff", when: "31/05/2026 09:40", field: "receivingStatus", from: "Waiting Return", to: "Received", kind: "primary" },
+      { event: "Status changed", user: "Sales Admin", when: "29/05/2026 11:00", field: "status", from: "Approved", to: "Waiting Return", kind: "info" },
+    ],
+    created: "29/05/2026 09:15",
+    createdBy: "Admin",
+    updated: "31/05/2026 09:45",
+    updatedBy: "QC Inspector",
+  },
+  {
+    code: "RTN-2026-000024",
+    rmaNo: "RMA-2605-0024",
+    sourceType: "Delivery Order",
+    sourceDoc: "DO-2026-000026",
+    shipmentRef: "SHP-2026-000043",
+    invoiceRef: "",
+    soRef: "SO-2026-000043",
+    customer: "BIDC",
+    customerCode: "CUST-00004",
+    customerGroup: "Hospital",
+    contactPerson: "Khun Wanida K.",
+    contactPhone: "02-251-0800",
+    email: "ap@bidc.co.th",
+    pickupAddress: "157 Sukhumvit 2, Khlong Toei, Bangkok 10110",
+    salesRep: "Thanapol S.",
+    returnDate: "28/05/2026",
+    returnType: "Delivery Rejection",
+    returnReason: "ลูกค้าปฏิเสธรับของ",
+    priority: "Normal",
+    branch: "Head Office",
+    returnWarehouse: "Return Center",
+    customerRef: "BIDC-PO-7781",
+    status: "Disposition Pending",
+    approvalStatus: "Approved",
+    receivingStatus: "Received",
+    qcStatus: "QC Completed",
+    dispositionStatus: "Disposition Pending",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "A-Factory Pickup",
+    pickupRequired: true,
+    expectedReturnDate: "29/05/2026",
+    authExpiryDate: "05/06/2026",
+    returnInstructions: "",
+    packingInstructions: "",
+    authorizedBy: "Sales Admin",
+    authorizedAt: "28/05/2026 10:30",
+    requestedResolution: "Credit Note",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "",
+    originalAmount: 95000,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "CMP-A3-001", "Composite A3", "Syringe", 12000, 4, 5, {
+        lot: "LOT-2607-C2",
+        condition: "New / Unopened",
+        reason: "ลูกค้าปฏิเสธรับของ",
+        approvedQty: 4,
+        receivedQty: 4,
+        inspectedQty: 4,
+        acceptedQty: 4,
+        rejectedQty: 0,
+        note: "ขอคืน 5 แต่ส่งไปเพียง 4",
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "28/05/2026 09:00", "28/05/2026 09:15", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "28/05/2026 09:15", "28/05/2026 10:00", "ลูกค้าปฏิเสธรับของทั้งหมด"),
+    ],
+    receiving: {
+      receivedDate: "29/05/2026 11:20",
+      warehouse: "Return Center",
+      receiver: "Warehouse Staff",
+      packageCount: 1,
+      packageCondition: "Good",
+      deliveryRef: "RET-DN-0024",
+      carrier: "A-Factory Delivery",
+      trackingNo: "AF260529004",
+      remark: "กล่องสภาพดี ซีลยังไม่เปิด",
+    },
+    qc: {
+      inspector: "S. Nattapong",
+      inspectionDate: "29/05/2026 14:00",
+      result: "Accept",
+      comment: "สินค้าอยู่ในสภาพใหม่ ซีลไม่เปิด ขายต่อได้",
+      checklist: checklist({
+        "Product Identity": "pass",
+        "Serial / Lot Verification": "pass",
+        "Packaging Condition": "pass",
+        "Physical Condition": "pass",
+        "Sterile Seal": "pass",
+        "Resalable Condition": "pass",
+        "Expiry Condition": "pass",
+      }),
+    },
+    exceptions: [],
+    evidence: [{ name: "Package sealed", kind: "photo", by: "Warehouse Staff", when: "29/05/2026 11:25" }],
+    note: "รอฝ่ายคลังยืนยัน disposition คืนเข้าสต๊อกขาย",
+    history: [
+      hist("QC completed", "ตรวจผ่านทั้งหมด 4 หน่วย — รอกำหนด disposition", "S. Nattapong", "29/05/2026 14:00"),
+      hist("Received", "รับคืน 4 หน่วย", "Warehouse Staff", "29/05/2026 11:20"),
+      hist("Authorized", "ออก RMA-2605-0024", "Sales Admin", "28/05/2026 10:30"),
+      hist("Return request created", "สร้างจาก DO-2026-000026", "Admin", "28/05/2026 08:45", ""),
+    ],
+    audit: [
+      { event: "QC completed", user: "S. Nattapong", when: "29/05/2026 14:00", field: "qcStatus", from: "Pending QC", to: "QC Completed", kind: "primary" },
+    ],
+    created: "28/05/2026 08:45",
+    createdBy: "Admin",
+    updated: "29/05/2026 14:00",
+    updatedBy: "S. Nattapong",
+  },
+  {
+    code: "RTN-2026-000025",
+    rmaNo: "RMA-2605-0025",
+    sourceType: "Shipment",
+    sourceDoc: "SHP-2026-000028",
+    shipmentRef: "SHP-2026-000028",
+    invoiceRef: "INV-2026-000020",
+    soRef: "SO-2026-000020",
+    customer: "Rajavithi Hospital",
+    customerCode: "CUST-00006",
+    customerGroup: "Government",
+    contactPerson: "Khun Duangjai M.",
+    contactPhone: "02-354-8108",
+    email: "finance@rajavithi.go.th",
+    pickupAddress: "2 Phaya Thai Rd., Ratchathewi, Bangkok 10400",
+    salesRep: "Narin C.",
+    returnDate: "27/05/2026",
+    returnType: "Warranty Return",
+    returnReason: "เคลมประกันสินค้า",
+    priority: "High",
+    branch: "Head Office",
+    returnWarehouse: "WH-CLAIM Claim Warehouse",
+    customerRef: "RJV-2569-0881",
+    status: "Credit Note Pending",
+    approvalStatus: "Approved",
+    receivingStatus: "Received",
+    qcStatus: "QC Completed",
+    dispositionStatus: "Disposition Completed",
+    creditNoteStatus: "Pending",
+    returnMethod: "Courier Pickup",
+    pickupRequired: true,
+    expectedReturnDate: "28/05/2026",
+    authExpiryDate: "04/06/2026",
+    returnInstructions: "แนบใบรับประกันมาพร้อมสินค้า",
+    packingInstructions: "",
+    authorizedBy: "Sales Admin",
+    authorizedAt: "27/05/2026 13:00",
+    requestedResolution: "Warranty Claim",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "SCL-2026-000002",
+    originalInvoiceDate: "23/07/2026",
+    originalAmount: 189390,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "XRY-GT1", "Portable X-Ray GT1", "Unit", 95000, 2, 1, {
+        serial: "SN:XRY2503118",
+        condition: "Defective",
+        reason: "เคลมประกันสินค้า",
+        approvedQty: 1,
+        receivedQty: 1,
+        inspectedQty: 1,
+        acceptedQty: 0,
+        rejectedQty: 1,
+        disposition: "Supplier Claim",
+        destWarehouse: "WH-CLAIM Claim Warehouse",
+        destLocation: "CLAIM-A-01",
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "27/05/2026 09:00", "27/05/2026 09:30", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "27/05/2026 09:30", "27/05/2026 11:00", ""),
+      step("Finance Review", "Finance", "Finance", "done", "27/05/2026 11:00", "27/05/2026 12:30", "อนุมัติออกใบลดหนี้หลังเคลมผู้ผลิต"),
+    ],
+    receiving: {
+      receivedDate: "28/05/2026 10:15",
+      warehouse: "WH-CLAIM Claim Warehouse",
+      receiver: "Warehouse Staff",
+      packageCount: 1,
+      packageCondition: "Good",
+      deliveryRef: "RET-DN-0025",
+      carrier: "Kerry Express",
+      trackingNo: "KER260528011",
+      remark: "",
+    },
+    qc: {
+      inspector: "K. Jirawat",
+      inspectionDate: "28/05/2026 15:30",
+      result: "Supplier Claim Required",
+      comment: "เครื่องเสียจากข้อบกพร่องการผลิต อยู่ในประกัน ส่งเคลมผู้ผลิต",
+      checklist: checklist({
+        "Product Identity": "pass",
+        "Serial / Lot Verification": "pass",
+        "Functional Test": "fail",
+        "Warranty Status": "pass",
+        "Damage Cause": "fail",
+        "Customer Usage Evidence": "pass",
+      }),
+    },
+    exceptions: [],
+    evidence: [{ name: "X-Ray unit not working", kind: "photo", by: "Narin C.", when: "27/05/2026 08:50" }],
+    note: "เปิดเคลมผู้ผลิต SCL-2026-000002 แล้ว รอออกใบลดหนี้ให้ลูกค้า",
+    history: [
+      hist("Disposition completed", "ส่งเคลมผู้ผลิต SCL-2026-000002", "Warehouse Staff", "29/05/2026 09:00"),
+      hist("QC completed", "ผลตรวจ: Supplier Claim Required", "K. Jirawat", "28/05/2026 15:30"),
+      hist("Received", "รับคืน 1 เครื่อง", "Warehouse Staff", "28/05/2026 10:15"),
+      hist("Return request created", "สร้างจาก SHP-2026-000028", "Narin C.", "27/05/2026 08:45", ""),
+    ],
+    audit: [
+      { event: "Disposition completed", user: "Warehouse Staff", when: "29/05/2026 09:00", field: "dispositionStatus", from: "Disposition Pending", to: "Disposition Completed", kind: "primary" },
+    ],
+    created: "27/05/2026 08:45",
+    createdBy: "Narin C.",
+    updated: "29/05/2026 09:00",
+    updatedBy: "Warehouse Staff",
+  },
+  {
+    code: "RTN-2026-000026",
+    rmaNo: "",
+    sourceType: "Sales Invoice",
+    sourceDoc: "INV-2026-000018",
+    shipmentRef: "",
+    invoiceRef: "INV-2026-000018",
+    soRef: "",
+    customer: "Chiang Mai Dental Hospital",
+    customerCode: "CUST-00007",
+    customerGroup: "Hospital",
+    contactPerson: "Khun Pimchanok W.",
+    contactPhone: "053-944-400",
+    email: "acc@cmdh.ac.th",
+    pickupAddress: "88 Suthep Rd., Mueang Chiang Mai, Chiang Mai 50200",
+    salesRep: "Supavita Y.",
+    returnDate: "26/05/2026",
+    returnType: "Expired / Near Expiry",
+    returnReason: "สินค้าหมดอายุ / ใกล้หมดอายุ",
+    priority: "Normal",
+    branch: "Chiang Mai Branch",
+    returnWarehouse: "WH-QUARANTINE Quarantine",
+    customerRef: "CMDH-PO-3312",
+    status: "Rejected",
+    approvalStatus: "Rejected",
+    receivingStatus: "Not Applicable",
+    qcStatus: "Not Applicable",
+    dispositionStatus: "Not Applicable",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "Customer Ships Back",
+    pickupRequired: false,
+    expectedReturnDate: "",
+    authExpiryDate: "",
+    returnInstructions: "",
+    packingInstructions: "",
+    authorizedBy: "",
+    authorizedAt: "",
+    requestedResolution: "Credit Note",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "21/07/2026",
+    originalAmount: 76480,
+    rejectReason: "เกินระยะเวลารับคืน",
+    cancelReason: "",
+    items: [
+      ln(1, "BND-001", "Bonding Agent", "Bottle", 2800, 20, 10, {
+        lot: "LOT-2412-009",
+        expiry: "15/05/2026",
+        condition: "Expired",
+        reason: "สินค้าหมดอายุ / ใกล้หมดอายุ",
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "26/05/2026 10:00", "26/05/2026 10:30", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "rejected", "26/05/2026 10:30", "26/05/2026 15:20", "สินค้าซื้อไปเกิน 30 วันและหมดอายุแล้ว ไม่เข้าเงื่อนไขรับคืน"),
+    ],
+    receiving: null,
+    qc: null,
+    exceptions: [
+      {
+        type: "Return Period Expired",
+        when: "26/05/2026 10:30",
+        desc: "สินค้าซื้อไปเกินระยะเวลารับคืน 30 วัน",
+        severity: "High",
+        party: "ลูกค้า",
+        resolution: "ไม่อนุมัติคำขอคืน แจ้งลูกค้าแล้ว",
+        followUp: "",
+        status: "Resolved",
+      },
+    ],
+    evidence: [{ name: "Expired product", kind: "photo", by: "Supavita Y.", when: "26/05/2026 09:50" }],
+    note: "",
+    history: [
+      hist("Rejected", "ไม่อนุมัติ: เกินระยะเวลารับคืน", "Sales Manager", "26/05/2026 15:20", "warn"),
+      hist("Return request created", "สร้างจาก INV-2026-000018", "Supavita Y.", "26/05/2026 09:45", ""),
+    ],
+    audit: [
+      { event: "Status changed", user: "Sales Manager", when: "26/05/2026 15:20", field: "status", from: "Pending Approval", to: "Rejected", kind: "warn" },
+    ],
+    created: "26/05/2026 09:45",
+    createdBy: "Supavita Y.",
+    updated: "26/05/2026 15:20",
+    updatedBy: "Sales Manager",
+  },
+  {
+    code: "RTN-2026-000027",
+    rmaNo: "RMA-2605-0027",
+    sourceType: "Delivery Order",
+    sourceDoc: "DO-2026-000017",
+    shipmentRef: "SHP-2026-000037",
+    invoiceRef: "",
+    soRef: "SO-2026-000037",
+    customer: "Phuket Dental Center",
+    customerCode: "CUST-00008",
+    customerGroup: "Dealer",
+    contactPerson: "Khun Arisa T.",
+    contactPhone: "076-215-500",
+    email: "admin@phuketdental.co.th",
+    pickupAddress: "12/5 Thepkrasattri Rd., Mueang Phuket, Phuket 83000",
+    salesRep: "Somchai S.",
+    returnDate: "25/05/2026",
+    returnType: "Wrong Quantity",
+    returnReason: "จำนวนไม่ตรงกับใบสั่งซื้อ",
+    priority: "Low",
+    branch: "Head Office",
+    returnWarehouse: "Return Center",
+    customerRef: "PDC-0221",
+    status: "Partially Received",
+    approvalStatus: "Approved",
+    receivingStatus: "Partially Received",
+    qcStatus: "Pending QC",
+    dispositionStatus: "Not Applicable",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "Courier Pickup",
+    pickupRequired: true,
+    expectedReturnDate: "30/05/2026",
+    authExpiryDate: "06/06/2026",
+    returnInstructions: "",
+    packingInstructions: "",
+    authorizedBy: "Sales Admin",
+    authorizedAt: "25/05/2026 14:00",
+    requestedResolution: "Credit Note",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "",
+    originalAmount: 3200,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "SCT-001", "Scaler Tip", "Box", 3500, 5, 2, {
+        condition: "New / Unopened",
+        reason: "จำนวนไม่ตรงกับใบสั่งซื้อ",
+        approvedQty: 2,
+        receivedQty: 1,
+        note: "รับคืนแล้ว 1 กล่อง รออีก 1",
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "25/05/2026 10:00", "25/05/2026 11:00", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "25/05/2026 11:00", "25/05/2026 13:30", ""),
+    ],
+    receiving: {
+      receivedDate: "30/05/2026 14:20",
+      warehouse: "Return Center",
+      receiver: "Warehouse Staff",
+      packageCount: 1,
+      packageCondition: "Good",
+      deliveryRef: "RET-DN-0027",
+      carrier: "Flash Express",
+      trackingNo: "FLA260530012",
+      remark: "รับคืนบางส่วน",
+    },
+    qc: null,
+    exceptions: [],
+    evidence: [],
+    note: "",
+    history: [
+      hist("Partially received", "รับคืน 1 จาก 2 กล่อง", "Warehouse Staff", "30/05/2026 14:20", "warn"),
+      hist("Return request created", "สร้างจาก DO-2026-000017", "Somchai S.", "25/05/2026 09:30", ""),
+    ],
+    audit: [
+      { event: "Goods received", user: "Warehouse Staff", when: "30/05/2026 14:20", field: "receivingStatus", from: "Waiting Return", to: "Partially Received", kind: "warn" },
+    ],
+    created: "25/05/2026 09:30",
+    createdBy: "Somchai S.",
+    updated: "30/05/2026 14:20",
+    updatedBy: "Warehouse Staff",
+  },
+  {
+    code: "RTN-2026-000028",
+    rmaNo: "RMA-2605-0028",
+    sourceType: "Shipment",
+    sourceDoc: "SHP-2026-000026",
+    shipmentRef: "SHP-2026-000026",
+    invoiceRef: "INV-2026-000021",
+    soRef: "SO-2026-000026",
+    customer: "SAJ Dental",
+    customerCode: "CUST-00005",
+    customerGroup: "Clinic",
+    contactPerson: "Khun Sarocha J.",
+    contactPhone: "02-641-2200",
+    email: "saj@sajdental.co.th",
+    pickupAddress: "9/1 Ratchadaphisek Rd., Din Daeng, Bangkok 10400",
+    salesRep: "Kanyarat P.",
+    returnDate: "24/05/2026",
+    returnType: "Transit Damage",
+    returnReason: "สินค้าชำรุดจากการขนส่ง",
+    priority: "Normal",
+    branch: "Head Office",
+    returnWarehouse: "Return Center",
+    customerRef: "SAJ-0455",
+    status: "Credited",
+    approvalStatus: "Approved",
+    receivingStatus: "Received",
+    qcStatus: "QC Completed",
+    dispositionStatus: "Disposition Completed",
+    creditNoteStatus: "Credited",
+    returnMethod: "A-Factory Pickup",
+    pickupRequired: true,
+    expectedReturnDate: "26/05/2026",
+    authExpiryDate: "02/06/2026",
+    returnInstructions: "",
+    packingInstructions: "",
+    authorizedBy: "Sales Admin",
+    authorizedAt: "24/05/2026 15:00",
+    requestedResolution: "Credit Note",
+    replacementRef: "",
+    creditNoteRef: "CN-2026-000012",
+    supplierClaimRef: "",
+    originalInvoiceDate: "24/05/2026",
+    originalAmount: 189390,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "CMP-A3-001", "Composite A3", "Syringe", 12000, 12, 5, {
+        lot: "LOT-2606-D1",
+        condition: "Damaged",
+        approvedQty: 5,
+        receivedQty: 5,
+        inspectedQty: 5,
+        acceptedQty: 2,
+        rejectedQty: 3,
+        disposition: "Scrap",
+        destWarehouse: "WH-QUARANTINE Quarantine",
+        destLocation: "SCRAP-01",
+      }),
+      ln(2, "BND-001", "Bonding Agent", "Bottle", 2800, 15, 7, {
+        lot: "LOT-2606-D2",
+        condition: "Damaged",
+        approvedQty: 7,
+        receivedQty: 7,
+        inspectedQty: 7,
+        acceptedQty: 7,
+        rejectedQty: 0,
+        disposition: "Return to Available Stock",
+        destWarehouse: "WH-BKK Bangkok Main Warehouse",
+        destLocation: "A-02-01",
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "24/05/2026 09:00", "24/05/2026 09:20", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "24/05/2026 09:20", "24/05/2026 14:00", ""),
+      step("Finance Review", "Finance", "Finance", "done", "24/05/2026 14:00", "24/05/2026 14:40", "อนุมัติออกใบลดหนี้"),
+    ],
+    receiving: {
+      receivedDate: "26/05/2026 10:00",
+      warehouse: "Return Center",
+      receiver: "Warehouse Staff",
+      packageCount: 2,
+      packageCondition: "Damaged",
+      deliveryRef: "RET-DN-0028",
+      carrier: "A-Factory Delivery",
+      trackingNo: "AF260526007",
+      remark: "กล่องบุบ 1 ใบ",
+    },
+    qc: {
+      inspector: "P. Patcharin",
+      inspectionDate: "26/05/2026 15:00",
+      result: "Partial Accept",
+      comment: "Bonding Agent สภาพดีขายต่อได้ ส่วน Composite เสียหาย 3 หลอด ต้องทำลาย",
+      checklist: checklist({
+        "Product Identity": "pass",
+        "Serial / Lot Verification": "pass",
+        "Packaging Condition": "fail",
+        "Physical Condition": "fail",
+        "Resalable Condition": "pass",
+        "Sterile Seal": "pass",
+      }),
+    },
+    exceptions: [],
+    evidence: [
+      { name: "Package damage", kind: "photo", by: "Kanyarat P.", when: "24/05/2026 08:50" },
+      { name: "Defective Composite", kind: "photo", by: "P. Patcharin", when: "26/05/2026 15:05" },
+    ],
+    note: "ออกใบลดหนี้ CN-2026-000012 แล้ว",
+    history: [
+      hist("Credited", "ออกใบลดหนี้ CN-2026-000012", "Finance", "27/05/2026 11:00"),
+      hist("Disposition completed", "คืนเข้าสต๊อก 7 · ทำลาย 3", "Warehouse Staff", "27/05/2026 09:30"),
+      hist("QC completed", "ผลตรวจ: Partial Accept", "P. Patcharin", "26/05/2026 15:00"),
+      hist("Received", "รับคืน 12 หน่วย", "Warehouse Staff", "26/05/2026 10:00"),
+      hist("Return request created", "สร้างจาก SHP-2026-000026", "Kanyarat P.", "24/05/2026 08:45", ""),
+    ],
+    audit: [
+      { event: "Credit note created", user: "Finance", when: "27/05/2026 11:00", field: "creditNoteRef", from: "—", to: "CN-2026-000012", kind: "primary" },
+      { event: "Stock returned", user: "Warehouse Staff", when: "27/05/2026 09:30", field: "disposition", from: "Pending", to: "Completed", kind: "primary" },
+    ],
+    created: "24/05/2026 08:45",
+    createdBy: "Kanyarat P.",
+    updated: "27/05/2026 11:00",
+    updatedBy: "Finance",
+  },
+  {
+    code: "RTN-2026-000029",
+    rmaNo: "",
+    sourceType: "Shipment",
+    sourceDoc: "SHP-2026-000039",
+    shipmentRef: "SHP-2026-000039",
+    invoiceRef: "",
+    soRef: "SO-2026-000039",
+    customer: "Dental Vision Clinic",
+    customerCode: "CUST-00009",
+    customerGroup: "Clinic",
+    contactPerson: "Khun Voranuch S.",
+    contactPhone: "02-514-7788",
+    email: "voranuch@dentalvision.co.th",
+    pickupAddress: "77/12 Ladprao 71, Wang Thonglang, Bangkok 10310",
+    salesRep: "Thanapol S.",
+    returnDate: "23/05/2026",
+    returnType: "Customer Return",
+    returnReason: "ลูกค้าสั่งเกินความต้องการ",
+    priority: "Low",
+    branch: "Head Office",
+    returnWarehouse: "Return Center",
+    customerRef: "DVC-0088",
+    status: "Draft",
+    approvalStatus: "Not Submitted",
+    receivingStatus: "Not Applicable",
+    qcStatus: "Not Applicable",
+    dispositionStatus: "Not Applicable",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "Customer Ships Back",
+    pickupRequired: false,
+    expectedReturnDate: "",
+    authExpiryDate: "",
+    returnInstructions: "",
+    packingInstructions: "",
+    authorizedBy: "",
+    authorizedAt: "",
+    requestedResolution: "Credit Note",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "",
+    originalAmount: 21000,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "SCT-001", "Scaler Tip", "Box", 3500, 6, 2, {
+        condition: "New / Unopened",
+        reason: "ลูกค้าสั่งเกินความต้องการ",
+      }),
+    ],
+    approvals: [],
+    receiving: null,
+    qc: null,
+    exceptions: [],
+    evidence: [],
+    note: "ร่างคำขอคืน รอลูกค้ายืนยันจำนวน",
+    history: [hist("Return request created", "สร้างร่างคำขอคืน", "Thanapol S.", "23/05/2026 16:10", "")],
+    audit: [
+      { event: "Return created", user: "Thanapol S.", when: "23/05/2026 16:10", field: "—", from: "—", to: "Draft", kind: "" },
+    ],
+    created: "23/05/2026 16:10",
+    createdBy: "Thanapol S.",
+    updated: "23/05/2026 16:10",
+    updatedBy: "Thanapol S.",
+  },
+  {
+    code: "RTN-2026-000030",
+    rmaNo: "RMA-2605-0030",
+    sourceType: "Sales Order",
+    sourceDoc: "SO-2026-000040",
+    shipmentRef: "",
+    invoiceRef: "",
+    soRef: "SO-2026-000040",
+    customer: "Central Dental Care",
+    customerCode: "CUST-00010",
+    customerGroup: "Clinic",
+    contactPerson: "Khun Natthapong R.",
+    contactPhone: "02-245-6600",
+    email: "natthapong@centraldental.co.th",
+    pickupAddress: "9 Rama IX Rd., Huai Khwang, Bangkok 10310",
+    salesRep: "Kanyarat P.",
+    returnDate: "22/05/2026",
+    returnType: "Exchange Request",
+    returnReason: "สินค้าไม่ตรงรุ่นที่สั่ง",
+    priority: "Normal",
+    branch: "Head Office",
+    returnWarehouse: "Return Center",
+    customerRef: "",
+    status: "Closed",
+    approvalStatus: "Approved",
+    receivingStatus: "Received",
+    qcStatus: "QC Completed",
+    dispositionStatus: "Disposition Completed",
+    creditNoteStatus: "Not Required",
+    returnMethod: "Sales Representative Pickup",
+    pickupRequired: true,
+    expectedReturnDate: "24/05/2026",
+    authExpiryDate: "31/05/2026",
+    returnInstructions: "",
+    packingInstructions: "",
+    authorizedBy: "Sales Admin",
+    authorizedAt: "22/05/2026 13:00",
+    requestedResolution: "Exchange",
+    replacementRef: "SO-2026-000051",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "",
+    originalAmount: 33600,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "BND-001", "Bonding Agent", "Bottle", 2800, 12, 12, {
+        lot: "LOT-2605-E1",
+        condition: "New / Unopened",
+        reason: "สินค้าไม่ตรงรุ่นที่สั่ง",
+        approvedQty: 12,
+        receivedQty: 12,
+        inspectedQty: 12,
+        acceptedQty: 12,
+        rejectedQty: 0,
+        disposition: "Return to Available Stock",
+        destWarehouse: "WH-BKK Bangkok Main Warehouse",
+        destLocation: "A-01-05",
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "22/05/2026 09:00", "22/05/2026 09:30", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "22/05/2026 09:30", "22/05/2026 12:00", "อนุมัติเปลี่ยนสินค้า ไม่ต้องออกใบลดหนี้"),
+    ],
+    receiving: {
+      receivedDate: "24/05/2026 11:00",
+      warehouse: "Return Center",
+      receiver: "Warehouse Staff",
+      packageCount: 1,
+      packageCondition: "Good",
+      deliveryRef: "RET-DN-0030",
+      carrier: "A-Factory Delivery",
+      trackingNo: "",
+      remark: "พนักงานขายรับกลับมาเอง",
+    },
+    qc: {
+      inspector: "W. Warin",
+      inspectionDate: "24/05/2026 14:00",
+      result: "Accept",
+      comment: "สินค้าใหม่ ซีลไม่เปิด คืนเข้าสต๊อกได้",
+      checklist: checklist({
+        "Product Identity": "pass",
+        "Packaging Condition": "pass",
+        "Sterile Seal": "pass",
+        "Resalable Condition": "pass",
+        "Expiry Condition": "pass",
+      }),
+    },
+    exceptions: [],
+    evidence: [],
+    note: "เปลี่ยนสินค้าให้ลูกค้าผ่านใบสั่งขายใหม่ SO-2026-000051",
+    history: [
+      hist("Closed", "ปิดคำขอคืน — เปลี่ยนสินค้าเรียบร้อย", "Sales Admin", "25/05/2026 10:00"),
+      hist("Replacement created", "สร้างใบสั่งขายทดแทน SO-2026-000051", "Sales Admin", "24/05/2026 16:00", "info"),
+      hist("Disposition completed", "คืนเข้าสต๊อกขาย 12 ขวด", "Warehouse Staff", "24/05/2026 15:00"),
+      hist("Return request created", "สร้างจาก SO-2026-000040", "Kanyarat P.", "22/05/2026 08:30", ""),
+    ],
+    audit: [
+      { event: "Status changed", user: "Sales Admin", when: "25/05/2026 10:00", field: "status", from: "Disposition Completed", to: "Closed", kind: "primary" },
+    ],
+    created: "22/05/2026 08:30",
+    createdBy: "Kanyarat P.",
+    updated: "25/05/2026 10:00",
+    updatedBy: "Sales Admin",
+  },
+  {
+    code: "RTN-2026-000031",
+    rmaNo: "",
+    sourceType: "Manual",
+    sourceDoc: "",
+    shipmentRef: "",
+    invoiceRef: "",
+    soRef: "",
+    customer: "KCMH Hospital",
+    customerCode: "CUST-00001",
+    customerGroup: "Hospital",
+    contactPerson: "Khun Somchai",
+    contactPhone: "02-123-4567",
+    email: "somchai@kcmh.co.th",
+    pickupAddress: "187/1 Phetchaburi Rd., Ratchathewi, Bangkok 10400",
+    salesRep: "Thanapol S.",
+    returnDate: "21/05/2026",
+    returnType: "Product Recall",
+    returnReason: "อื่น ๆ",
+    priority: "Critical",
+    branch: "Head Office",
+    returnWarehouse: "WH-QUARANTINE Quarantine",
+    customerRef: "",
+    status: "Cancelled",
+    approvalStatus: "Not Submitted",
+    receivingStatus: "Not Applicable",
+    qcStatus: "Not Applicable",
+    dispositionStatus: "Not Applicable",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "A-Factory Pickup",
+    pickupRequired: true,
+    expectedReturnDate: "",
+    authExpiryDate: "",
+    returnInstructions: "",
+    packingInstructions: "",
+    authorizedBy: "",
+    authorizedAt: "",
+    requestedResolution: "Pending Decision",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "",
+    originalAmount: 0,
+    rejectReason: "",
+    cancelReason: "ตกลงกันได้โดยไม่ต้องคืนของ",
+    items: [
+      ln(1, "BND-001", "Bonding Agent", "Bottle", 2800, 20, 20, {
+        lot: "LOT-2604-R9",
+        condition: "New / Unopened",
+        reason: "อื่น ๆ",
+      }),
+    ],
+    approvals: [],
+    receiving: null,
+    qc: null,
+    exceptions: [],
+    evidence: [],
+    note: "ผู้ผลิตยืนยันว่าล็อตนี้ไม่ได้อยู่ในประกาศเรียกคืน",
+    history: [
+      hist("Cancelled", "เหตุผล: ตกลงกันได้โดยไม่ต้องคืนของ", "Admin", "22/05/2026 09:00", "warn"),
+      hist("Return request created", "สร้างคำขอคืนแบบ Manual สำหรับการเรียกคืนสินค้า", "Admin", "21/05/2026 14:00", ""),
+    ],
+    audit: [
+      { event: "Status changed", user: "Admin", when: "22/05/2026 09:00", field: "status", from: "Draft", to: "Cancelled", kind: "warn" },
+    ],
+    created: "21/05/2026 14:00",
+    createdBy: "Admin",
+    updated: "22/05/2026 09:00",
+    updatedBy: "Admin",
+  },
+  {
+    code: "RTN-2026-000032",
+    rmaNo: "RMA-2605-0032",
+    sourceType: "Shipment",
+    sourceDoc: "SHP-2026-000033",
+    shipmentRef: "SHP-2026-000033",
+    invoiceRef: "INV-2026-000023",
+    soRef: "SO-2026-000033",
+    customer: "Smile Gallery Dental Clinic",
+    customerCode: "CUST-00003",
+    customerGroup: "Clinic",
+    contactPerson: "Khun Nichada P.",
+    contactPhone: "02-712-3300",
+    email: "finance@smilegallery.co.th",
+    pickupAddress: "45 Thonglor Soi 10, Watthana, Bangkok 10110",
+    salesRep: "Kanyarat P.",
+    returnDate: "20/05/2026",
+    returnType: "Commercial Return",
+    returnReason: "ลูกค้าสั่งเกินความต้องการ",
+    priority: "Normal",
+    branch: "Head Office",
+    returnWarehouse: "Return Center",
+    customerRef: "SG-PO-0091",
+    status: "QC Completed",
+    approvalStatus: "Approved",
+    receivingStatus: "Received",
+    qcStatus: "QC Completed",
+    dispositionStatus: "Disposition Pending",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "Return at Branch",
+    pickupRequired: false,
+    expectedReturnDate: "22/05/2026",
+    authExpiryDate: "29/05/2026",
+    returnInstructions: "นำมาคืนที่สาขา",
+    packingInstructions: "",
+    authorizedBy: "Sales Admin",
+    authorizedAt: "20/05/2026 15:30",
+    requestedResolution: "Credit Note",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "26/07/2026",
+    originalAmount: 214000,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "BND-001", "Bonding Agent", "Bottle", 2800, 50, 10, {
+        lot: "LOT-2607-F1",
+        condition: "Opened / Unused",
+        reason: "ลูกค้าสั่งเกินความต้องการ",
+        approvedQty: 10,
+        receivedQty: 10,
+        inspectedQty: 10,
+        acceptedQty: 6,
+        rejectedQty: 0,
+        holdQty: 4,
+        sealOpened: true,
+        note: "ซีลเปิดแล้ว 4 ขวด — ต้องขออนุมัติก่อนคืนเข้าสต๊อก",
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "20/05/2026 09:00", "20/05/2026 09:30", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "20/05/2026 09:30", "20/05/2026 14:00", ""),
+    ],
+    receiving: {
+      receivedDate: "22/05/2026 10:30",
+      warehouse: "Return Center",
+      receiver: "Warehouse Staff",
+      packageCount: 1,
+      packageCondition: "Opened",
+      deliveryRef: "RET-DN-0032",
+      carrier: "Customer Pickup",
+      trackingNo: "",
+      remark: "ลูกค้านำมาคืนที่สาขาเอง",
+    },
+    qc: {
+      inspector: "W. Warin",
+      inspectionDate: "22/05/2026 14:30",
+      result: "Partial Accept",
+      comment: "6 ขวดซีลสมบูรณ์ขายต่อได้ อีก 4 ขวดซีลเปิดแล้ว พักไว้รอผู้จัดการตัดสินใจ",
+      checklist: checklist({
+        "Product Identity": "pass",
+        "Serial / Lot Verification": "pass",
+        "Packaging Condition": "pass",
+        "Sterile Seal": "fail",
+        "Resalable Condition": "pass",
+        "Expiry Condition": "pass",
+      }),
+    },
+    exceptions: [],
+    evidence: [{ name: "Package damage", kind: "photo", by: "W. Warin", when: "22/05/2026 14:35" }],
+    note: "รอผู้จัดการตัดสินใจ 4 ขวดที่ซีลเปิด",
+    history: [
+      hist("QC completed", "ผลตรวจ: Partial Accept — พักไว้ 4 ขวด", "W. Warin", "22/05/2026 14:30"),
+      hist("Received", "รับคืน 10 ขวด", "Warehouse Staff", "22/05/2026 10:30"),
+      hist("Return request created", "สร้างจาก SHP-2026-000033", "Kanyarat P.", "20/05/2026 08:40", ""),
+    ],
+    audit: [
+      { event: "QC completed", user: "W. Warin", when: "22/05/2026 14:30", field: "qcStatus", from: "Pending QC", to: "QC Completed", kind: "primary" },
+    ],
+    created: "20/05/2026 08:40",
+    createdBy: "Kanyarat P.",
+    updated: "22/05/2026 14:30",
+    updatedBy: "W. Warin",
+  },
+  {
+    code: "RTN-2026-000033",
+    rmaNo: "RMA-2605-0033",
+    sourceType: "Sales Invoice",
+    sourceDoc: "INV-2026-000024",
+    shipmentRef: "SHP-2026-000032",
+    invoiceRef: "INV-2026-000024",
+    soRef: "SO-2026-000032",
+    customer: "Bangkok Dental Center",
+    customerCode: "CUST-00002",
+    customerGroup: "Clinic",
+    contactPerson: "Khun Preecha T.",
+    contactPhone: "02-661-8899",
+    email: "acc@bkkdental.co.th",
+    pickupAddress: "88/9 Sukhumvit 24, Khlong Toei, Bangkok 10110",
+    salesRep: "Thanapol S.",
+    returnDate: "19/05/2026",
+    returnType: "Defective Product",
+    returnReason: "สินค้าใช้งานไม่ได้",
+    priority: "High",
+    branch: "Head Office",
+    returnWarehouse: "WH-QC Quality Hold",
+    customerRef: "BDC-PO-2244",
+    status: "Approved",
+    approvalStatus: "Approved",
+    receivingStatus: "Not Applicable",
+    qcStatus: "Not Applicable",
+    dispositionStatus: "Not Applicable",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "Customer Ships Back",
+    pickupRequired: false,
+    expectedReturnDate: "",
+    authExpiryDate: "",
+    returnInstructions: "",
+    packingInstructions: "",
+    authorizedBy: "",
+    authorizedAt: "",
+    requestedResolution: "Replacement",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "27/07/2026",
+    originalAmount: 94695,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "SCT-001", "Scaler Tip", "Box", 3500, 18, 6, {
+        condition: "Defective",
+        reason: "สินค้าใช้งานไม่ได้",
+        approvedQty: 6,
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "19/05/2026 09:00", "19/05/2026 09:20", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "19/05/2026 09:20", "19/05/2026 11:30", "อนุมัติ รอออก RMA"),
+    ],
+    receiving: null,
+    qc: null,
+    exceptions: [],
+    evidence: [{ name: "Scaler tip damaged", kind: "photo", by: "Thanapol S.", when: "19/05/2026 08:50" }],
+    note: "อนุมัติแล้ว รอออก Return Authorization",
+    history: [
+      hist("Approved", "อนุมัติคำขอคืน รอออก RMA", "Sales Manager", "19/05/2026 11:30"),
+      hist("Return request created", "สร้างจาก INV-2026-000024", "Thanapol S.", "19/05/2026 08:45", ""),
+    ],
+    audit: [
+      { event: "Status changed", user: "Sales Manager", when: "19/05/2026 11:30", field: "status", from: "Pending Approval", to: "Approved", kind: "primary" },
+    ],
+    created: "19/05/2026 08:45",
+    createdBy: "Thanapol S.",
+    updated: "19/05/2026 11:30",
+    updatedBy: "Sales Manager",
+  },
+  {
+    code: "RTN-2026-000034",
+    rmaNo: "RMA-2605-0034",
+    sourceType: "Shipment",
+    sourceDoc: "SHP-2026-000044",
+    shipmentRef: "SHP-2026-000044",
+    invoiceRef: "",
+    soRef: "SO-2026-000044",
+    customer: "BIDC",
+    customerCode: "CUST-00004",
+    customerGroup: "Hospital",
+    contactPerson: "Khun Wanida K.",
+    contactPhone: "02-251-0800",
+    email: "ap@bidc.co.th",
+    pickupAddress: "157 Sukhumvit 2, Khlong Toei, Bangkok 10110",
+    salesRep: "Thanapol S.",
+    returnDate: "18/05/2026",
+    returnType: "Transit Damage",
+    returnReason: "สินค้าชำรุดจากการขนส่ง",
+    priority: "Critical",
+    branch: "Head Office",
+    returnWarehouse: "WH-CLAIM Claim Warehouse",
+    customerRef: "BIDC-PO-7790",
+    status: "Received",
+    approvalStatus: "Approved",
+    receivingStatus: "Received",
+    qcStatus: "Pending QC",
+    dispositionStatus: "Not Applicable",
+    creditNoteStatus: "Not Applicable",
+    returnMethod: "A-Factory Pickup",
+    pickupRequired: true,
+    expectedReturnDate: "20/05/2026",
+    authExpiryDate: "27/05/2026",
+    returnInstructions: "",
+    packingInstructions: "ห้ามวางซ้อน สินค้าเปราะบาง",
+    authorizedBy: "Sales Admin",
+    authorizedAt: "18/05/2026 14:00",
+    requestedResolution: "Warranty Claim",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "",
+    originalAmount: 190000,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "XRY-GT1", "Portable X-Ray GT1", "Unit", 95000, 2, 2, {
+        serial: "XG1-2607-0011, XG1-2607-0012",
+        condition: "Damaged",
+        reason: "สินค้าชำรุดจากการขนส่ง",
+        approvedQty: 2,
+        receivedQty: 2,
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "18/05/2026 09:00", "18/05/2026 09:30", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "18/05/2026 09:30", "18/05/2026 13:00", "เคสขนส่งทำเสียหาย เรียกเก็บจากผู้ขนส่ง"),
+    ],
+    receiving: {
+      receivedDate: "20/05/2026 09:30",
+      warehouse: "WH-CLAIM Claim Warehouse",
+      receiver: "Warehouse Staff",
+      packageCount: 1,
+      packageCondition: "Damaged",
+      deliveryRef: "RET-DN-0034",
+      carrier: "FedEx",
+      trackingNo: "FDX260520008",
+      remark: "ลังไม้แตก เครื่องมีรอยบุบทั้ง 2 เครื่อง",
+    },
+    qc: null,
+    exceptions: [
+      {
+        type: "Package Damaged",
+        when: "20/05/2026 09:35",
+        desc: "ลังไม้แตกระหว่างขนส่งกลับ เครื่องเสียหายเพิ่มเติม",
+        severity: "Critical",
+        party: "ผู้ขนส่ง",
+        resolution: "",
+        followUp: "22/05/2026",
+        status: "Open",
+      },
+    ],
+    evidence: [{ name: "Package damage", kind: "photo", by: "Warehouse Staff", when: "20/05/2026 09:36" }],
+    note: "รอ QC ประเมินความเสียหายเพื่อเรียกเก็บจากผู้ขนส่ง",
+    history: [
+      hist("Received", "รับคืน 2 เครื่อง สภาพเสียหาย", "Warehouse Staff", "20/05/2026 09:30", "warn"),
+      hist("Return request created", "สร้างจาก SHP-2026-000044", "Thanapol S.", "18/05/2026 08:30", ""),
+    ],
+    audit: [
+      { event: "Exception recorded", user: "Warehouse Staff", when: "20/05/2026 09:35", field: "exceptions", from: "0", to: "1", kind: "warn" },
+    ],
+    created: "18/05/2026 08:30",
+    createdBy: "Thanapol S.",
+    updated: "20/05/2026 09:35",
+    updatedBy: "Warehouse Staff",
+  },
+  {
+    code: "RTN-2026-000035",
+    rmaNo: "RMA-2605-0035",
+    sourceType: "Sales Invoice",
+    sourceDoc: "INV-2026-000012",
+    shipmentRef: "",
+    invoiceRef: "INV-2026-000012",
+    soRef: "SO-2026-000028",
+    customer: "Chiang Mai Dental Hospital",
+    customerCode: "CUST-00007",
+    customerGroup: "Hospital",
+    contactPerson: "Khun Pimchanok W.",
+    contactPhone: "053-944-400",
+    email: "acc@cmdh.ac.th",
+    pickupAddress: "88 Suthep Rd., Mueang Chiang Mai, Chiang Mai 50200",
+    salesRep: "Supavita Y.",
+    returnDate: "17/05/2026",
+    returnType: "Wrong Product",
+    returnReason: "สินค้าไม่ตรงรุ่นที่สั่ง",
+    priority: "Normal",
+    branch: "Chiang Mai Branch",
+    returnWarehouse: "Return Center",
+    customerRef: "CMDH-PO-3310",
+    status: "Disposition Completed",
+    approvalStatus: "Approved",
+    receivingStatus: "Received",
+    qcStatus: "QC Completed",
+    dispositionStatus: "Disposition Completed",
+    creditNoteStatus: "Pending",
+    returnMethod: "Courier Pickup",
+    pickupRequired: true,
+    expectedReturnDate: "19/05/2026",
+    authExpiryDate: "26/05/2026",
+    returnInstructions: "",
+    packingInstructions: "",
+    authorizedBy: "Sales Admin",
+    authorizedAt: "17/05/2026 14:30",
+    requestedResolution: "Credit Note",
+    replacementRef: "",
+    creditNoteRef: "",
+    supplierClaimRef: "",
+    originalInvoiceDate: "08/05/2026",
+    originalAmount: 89880,
+    rejectReason: "",
+    cancelReason: "",
+    items: [
+      ln(1, "CMP-A3-001", "Composite A3", "Syringe", 12000, 7, 3, {
+        lot: "LOT-2605-G3",
+        condition: "New / Unopened",
+        reason: "สินค้าไม่ตรงรุ่นที่สั่ง",
+        approvedQty: 3,
+        receivedQty: 3,
+        inspectedQty: 3,
+        acceptedQty: 3,
+        rejectedQty: 0,
+        disposition: "Return to Available Stock",
+        destWarehouse: "WH-CNX Chiang Mai Warehouse",
+        destLocation: "C-01-01",
+      }),
+    ],
+    approvals: [
+      step("Sales Review", "Sales Admin", "Admin", "done", "17/05/2026 09:00", "17/05/2026 09:20", ""),
+      step("Sales Manager Approval", "Sales Manager", "Sales Manager", "done", "17/05/2026 09:20", "17/05/2026 13:00", ""),
+    ],
+    receiving: {
+      receivedDate: "19/05/2026 10:00",
+      warehouse: "Return Center",
+      receiver: "Warehouse Staff",
+      packageCount: 1,
+      packageCondition: "Good",
+      deliveryRef: "RET-DN-0035",
+      carrier: "Kerry Express",
+      trackingNo: "KER260519003",
+      remark: "",
+    },
+    qc: {
+      inspector: "S. Nattapong",
+      inspectionDate: "19/05/2026 13:30",
+      result: "Accept",
+      comment: "สินค้าใหม่ ซีลสมบูรณ์ คืนเข้าสต๊อกได้",
+      checklist: checklist({
+        "Product Identity": "pass",
+        "Serial / Lot Verification": "pass",
+        "Packaging Condition": "pass",
+        "Sterile Seal": "pass",
+        "Resalable Condition": "pass",
+        "Expiry Condition": "pass",
+      }),
+    },
+    exceptions: [],
+    evidence: [],
+    note: "คืนเข้าสต๊อกเชียงใหม่แล้ว รอออกใบลดหนี้",
+    history: [
+      hist("Disposition completed", "คืนเข้าสต๊อกขาย 3 หลอด ที่ WH-CNX", "Warehouse Staff", "19/05/2026 15:00"),
+      hist("QC completed", "ผลตรวจ: Accept", "S. Nattapong", "19/05/2026 13:30"),
+      hist("Return request created", "สร้างจาก INV-2026-000012", "Supavita Y.", "17/05/2026 08:30", ""),
+    ],
+    audit: [
+      { event: "Stock returned", user: "Warehouse Staff", when: "19/05/2026 15:00", field: "dispositionStatus", from: "Disposition Pending", to: "Disposition Completed", kind: "primary" },
+    ],
+    created: "17/05/2026 08:30",
+    createdBy: "Supavita Y.",
+    updated: "19/05/2026 15:00",
+    updatedBy: "Warehouse Staff",
+  },
+];
