@@ -175,6 +175,37 @@ export const PACK_TONE: Record<string, BadgeTone> = {
   Cancelled: "neutral",
 };
 
+/** Shipment document status. */
+export const SHP_TONE: Record<string, BadgeTone> = {
+  Draft: "neutral",
+  "Ready to Dispatch": "info",
+  Dispatched: "warning",
+  "In Transit": "warning",
+  "Out for Delivery": "warning",
+  Delivered: "success",
+  "Partially Delivered": "warning",
+  "Delivery Failed": "danger",
+  Rescheduled: "warning",
+  Returned: "danger",
+  Cancelled: "neutral",
+  Exception: "danger",
+};
+
+/** Delivery status is tracked separately from the shipment document status. */
+export const DLV_TONE: Record<string, BadgeTone> = {
+  Pending: "neutral",
+  Ready: "info",
+  Dispatched: "warning",
+  "In Transit": "warning",
+  "Out for Delivery": "warning",
+  Delivered: "success",
+  "Partially Delivered": "warning",
+  Failed: "danger",
+  Rescheduled: "warning",
+  Returned: "danger",
+  Cancelled: "neutral",
+};
+
 /** Sales Invoice document status. */
 export const INV_TONE: Record<string, BadgeTone> = {
   Draft: "neutral",
