@@ -29,6 +29,7 @@ import { stockAdjustmentSchemas } from "./stock-adjustment";
 import { stockAdjustmentForm } from "./forms/stock-adjustment";
 import { cycleCountSchemas } from "./cycle-count";
 import { cycleCountForm } from "./forms/cycle-count";
+import { lotTrackingSchemas } from "./lot-tracking";
 
 /**
  * Entity registry — the single place that maps a URL segment to its schemas.
@@ -71,6 +72,7 @@ export const REGISTRY: Record<string, EntitySchemas<any>> = {
   "stock-transfer": { ...stockTransferSchemas, form: stockTransferForm },
   "stock-adjustment": { ...stockAdjustmentSchemas, form: stockAdjustmentForm },
   "cycle-count": { ...cycleCountSchemas, form: cycleCountForm },
+  "lot-tracking": lotTrackingSchemas,
 };
 
 export const ENTITY_KEYS = Object.keys(REGISTRY);

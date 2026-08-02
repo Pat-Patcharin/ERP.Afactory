@@ -404,7 +404,7 @@ describe("Inventory Workspace — navigation", () => {
       "Barcode Lookup",
     ]);
 
-    /* Built so far: the workspace, Stock Inquiry, then Stock Card. */
+    /* Built so far, in sidebar order. */
     const built: [string, string][] = [
       ["Inventory Workspace", "/inventory"],
       ["Stock Inquiry", "/m/stock-inquiry"],
@@ -412,6 +412,7 @@ describe("Inventory Workspace — navigation", () => {
       ["Stock Transfer", "/m/stock-transfer"],
       ["Stock Adjustment", "/m/stock-adjustment"],
       ["Cycle Count", "/m/cycle-count"],
+      ["Lot Tracking", "/m/lot-tracking"],
     ];
     built.forEach(([label, href], i) => {
       expect(group!.items[i].label).toBe(label);
@@ -419,7 +420,7 @@ describe("Inventory Workspace — navigation", () => {
       expect(group!.items[i].soon).toBeUndefined();
     });
 
-    /* Lot Tracking, Serial Tracking and Barcode Lookup stay unbuilt. */
+    /* Serial Tracking and Barcode Lookup stay unbuilt. */
     for (const item of group!.items.slice(built.length)) expect(item.soon).toBe(true);
   });
 
