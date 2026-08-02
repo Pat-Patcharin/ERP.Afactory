@@ -8,8 +8,8 @@ import { MOVEMENT_TARGETS, MOVEMENT_TYPE_MAP, MOVEMENT_TYPES } from "@/data/move
 import { PRODUCTS } from "@/lib/domain/product";
 import { productTotals } from "@/lib/domain/stock";
 import {
-  MOVEMENTS,
-  PRODUCT_CARDS,
+  movementRows,
+  productCards,
   ledgerSummary,
   movementsByLocation,
   movementsByLot,
@@ -29,6 +29,10 @@ import { routerPush } from "./setup";
 const { list, detail } = stockCardSchemas;
 const cardList = productStockCardSchemas.list;
 const cardDetail = productStockCardSchemas.detail;
+
+/* The ledger is a cache now — read it once per suite through its accessor. */
+const MOVEMENTS = movementRows();
+const PRODUCT_CARDS = productCards();
 
 const renderList = () =>
   render(
@@ -603,7 +607,7 @@ describe("Stock Card — navigation", () => {
   });
 
   it("leaves the modules this round must not build as coming soon", () => {
-    for (const label of ["Stock Transfer", "Stock Adjustment", "Cycle Count"]) {
+    for (const label of ["Stock Adjustment", "Cycle Count"]) {
       expect(pageHref(label)).toBe(`/soon?m=${encodeURIComponent(label)}`);
     }
   });

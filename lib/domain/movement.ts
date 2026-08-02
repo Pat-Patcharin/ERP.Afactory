@@ -15,6 +15,7 @@ import { GOODS_RECEIPTS, PUTAWAY_TASKS, QC_INSPECTIONS } from "./inbound";
 import { PICKING_TASKS, SALES_ORDERS } from "./outbound";
 import { SHIPMENTS } from "./shipment";
 import { SALES_RETURNS } from "./sales-return";
+import { TRANSFERS } from "@/data/transfers";
 import {
   STOCK_LOTS,
   STOCK_POSITIONS,
@@ -239,6 +240,25 @@ interface Event {
   reference: string;
 }
 
+/**
+ * A transfer that changes stock status is a single status movement, not an
+ * out-and-in pair — the quantity never leaves the warehouse.
+ */
+function statusMoveType(from: string, to: string): string | null {
+  if (!from || !to || from === to) return null;
+  const key = `${from} to ${to}`;
+  const known: Record<string, string> = {
+    "QC Hold to Available": "QC Hold to Available",
+    "Available to QC Hold": "Available to QC Hold",
+    "Return Hold to Available": "Return Hold to Available",
+    "Available to Damaged": "Available to Damaged",
+    "Available to Blocked": "Available to Blocked",
+    "Blocked to Available": "Blocked to Available",
+    "Damaged to Scrap Hold": "Damaged to Scrap",
+  };
+  return known[key] ?? null;
+}
+
 const whOf = (label: string) => {
   const hit = WAREHOUSES.find(
     (w) => label.startsWith(w.code) || label.includes(w.name),
@@ -422,6 +442,67 @@ function realEvents(product: string): Event[] {
         reference: s.doRef,
       });
     }
+
+  /* Stock transfers. A transfer never changes total on hand — it moves the
+     quantity between warehouses, bins or stock statuses — so the pair of
+     rows it contributes always nets to zero unless it is still in transit. */
+  for (const t of TRANSFERS) {
+    for (const [i, it] of (t.items ?? []).entries()) {
+      if (it.code !== product) continue;
+      const srcLoc = [t.srcZone, t.srcRack, t.srcBin].filter(Boolean).join("-");
+      const dstLoc = [t.dstZone, t.dstRack, t.dstBin].filter(Boolean).join("-");
+      const base = {
+        doc: t.code,
+        module: "stock-transfer",
+        line: it.line ?? i + 1,
+        docStatus: t.status,
+        partner: "",
+        lot: it.lot ?? "",
+        serial: (it.serials ?? [])[0] ?? "",
+        reference: t.reference,
+      };
+      const statusType = statusMoveType(t.srcStatus, t.dstStatus);
+
+      /* A status transfer is one movement, not an out-and-in pair. */
+      if (statusType && it.received > 0) {
+        out.push({
+          ...base,
+          ts: parseStamp(`${t.transferDate} 10:00`),
+          type: statusType,
+          qty: it.received,
+          warehouse: t.srcWarehouse,
+          fromLoc: srcLoc,
+          toLoc: dstLoc,
+          user: t.assignedTo || t.requestedBy,
+        });
+        continue;
+      }
+
+      if (it.dispatched > 0)
+        out.push({
+          ...base,
+          ts: parseStamp(`${t.transferDate} 10:00`),
+          type: "Transfer Out",
+          qty: it.dispatched,
+          warehouse: t.srcWarehouse,
+          fromLoc: srcLoc,
+          toLoc: "IN-TRANSIT",
+          user: t.assignedTo || t.requestedBy,
+        });
+
+      if (it.received > 0)
+        out.push({
+          ...base,
+          ts: parseStamp(`${t.transferDate} 16:00`),
+          type: "Transfer In",
+          qty: it.received,
+          warehouse: t.dstWarehouse,
+          fromLoc: "IN-TRANSIT",
+          toLoc: it.dstBin || dstLoc,
+          user: "Suda R.",
+        });
+    }
+  }
 
   for (const r of SALES_RETURNS)
     for (const [i, it] of (r.items ?? []).entries()) {
@@ -756,18 +837,32 @@ function buildLedger(): MovementRow[] {
 const flipDirection = (d: MovementDirection): MovementDirection =>
   d === "In" ? "Out" : d === "Out" ? "In" : d;
 
-export const MOVEMENTS: MovementRow[] = buildLedger();
+/**
+ * The ledger is built once and cached. Posting a transfer rewrites the
+ * documents it reads, so a workflow calls invalidateMovements() and the next
+ * read rebuilds — the opening balance shifts and the closing balance still
+ * lands on the stock Stock Inquiry reports.
+ */
+let ledgerCache: MovementRow[] | null = null;
+let cardCache: ProductCardRow[] | null = null;
 
-export const movementRows = () => MOVEMENTS;
+export const movementRows = (): MovementRow[] => (ledgerCache ??= buildLedger());
+
+export function invalidateMovements() {
+  ledgerCache = null;
+  cardCache = null;
+}
 
 export const getMovement = (code: string) =>
-  MOVEMENTS.find((m) => m.code === code) ?? null;
+  movementRows().find((m) => m.code === code) ?? null;
 
 /* ---------- Product ledger ---------- */
 
 /** One product's movements, oldest first — the order the balance is built in. */
 export const productLedger = (product: string) =>
-  MOVEMENTS.filter((m) => m.product === product).sort((a, b) => a.ts - b.ts || a.seq - b.seq);
+  movementRows()
+    .filter((m) => m.product === product)
+    .sort((a, b) => a.ts - b.ts || a.seq - b.seq);
 
 export interface LedgerSummary {
   opening: number;
@@ -984,7 +1079,7 @@ export interface SerialMovementRow {
 
 export function movementsBySerial(product: string): SerialMovementRow[] {
   return STOCK_SERIALS.filter((s) => s.product === product).map((s) => {
-    const trail = MOVEMENTS.filter((m) => m.serial === s.serial);
+    const trail = movementRows().filter((m) => m.serial === s.serial);
     const pick = (module: string) => trail.find((m) => m.sourceModule === module);
     return {
       serial: s.serial,
@@ -1005,7 +1100,9 @@ export function movementsBySerial(product: string): SerialMovementRow[] {
 
 /** The lifecycle a serialised unit walks through, as far as it has got. */
 export function serialTimeline(serial: string) {
-  const trail = MOVEMENTS.filter((m) => m.serial === serial).sort((a, b) => a.ts - b.ts);
+  const trail = movementRows()
+    .filter((m) => m.serial === serial)
+    .sort((a, b) => a.ts - b.ts);
   return trail.map((m) => ({
     title: m.type,
     detail: m.sourceDoc ? `${m.sourceModuleLabel} ${m.sourceDoc}` : m.whLabel,
@@ -1042,7 +1139,7 @@ const dayKey = (ts: number) => {
  * "Today" is the most recent day the ledger actually recorded — the mock data
  * spans 2025–2026, so a literal today would read zero on every card.
  */
-export function movementSummary(rows: MovementRow[] = MOVEMENTS): MovementSummary {
+export function movementSummary(rows: MovementRow[] = movementRows()): MovementSummary {
   const latest = rows.length ? dayKey(Math.max(...rows.map((r) => r.ts))) : 0;
   const today = rows.filter((r) => dayKey(r.ts) === latest);
   const inToday = today.reduce((t, r) => t + r.qtyIn, 0);
@@ -1073,7 +1170,7 @@ export const isToday = (r: MovementRow, latest = movementSummary().latestDay) =>
 
 export const isThisWeek = (r: MovementRow) => {
   const latest = movementSummary().latestDay;
-  const ref = MOVEMENTS.find((m) => dayKey(m.ts) === latest)?.ts ?? 0;
+  const ref = movementRows().find((m) => dayKey(m.ts) === latest)?.ts ?? 0;
   return ref > 0 && ref - r.ts <= 7 * 86_400_000 && r.ts <= ref;
 };
 
@@ -1101,7 +1198,8 @@ export interface ProductCardRow extends RecordBase {
 }
 
 /** One row per product — the entry point to a full stock card. */
-export const PRODUCT_CARDS: ProductCardRow[] = PRODUCTS.map((p) => {
+const buildCards = (): ProductCardRow[] =>
+  PRODUCTS.map((p) => {
   const ledger = productLedger(p.code);
   const s = ledgerSummary(ledger);
   const t = productTotals(p.code);
@@ -1128,10 +1226,10 @@ export const PRODUCT_CARDS: ProductCardRow[] = PRODUCTS.map((p) => {
   };
 });
 
-export const productCards = () => PRODUCT_CARDS;
+export const productCards = (): ProductCardRow[] => (cardCache ??= buildCards());
 
 export const getProductCard = (code: string) =>
-  PRODUCT_CARDS.find((p) => p.code === code) ?? null;
+  productCards().find((p) => p.code === code) ?? null;
 
 /** Reservations and incoming come from Stock Inquiry — one source, not two. */
 export const cardReservations = productReservations;

@@ -66,12 +66,7 @@ export const NAV: NavGroup[] = [
       { label: "Inventory Workspace", href: "/inventory", icon: "warehouse" },
       { label: "Stock Inquiry", href: "/m/stock-inquiry", icon: "search" },
       { label: "Stock Card", href: "/m/stock-card", icon: "file" },
-      {
-        label: "Stock Transfer",
-        href: "/soon?m=Stock%20Transfer",
-        icon: "truck",
-        soon: true,
-      },
+      { label: "Stock Transfer", href: "/m/stock-transfer", icon: "truck" },
       {
         label: "Stock Adjustment",
         href: "/soon?m=Stock%20Adjustment",
