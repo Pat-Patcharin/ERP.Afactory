@@ -410,6 +410,7 @@ describe("Inventory Workspace — navigation", () => {
       ["Stock Inquiry", "/m/stock-inquiry"],
       ["Stock Card", "/m/stock-card"],
       ["Stock Transfer", "/m/stock-transfer"],
+      ["Stock Adjustment", "/m/stock-adjustment"],
     ];
     built.forEach(([label, href], i) => {
       expect(group!.items[i].label).toBe(label);
@@ -417,7 +418,7 @@ describe("Inventory Workspace — navigation", () => {
       expect(group!.items[i].soon).toBeUndefined();
     });
 
-    /* Adjustment, Count and tracking stay unbuilt. */
+    /* Cycle Count and the tracking modules stay unbuilt. */
     for (const item of group!.items.slice(built.length)) expect(item.soon).toBe(true);
   });
 

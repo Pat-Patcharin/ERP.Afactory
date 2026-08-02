@@ -25,6 +25,8 @@ import { stockCardSchemas } from "./stock-card";
 import { productStockCardSchemas } from "./product-stock-card";
 import { stockTransferSchemas } from "./stock-transfer";
 import { stockTransferForm } from "./forms/stock-transfer";
+import { stockAdjustmentSchemas } from "./stock-adjustment";
+import { stockAdjustmentForm } from "./forms/stock-adjustment";
 
 /**
  * Entity registry — the single place that maps a URL segment to its schemas.
@@ -65,6 +67,7 @@ export const REGISTRY: Record<string, EntitySchemas<any>> = {
   "stock-card": stockCardSchemas,
   "product-stock-card": productStockCardSchemas,
   "stock-transfer": { ...stockTransferSchemas, form: stockTransferForm },
+  "stock-adjustment": { ...stockAdjustmentSchemas, form: stockAdjustmentForm },
 };
 
 export const ENTITY_KEYS = Object.keys(REGISTRY);

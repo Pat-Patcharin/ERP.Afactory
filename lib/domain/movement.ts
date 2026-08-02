@@ -16,6 +16,8 @@ import { PICKING_TASKS, SALES_ORDERS } from "./outbound";
 import { SHIPMENTS } from "./shipment";
 import { SALES_RETURNS } from "./sales-return";
 import { TRANSFERS } from "@/data/transfers";
+import { ADJUSTMENTS } from "@/data/adjustments";
+import { lineMovementTypes } from "./adjustment";
 import {
   STOCK_LOTS,
   STOCK_POSITIONS,
@@ -212,6 +214,8 @@ const MODULE_LABEL: Record<string, string> = {
   picking: "Picking",
   shipment: "Shipment",
   "sales-return": "Sales Return",
+  "stock-transfer": "Stock Transfer",
+  "stock-adjustment": "Stock Adjustment",
   "purchase-order": "Purchase Order",
 };
 
@@ -501,6 +505,39 @@ function realEvents(product: string): Event[] {
           toLoc: it.dstBin || dstLoc,
           user: "Suda R.",
         });
+    }
+  }
+
+  /* Posted stock adjustments. A correction contributes a linked out/in pair
+     that nets to zero; a quantity adjustment is the only kind that moves the
+     balance, which is exactly what makes it worth approving. */
+  for (const a of ADJUSTMENTS) {
+    if (a.status !== "Posted") continue;
+    for (const [i, l] of (a.items ?? []).entries()) {
+      if (l.code !== product) continue;
+      const types = lineMovementTypes(l, a.reason);
+      const loc = [a.zone, a.rack, a.bin].filter(Boolean).join("-");
+
+      types.forEach((type, n) => {
+        const isOut = type.endsWith("Correction Out");
+        out.push({
+          ts: parseStamp(a.postedDate || `${a.adjDate} 14:30`) + n * 60_000,
+          type,
+          qty: l.qty,
+          doc: a.code,
+          module: "stock-adjustment",
+          line: l.line ?? i + 1,
+          docStatus: a.status,
+          partner: "",
+          warehouse: a.warehouse,
+          fromLoc: isOut ? l.locFrom || loc : l.locFrom || loc,
+          toLoc: isOut ? l.locFrom || loc : l.locTo || loc,
+          lot: isOut ? l.lot : l.lotTo || l.lot,
+          serial: (isOut ? l.serials : l.serialsTo)?.[0] ?? l.serials?.[0] ?? "",
+          user: a.postedBy || a.requestedBy,
+          reference: a.refDoc || a.reason,
+        });
+      });
     }
   }
 

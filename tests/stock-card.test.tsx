@@ -607,7 +607,7 @@ describe("Stock Card — navigation", () => {
   });
 
   it("leaves the modules this round must not build as coming soon", () => {
-    for (const label of ["Stock Adjustment", "Cycle Count"]) {
+    for (const label of ["Cycle Count"]) {
       expect(pageHref(label)).toBe(`/soon?m=${encodeURIComponent(label)}`);
     }
   });

@@ -67,12 +67,7 @@ export const NAV: NavGroup[] = [
       { label: "Stock Inquiry", href: "/m/stock-inquiry", icon: "search" },
       { label: "Stock Card", href: "/m/stock-card", icon: "file" },
       { label: "Stock Transfer", href: "/m/stock-transfer", icon: "truck" },
-      {
-        label: "Stock Adjustment",
-        href: "/soon?m=Stock%20Adjustment",
-        icon: "sliders",
-        soon: true,
-      },
+      { label: "Stock Adjustment", href: "/m/stock-adjustment", icon: "sliders" },
       {
         label: "Cycle Count",
         href: "/soon?m=Cycle%20Count",

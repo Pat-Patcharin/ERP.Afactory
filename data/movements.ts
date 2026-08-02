@@ -276,6 +276,91 @@ export const MOVEMENT_TYPES: MovementTypeDef[] = [
     to: "Available",
   },
 
+  /* ---------- Adjustment-driven status and correction moves ---------- */
+  {
+    type: "Damaged to Available",
+    direction: "Status Change",
+    group: "Status",
+    effect: { dmg: -1 },
+    from: "Damaged",
+    to: "Available",
+    module: "stock-adjustment",
+  },
+  {
+    /* Expiry is a condition of the lot, not a bucket — flagging stock expired
+       moves no quantity, it only changes what the stock may be used for. */
+    type: "Available to Expired",
+    direction: "Status Change",
+    group: "Status",
+    effect: {},
+    from: "Available",
+    to: "Expired",
+    module: "stock-adjustment",
+  },
+  {
+    /* Rejected stock stays on QC hold until it is scrapped or returned. */
+    type: "QC Hold to Rejected",
+    direction: "Status Change",
+    group: "Status",
+    effect: { blk: 1 },
+    from: "QC Hold",
+    to: "Rejected",
+    module: "stock-adjustment",
+  },
+  {
+    type: "Location Correction Out",
+    direction: "Transfer",
+    group: "Non-Quantity",
+    effect: {},
+    from: "Available",
+    to: "Available",
+    module: "stock-adjustment",
+  },
+  {
+    type: "Location Correction In",
+    direction: "Transfer",
+    group: "Non-Quantity",
+    effect: {},
+    from: "Available",
+    to: "Available",
+    module: "stock-adjustment",
+  },
+  {
+    type: "Lot Correction Out",
+    direction: "Transfer",
+    group: "Non-Quantity",
+    effect: {},
+    module: "stock-adjustment",
+  },
+  {
+    type: "Lot Correction In",
+    direction: "Transfer",
+    group: "Non-Quantity",
+    effect: {},
+    module: "stock-adjustment",
+  },
+  {
+    type: "Serial Correction Out",
+    direction: "Transfer",
+    group: "Non-Quantity",
+    effect: {},
+    module: "stock-adjustment",
+  },
+  {
+    type: "Serial Correction In",
+    direction: "Transfer",
+    group: "Non-Quantity",
+    effect: {},
+    module: "stock-adjustment",
+  },
+  {
+    type: "Expiry Correction",
+    direction: "No Quantity Change",
+    group: "Non-Quantity",
+    effect: {},
+    module: "stock-adjustment",
+  },
+
   /* ---------- Non-quantity ---------- */
   {
     type: "Location Change",
