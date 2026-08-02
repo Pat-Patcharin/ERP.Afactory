@@ -404,14 +404,20 @@ describe("Inventory Workspace — navigation", () => {
       "Barcode Lookup",
     ]);
 
-    /* Built so far: the workspace, then Stock Inquiry. */
-    expect(group!.items[0].href).toBe("/inventory");
-    expect(group!.items[0].soon).toBeUndefined();
-    expect(group!.items[1].href).toBe("/m/stock-inquiry");
-    expect(group!.items[1].soon).toBeUndefined();
+    /* Built so far: the workspace, Stock Inquiry, then Stock Card. */
+    const built: [string, string][] = [
+      ["Inventory Workspace", "/inventory"],
+      ["Stock Inquiry", "/m/stock-inquiry"],
+      ["Stock Card", "/m/stock-card"],
+    ];
+    built.forEach(([label, href], i) => {
+      expect(group!.items[i].label).toBe(label);
+      expect(group!.items[i].href).toBe(href);
+      expect(group!.items[i].soon).toBeUndefined();
+    });
 
-    /* Card, Transfer, Adjustment, Count and tracking stay unbuilt. */
-    for (const item of group!.items.slice(2)) expect(item.soon).toBe(true);
+    /* Transfer, Adjustment, Count and tracking stay unbuilt. */
+    for (const item of group!.items.slice(built.length)) expect(item.soon).toBe(true);
   });
 
   it("keeps Finance, Service, Reports and Settings as coming soon", () => {

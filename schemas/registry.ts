@@ -21,6 +21,8 @@ import { shpSchemas } from "./shipment";
 import { rtnSchemas } from "./sales-return";
 import { cnSchemas } from "./credit-note";
 import { stockInquirySchemas } from "./stock-inquiry";
+import { stockCardSchemas } from "./stock-card";
+import { productStockCardSchemas } from "./product-stock-card";
 
 /**
  * Entity registry — the single place that maps a URL segment to its schemas.
@@ -58,6 +60,8 @@ export const REGISTRY: Record<string, EntitySchemas<any>> = {
 
   /* Inventory */
   "stock-inquiry": stockInquirySchemas,
+  "stock-card": stockCardSchemas,
+  "product-stock-card": productStockCardSchemas,
 };
 
 export const ENTITY_KEYS = Object.keys(REGISTRY);
