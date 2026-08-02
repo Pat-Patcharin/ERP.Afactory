@@ -413,6 +413,7 @@ describe("Inventory Workspace — navigation", () => {
       ["Stock Adjustment", "/m/stock-adjustment"],
       ["Cycle Count", "/m/cycle-count"],
       ["Lot Tracking", "/m/lot-tracking"],
+      ["Serial Tracking", "/m/serial-tracking"],
     ];
     built.forEach(([label, href], i) => {
       expect(group!.items[i].label).toBe(label);
@@ -420,7 +421,7 @@ describe("Inventory Workspace — navigation", () => {
       expect(group!.items[i].soon).toBeUndefined();
     });
 
-    /* Serial Tracking and Barcode Lookup stay unbuilt. */
+    /* Barcode Lookup stays unbuilt. */
     for (const item of group!.items.slice(built.length)) expect(item.soon).toBe(true);
   });
 

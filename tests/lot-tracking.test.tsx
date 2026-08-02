@@ -694,7 +694,7 @@ describe("Lot Tracking — navigation", () => {
   });
 
   it("leaves the modules this round must not build as coming soon", () => {
-    for (const label of ["Serial Tracking", "Barcode Lookup"]) {
+    for (const label of ["Barcode Lookup"]) {
       expect(pageHref(label)).toBe(`/soon?m=${encodeURIComponent(label)}`);
     }
   });

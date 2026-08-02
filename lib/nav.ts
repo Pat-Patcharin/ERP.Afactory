@@ -70,12 +70,7 @@ export const NAV: NavGroup[] = [
       { label: "Stock Adjustment", href: "/m/stock-adjustment", icon: "sliders" },
       { label: "Cycle Count", href: "/m/cycle-count", icon: "checkCircle" },
       { label: "Lot Tracking", href: "/m/lot-tracking", icon: "layers" },
-      {
-        label: "Serial Tracking",
-        href: "/soon?m=Serial%20Tracking",
-        icon: "barcode",
-        soon: true,
-      },
+      { label: "Serial Tracking", href: "/m/serial-tracking", icon: "barcode" },
       {
         label: "Barcode Lookup",
         href: "/soon?m=Barcode%20Lookup",
