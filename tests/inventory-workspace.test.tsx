@@ -404,11 +404,14 @@ describe("Inventory Workspace — navigation", () => {
       "Barcode Lookup",
     ]);
 
-    const workspace = group!.items[0];
-    expect(workspace.href).toBe("/inventory");
-    expect(workspace.soon).toBeUndefined();
-    /* Stock Inquiry, Transfer and Adjustment must stay unbuilt this round. */
-    for (const item of group!.items.slice(1)) expect(item.soon).toBe(true);
+    /* Built so far: the workspace, then Stock Inquiry. */
+    expect(group!.items[0].href).toBe("/inventory");
+    expect(group!.items[0].soon).toBeUndefined();
+    expect(group!.items[1].href).toBe("/m/stock-inquiry");
+    expect(group!.items[1].soon).toBeUndefined();
+
+    /* Card, Transfer, Adjustment, Count and tracking stay unbuilt. */
+    for (const item of group!.items.slice(2)) expect(item.soon).toBe(true);
   });
 
   it("keeps Finance, Service, Reports and Settings as coming soon", () => {

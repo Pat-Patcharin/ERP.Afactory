@@ -60,6 +60,13 @@ export interface Column<T> {
   muted?: boolean;
   /** Value used for sorting when the cell renders something non-comparable. */
   sortValue?: (rec: T) => string | number;
+  /**
+   * Start hidden behind Column Settings. Wide operational tables offer far
+   * more columns than fit; this picks the ones that open by default.
+   */
+  defaultHidden?: boolean;
+  /** Never hideable — the column that identifies the row. */
+  locked?: boolean;
   cell: (rec: T) => ReactNode;
 }
 
@@ -142,12 +149,21 @@ export interface ListSchema<T extends RecordBase = RecordBase> {
     ctx: ActionCtx,
   ) => { label: string; icon?: IconName; danger?: boolean; run: () => void }[];
 
+  /**
+   * Summary panels rendered between the hero and the table, through the same
+   * BlockRenderer the detail tabs use. Lets an operational list carry its own
+   * widgets without the engine knowing what they contain.
+   */
+  panels?: (rows: T[], ctx: ActionCtx) => Block[];
+
   /** Defaults to opening the Quick View drawer. */
   onRowClick?: (rec: T, ctx: ActionCtx) => void;
   /** Defaults to navigating to /m/{key}/new. */
   onCreate?: (ctx: ActionCtx) => void;
   /** Hide the Import/Export toolbar pair for document modules. */
   hideImportExport?: boolean;
+  /** Read-only lists (an inquiry screen) have nothing to create. */
+  hideCreate?: boolean;
 }
 
 /* ---------- Detail blocks ---------- */

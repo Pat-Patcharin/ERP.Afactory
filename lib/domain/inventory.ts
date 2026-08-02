@@ -67,7 +67,7 @@ const sum = <T,>(rows: T[], pick: (r: T) => number) =>
  * years across modules. Normalise both so the activity feed sorts as one
  * timeline; used for ordering only, never for display.
  */
-function parseStamp(v: string | undefined): number {
+export function parseStamp(v: string | undefined): number {
   if (!v) return 0;
   const [date, time = "00:00"] = String(v).trim().split(" ");
   const [d, m, y] = date.split("/").map(Number);

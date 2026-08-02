@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn, getPath } from "@/lib/utils";
 import { fmt } from "@/lib/format";
 import { Icon } from "@/lib/icons";
@@ -15,6 +15,7 @@ import {
   FieldShell,
   IconButton,
   Menu,
+  MenuSep,
   Pagination,
   SearchInput,
   Select,
@@ -28,6 +29,7 @@ import {
 import { useActionCtx } from "./useActionCtx";
 import { ListHero } from "./ListHero";
 import { FilterDrawer } from "./FilterDrawer";
+import { BlockRenderer } from "./BlockRenderer";
 
 /**
  * Schema-driven master list. Renders the toolbar, status tabs with live
@@ -51,6 +53,40 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
   const [pageSize, setPageSize] = useState(20);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [compact, setCompact] = useState(false);
+
+  /* Column visibility. Seeded from the schema so the server and the first
+     client render agree; the saved choice loads after mount. */
+  const [hidden, setHidden] = useState<Set<string>>(
+    () => new Set(schema.columns.filter((c) => c.defaultHidden).map((c) => c.key)),
+  );
+  const colStoreKey = `afactory:cols:${schema.key}`;
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(colStoreKey);
+      if (saved) setHidden(new Set(JSON.parse(saved) as string[]));
+    } catch {
+      /* A blocked or corrupt store just means the defaults stand. */
+    }
+  }, [colStoreKey]);
+
+  const setColumnHidden = (key: string, hide: boolean) =>
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (hide) next.add(key);
+      else next.delete(key);
+      try {
+        window.localStorage.setItem(colStoreKey, JSON.stringify([...next]));
+      } catch {
+        /* Persistence is a convenience, never a requirement. */
+      }
+      return next;
+    });
+
+  const columns = useMemo(
+    () => schema.columns.filter((c) => c.locked || !hidden.has(c.key)),
+    [schema.columns, hidden],
+  );
 
   // `revision` is the invalidation signal: mock data lives in plain arrays, so
   // a mutation bumps the counter and every list recomputes.
@@ -178,15 +214,17 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
               {a.label}
             </Button>
           ))}
-          <Button
-            variant="primary"
-            onClick={() =>
-              schema.onCreate ? schema.onCreate(ctx) : ctx.goto(`/m/${schema.key}/new`)
-            }
-          >
-            <Icon name="plus" size={17} strokeWidth={2} />
-            {schema.primaryLabel}
-          </Button>
+          {!schema.hideCreate && (
+            <Button
+              variant="primary"
+              onClick={() =>
+                schema.onCreate ? schema.onCreate(ctx) : ctx.goto(`/m/${schema.key}/new`)
+              }
+            >
+              <Icon name="plus" size={17} strokeWidth={2} />
+              {schema.primaryLabel}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -226,6 +264,7 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
             <div key={f.id} className="w-[170px] max-md:min-w-[140px] max-md:flex-1">
               <FieldShell label={f.label}>
                 <Select
+                  aria-label={f.label}
                   value={filters[f.id] ?? ""}
                   onChange={(e) => {
                     setFilters((s) => ({ ...s, [f.id]: e.target.value }));
@@ -301,15 +340,60 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
           {fmt(rows.length)} {schema.entityPlural}
         </span>
         <div className="ml-auto flex gap-2">
-          <Button
-            size="sm"
-            onClick={() =>
-              ctx.toast("ตั้งค่าคอลัมน์", "เลือกคอลัมน์ที่ต้องการแสดง — Future support", "info")
-            }
+          <Menu
+            align="right"
+            className="max-h-[420px] w-[260px] overflow-y-auto"
+            trigger={({ toggle }) => (
+              <Button size="sm" onClick={toggle}>
+                <Icon name="columns" size={16} strokeWidth={2} />
+                Columns
+                {hidden.size > 0 && (
+                  <span className="ml-1 rounded-pill bg-primary-soft px-1.5 text-[11px] font-bold text-primary">
+                    {columns.length}/{schema.columns.length}
+                  </span>
+                )}
+              </Button>
+            )}
           >
-            <Icon name="columns" size={16} strokeWidth={2} />
-            Columns
-          </Button>
+            {() => (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHidden(new Set());
+                    try {
+                      window.localStorage.removeItem(colStoreKey);
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-[13px] font-semibold transition-colors duration-fast hover:bg-neutral-soft"
+                >
+                  <Icon name="eye" size={16} className="text-ink-2" />
+                  แสดงทุกคอลัมน์
+                </button>
+                <MenuSep />
+                {schema.columns.map((c) => (
+                  <label
+                    key={c.key}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-sm px-3 py-2 text-[13px]",
+                      c.locked
+                        ? "cursor-not-allowed opacity-50"
+                        : "cursor-pointer hover:bg-neutral-soft",
+                    )}
+                  >
+                    <Checkbox
+                      checked={c.locked || !hidden.has(c.key)}
+                      disabled={c.locked}
+                      onChange={(e) => setColumnHidden(c.key, !e.target.checked)}
+                    />
+                    {c.label}
+                  </label>
+                ))}
+              </>
+            )}
+          </Menu>
           <Button
             size="sm"
             onClick={() => {
@@ -356,7 +440,7 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
                     aria-label="Select all"
                   />
                 </Th>
-                {schema.columns.map((c) => (
+                {columns.map((c) => (
                   <Th
                     key={c.key}
                     align={c.align}
@@ -375,7 +459,7 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
             <tbody>
               {pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={schema.columns.length + 2}>
+                  <td colSpan={columns.length + 2}>
                     <Empty
                       heading={schema.emptyTitle ?? "ไม่พบข้อมูลที่ตรงกับเงื่อนไข"}
                       message="ลองปรับคำค้นหาหรือล้างตัวกรองเพื่อดูผลลัพธ์เพิ่มเติม"
@@ -403,7 +487,7 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
                         aria-label={`Select ${rec.code}`}
                       />
                     </Td>
-                    {schema.columns.map((c) => (
+                    {columns.map((c) => (
                       <Td key={c.key} align={c.align} muted={c.muted}>
                         {c.cell(rec)}
                       </Td>
@@ -447,6 +531,14 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
           }}
         />
       </Card>
+
+      {/* Schema-supplied summary widgets, drawn by the detail-tab renderer.
+          They sit below the table because they summarise what it filtered. */}
+      {schema.panels && (
+        <div className="mt-6 flex flex-col gap-4">
+          <BlockRenderer blocks={schema.panels(rows, ctx)} />
+        </div>
+      )}
 
       <FilterDrawer />
     </main>
