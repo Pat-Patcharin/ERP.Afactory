@@ -52,6 +52,51 @@ export const NAV: NavGroup[] = [
       { label: "Goods Receipt", href: "/m/goods-receipt", icon: "goodsReceipt" },
       { label: "QC Inspection", href: "/m/qc-inspection", icon: "qc" },
       { label: "Put Away", href: "/m/put-away", icon: "putAway" },
+      {
+        label: "Supplier Claim",
+        href: "/soon?m=Supplier%20Claim",
+        icon: "shield",
+        soon: true,
+      },
+    ],
+  },
+  {
+    label: "Inventory",
+    items: [
+      { label: "Inventory Workspace", href: "/inventory", icon: "warehouse" },
+      { label: "Stock Inquiry", href: "/soon?m=Stock%20Inquiry", icon: "search", soon: true },
+      { label: "Stock Card", href: "/soon?m=Stock%20Card", icon: "file", soon: true },
+      {
+        label: "Stock Transfer",
+        href: "/soon?m=Stock%20Transfer",
+        icon: "truck",
+        soon: true,
+      },
+      {
+        label: "Stock Adjustment",
+        href: "/soon?m=Stock%20Adjustment",
+        icon: "sliders",
+        soon: true,
+      },
+      {
+        label: "Cycle Count",
+        href: "/soon?m=Cycle%20Count",
+        icon: "checkCircle",
+        soon: true,
+      },
+      { label: "Lot Tracking", href: "/soon?m=Lot%20Tracking", icon: "layers", soon: true },
+      {
+        label: "Serial Tracking",
+        href: "/soon?m=Serial%20Tracking",
+        icon: "barcode",
+        soon: true,
+      },
+      {
+        label: "Barcode Lookup",
+        href: "/soon?m=Barcode%20Lookup",
+        icon: "search",
+        soon: true,
+      },
     ],
   },
   {
@@ -68,14 +113,100 @@ export const NAV: NavGroup[] = [
       { label: "Shipment", href: "/m/shipment", icon: "truck" },
       { label: "Sales Return", href: "/m/sales-return", icon: "return" },
       { label: "Credit Note", href: "/m/credit-note", icon: "creditNote" },
+      { label: "Promotion", href: "/soon?m=Promotion", icon: "promotion", soon: true },
     ],
   },
   {
-    label: "Other",
+    label: "Finance",
     items: [
-      { label: "Promotion", href: "/soon?m=Promotion", icon: "promotion", soon: true },
-      { label: "Reports", href: "/soon?m=Reports", icon: "reports", soon: true },
-      { label: "Settings", href: "/soon?m=Settings", icon: "settings", soon: true },
+      {
+        label: "Accounts Receivable",
+        href: "/soon?m=Accounts%20Receivable",
+        icon: "invoice",
+        soon: true,
+      },
+      {
+        label: "Accounts Payable",
+        href: "/soon?m=Accounts%20Payable",
+        icon: "creditNote",
+        soon: true,
+      },
+      {
+        label: "Payment Receipt",
+        href: "/soon?m=Payment%20Receipt",
+        icon: "pricing",
+        soon: true,
+      },
+      {
+        label: "General Ledger",
+        href: "/soon?m=General%20Ledger",
+        icon: "file",
+        soon: true,
+      },
+    ],
+  },
+  {
+    label: "Service",
+    items: [
+      {
+        label: "Service Request",
+        href: "/soon?m=Service%20Request",
+        icon: "file",
+        soon: true,
+      },
+      {
+        label: "Repair Order",
+        href: "/soon?m=Repair%20Order",
+        icon: "sliders",
+        soon: true,
+      },
+      {
+        label: "Warranty Claim",
+        href: "/soon?m=Warranty%20Claim",
+        icon: "shield",
+        soon: true,
+      },
+    ],
+  },
+  {
+    label: "Reports",
+    items: [
+      {
+        label: "Inventory Reports",
+        href: "/soon?m=Inventory%20Reports",
+        icon: "reports",
+        soon: true,
+      },
+      {
+        label: "Sales Reports",
+        href: "/soon?m=Sales%20Reports",
+        icon: "reports",
+        soon: true,
+      },
+      {
+        label: "Purchase Reports",
+        href: "/soon?m=Purchase%20Reports",
+        icon: "reports",
+        soon: true,
+      },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [
+      {
+        label: "Company Profile",
+        href: "/soon?m=Company%20Profile",
+        icon: "company",
+        soon: true,
+      },
+      { label: "User & Role", href: "/soon?m=User%20%26%20Role", icon: "users", soon: true },
+      {
+        label: "System Settings",
+        href: "/soon?m=System%20Settings",
+        icon: "settings",
+        soon: true,
+      },
     ],
   },
 ];

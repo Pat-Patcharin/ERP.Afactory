@@ -36,7 +36,20 @@
       "Bash(sed -n '/label: \"Outbound\"/,/^  },/p' lib/nav.ts)",
       "Bash(sed -i 's|import { rtnSchemas } from \"./sales-return\";|import { rtnSchemas } from \"./sales-return\";\\\\nimport { cnSchemas } from \"./credit-note\";|' schemas/registry.ts)",
       "Bash(sed -i 's|^  \"sales-return\": rtnSchemas,|  \"sales-return\": rtnSchemas,\\\\n  \"credit-note\": cnSchemas,|' schemas/registry.ts)",
-      "Bash(perl -0pi -e 's|\\\\{\\\\s*\\\\n\\\\s*label: \"Credit Note\",\\\\s*\\\\n\\\\s*href: \"/soon\\\\?m=Credit%20Note\",\\\\s*\\\\n\\\\s*icon: \"creditNote\",\\\\s*\\\\n\\\\s*soon: true,\\\\s*\\\\n\\\\s*\\\\},|{ label: \"Credit Note\", href: \"/m/credit-note\", icon: \"creditNote\" },|' lib/nav.ts)"
+      "Bash(perl -0pi -e 's|\\\\{\\\\s*\\\\n\\\\s*label: \"Credit Note\",\\\\s*\\\\n\\\\s*href: \"/soon\\\\?m=Credit%20Note\",\\\\s*\\\\n\\\\s*icon: \"creditNote\",\\\\s*\\\\n\\\\s*soon: true,\\\\s*\\\\n\\\\s*\\\\},|{ label: \"Credit Note\", href: \"/m/credit-note\", icon: \"creditNote\" },|' lib/nav.ts)",
+      "Bash(sed -n '/export interface ProductRow/,/^}/p' lib/domain/product.ts)",
+      "Bash(sed -n '/export function productStock/,/^}/p' lib/domain/product.ts)",
+      "PowerShell(npm run typecheck)",
+      "PowerShell($env:PORT=3100; Start-Process -FilePath \"npm\" -ArgumentList \"run\",\"start\",\"--\",\"-p\",\"3100\" -WindowStyle Hidden -PassThru | Select-Object Id | Out-String)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3100/inventory\" -UseBasicParsing -TimeoutSec 20; \"status=$\\($r.StatusCode\\) len=$\\($r.Content.Length\\)\" } catch { \"ERR: $\\($_.Exception.Message\\)\" })",
+      "PowerShell(npx next start -p 3100)",
+      "PowerShell($ok=$false; foreach \\($i in 1..25\\) { try { $r = Invoke-WebRequest -Uri \"http://localhost:3100/inventory\" -UseBasicParsing -TimeoutSec 5; \"ready after ${i}s status=$\\($r.StatusCode\\) len=$\\($r.Content.Length\\)\"; $ok=$true; break } catch { Start-Sleep -Milliseconds 900 } }; if \\(-not $ok\\) { \"NOT READY\" })",
+      "Bash(awk ' *)",
+      "PowerShell(npm install -D vitest@2 @vitejs/plugin-react jsdom @testing-library/react @testing-library/jest-dom 2>&1)",
+      "Bash(python -)",
+      "PowerShell(npm test 2>&1)",
+      "PowerShell(Move-Item vitest.config.ts vitest.config.mts -Force)",
+      "Bash(node -e ' *)"
     ]
   }
 }

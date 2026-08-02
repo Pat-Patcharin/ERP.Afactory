@@ -10,6 +10,7 @@ const EXTRA: Record<string, string> = {
   "Product Pricing": "/pricing",
   "Purchase Workspace": "/purchase",
   "Outbound Workspace": "/outbound",
+  "Inventory Workspace": "/inventory",
 };
 
 export function pageHref(page: string): string {
