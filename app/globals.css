@@ -46,6 +46,17 @@
   --c-neutral-soft: #f3f4f6;
   --c-neutral-text: #4b5563;
 
+  /* Chart series — the categorical palette. The ORDER is the safety
+     mechanism, not decoration: these six hues in this sequence clear the
+     colour-vision separation and normal-vision floors against the white
+     card surface. Re-order or substitute only after re-validating. */
+  --c-series-1: #eb6834;
+  --c-series-2: #2a78d6;
+  --c-series-3: #1baf7a;
+  --c-series-4: #eda100;
+  --c-series-5: #e87ba4;
+  --c-series-6: #4a3aa7;
+
   /* Radius */
   --r-card: 16px;
   --r-btn: 10px;

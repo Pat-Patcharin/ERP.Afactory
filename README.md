@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-เปิด http://localhost:3000 (จะเด้งไปที่ Purchase Workspace)
+เปิด http://localhost:3000 (จะเด้งไปที่ Dashboard — ERP Command Center)
 
 ## คำสั่งที่ใช้บ่อย
 
@@ -32,15 +32,18 @@ npm run dev
 ```
 app/
   (erp)/              app shell (sidebar + topbar + overlay hosts)
+    dashboard/        Dashboard — ERP Command Center
     m/[entity]/       list · detail · new · edit — 4 ไฟล์ครอบทุกโมดูล
     purchase/         Purchase Workspace
     outbound/         Outbound Workspace
+    inventory/        Inventory Workspace
     pricing/          Product Pricing Workspace
 
 components/
-  ui/                 primitives (Badge, Button, Table, Drawer, Modal, Toast, ...)
+  ui/                 primitives (Badge, Button, Table, Chart, Drawer, Modal, Toast, ...)
   engine/             ListView · BlockRenderer · DetailDrawer · FullDetail
   workspace/          ชิ้นส่วนที่ workspace ใช้ร่วมกัน
+  dashboard/          ชิ้นส่วนเฉพาะของ Dashboard (task list · alert list · overview · doc tabs)
 
 schemas/              1 ไฟล์ต่อ entity → { list, detail }
 lib/

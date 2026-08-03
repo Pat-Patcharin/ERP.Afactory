@@ -211,9 +211,20 @@ export function WsKpiCards({ kpis, cols = 4 }: { kpis: WsKpi[]; cols?: 4 | 5 }) 
 export function WsQuickActions({
   actions,
   cols = 2,
+  title = "Quick Actions",
 }: {
-  actions: { label: string; icon: string; goto: string; accent?: boolean }[];
-  cols?: 2 | 5;
+  actions: {
+    label: string;
+    icon: string;
+    goto: string;
+    accent?: boolean;
+    /** One line under the label. Omitted by the workspaces, used by the Dashboard. */
+    desc?: string;
+  }[];
+  /** 4 pairs with the Dashboard's three-column band: 2 across in the band,
+   *  4 across once the band stacks and the card runs full width. */
+  cols?: 2 | 4 | 5;
+  title?: string;
 }) {
   const go = useGoPage();
   const toast = useUI((s) => s.toast);
@@ -221,7 +232,7 @@ export function WsQuickActions({
   return (
     <Card className="p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-h3 font-semibold tracking-[-0.01em]">Quick Actions</h2>
+        <h2 className="text-h3 font-semibold tracking-[-0.01em]">{title}</h2>
         <IconButton
           aria-label="Configure"
           onClick={() => toast("ตั้งค่า Quick Actions", "Future support", "info")}
@@ -236,7 +247,9 @@ export function WsQuickActions({
           "grid gap-3",
           cols === 2
             ? "grid-cols-2 max-[1280px]:grid-cols-5 max-md:grid-cols-2"
-            : "grid-cols-5 max-md:grid-cols-2",
+            : cols === 4
+              ? "grid-cols-2 max-[1280px]:grid-cols-4 max-md:grid-cols-2"
+              : "grid-cols-5 max-md:grid-cols-2",
         )}
       >
         {actions.map((a) => (
@@ -259,7 +272,12 @@ export function WsQuickActions({
             >
               <Icon name={asIcon(a.icon)} size={22} />
             </span>
-            <span className="text-body font-medium leading-[1.35]">{a.label}</span>
+            <span className="flex flex-col gap-0.5">
+              <span className="text-body font-medium leading-[1.35]">{a.label}</span>
+              {a.desc && (
+                <span className="text-[11px] leading-snug text-ink-3">{a.desc}</span>
+              )}
+            </span>
           </button>
         ))}
       </div>
@@ -557,12 +575,30 @@ export interface WsTrendKpi {
  * Denser than WsKpiCards because twelve of them share one screen. The spark
  * carries the shape, the chip carries the number — neither needs a chart lib.
  */
-export function WsTrendKpiCards({ kpis }: { kpis: WsTrendKpi[] }) {
+export function WsTrendKpiCards({
+  kpis,
+  cols = 6,
+  deltaLabel = "vs สัปดาห์ก่อน",
+  testId = "ws-kpi-grid",
+}: {
+  kpis: WsTrendKpi[];
+  /** 6 packs twelve tiles onto one warehouse screen; 4 gives the Dashboard's
+   *  eight headline figures two even rows. */
+  cols?: 4 | 6;
+  /** Names the period the delta is measured against. */
+  deltaLabel?: string;
+  testId?: string;
+}) {
   const go = useGoPage();
   return (
     <div
-      data-testid="ws-kpi-grid"
-      className="grid grid-cols-6 gap-3 max-[1600px]:grid-cols-4 max-[1100px]:grid-cols-3 max-[820px]:grid-cols-2 max-md:grid-cols-1"
+      data-testid={testId}
+      className={cn(
+        "grid gap-3",
+        cols === 6
+          ? "grid-cols-6 max-[1600px]:grid-cols-4 max-[1100px]:grid-cols-3 max-[820px]:grid-cols-2 max-md:grid-cols-1"
+          : "grid-cols-4 max-[1280px]:grid-cols-2 max-md:grid-cols-1",
+      )}
     >
       {kpis.map((k) => {
         const up = k.delta > 0;
@@ -626,7 +662,7 @@ export function WsTrendKpiCards({ kpis }: { kpis: WsTrendKpi[] }) {
                 )}
                 {flat ? "0%" : `${Math.abs(k.delta)}%`}
               </span>
-              <span className="text-[11px] text-ink-3">vs สัปดาห์ก่อน</span>
+              <span className="text-[11px] text-ink-3">{deltaLabel}</span>
             </span>
 
             <span className="text-[11px] leading-snug text-ink-2">{k.desc}</span>

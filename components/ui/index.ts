@@ -2,6 +2,13 @@ export { Badge, DotBadge } from "./Badge";
 export { Button, IconButton, LinkButton } from "./Button";
 export { Card, CardHead, SectionTitle, Empty } from "./Card";
 export {
+  BarChart,
+  DonutChart,
+  SERIES,
+  type BarPoint,
+  type DonutSlice,
+} from "./Chart";
+export {
   CellInput,
   CellSelect,
   Checkbox,

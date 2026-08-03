@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
-/** Land on the purchasing command center — the busiest screen of the day. */
+/** Land on the Command Center — what happened, what needs attention, what
+ *  needs approval, and today's workload, before anyone picks a module. */
 export default function HomePage() {
-  redirect("/purchase");
+  redirect("/dashboard");
 }
