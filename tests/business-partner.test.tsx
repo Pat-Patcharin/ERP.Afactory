@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ListView } from "@/components/engine/ListView";
 import { FullDetail } from "@/components/engine/FullDetail";
 import { QuickViewHost } from "@/components/engine/QuickViewHost";
@@ -61,9 +61,12 @@ import {
 } from "@/lib/domain/partner-analytics";
 import { daysUntil } from "@/lib/format";
 import { ATTACHMENT_SEED } from "@/data/partner-profiles";
+import { USERS } from "@/data/admin";
+import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 import { NAV_INDEX } from "@/lib/nav";
 import { pageHref } from "@/lib/routes";
 import { getSchemas } from "@/schemas/registry";
+import type { ActionCtx } from "@/lib/types";
 import { bpSchemas } from "@/schemas/business-partner";
 import { BP_FORM } from "@/schemas/forms/business-partner";
 
@@ -100,6 +103,28 @@ const renderList = () =>
 const renderDetail = (code: string) => render(<FullDetail schema={detail} record={bp(code)} />);
 
 /* A partner of each shape, so the role-conditional paths all get exercised. */
+/** Action context stub — schemas only ever call these. */
+const makeCtx = (over: Partial<ActionCtx> = {}): ActionCtx => ({
+  goto: () => {},
+  openEntity: () => {},
+  toast: () => {},
+  confirm: () => {},
+  formModal: () => {},
+  refresh: () => {},
+  quickView: () => {},
+  panel: () => {},
+  ...over,
+});
+
+/** Block titles, flattened through grid nesting. Overview puts its cards
+ *  inside grids, so a top-level scan would miss every one of them. */
+const titlesOf = (blocks: unknown[]): string[] =>
+  blocks.filter(Boolean).flatMap((b) => {
+    const block = b as { type?: string; title?: string; items?: unknown[] };
+    if (block.type === "grid") return titlesOf(block.items ?? []);
+    return block.title ? [block.title] : [];
+  });
+
 const BOTH = "BP000123";
 const CUSTOMER = "BP000122";
 const SUPPLIER = "BP000121";
@@ -855,65 +880,93 @@ describe("BP Master — More Filters drawer", () => {
    ============================================================ */
 
 describe("BP Master — detail tabs", () => {
-  it("declares the eleven tabs the spec names", () => {
+  it("declares the five tabs the Enterprise Detail Layout defines", () => {
+    /* Down from eleven. Everything the removed tabs held moved into
+       Overview and Business — nothing was dropped, only regrouped. */
     expect(detail.tabs.map((t) => t.key)).toEqual([
       "overview",
+      "business",
+      "activity",
+      "attachments",
+      "audit",
+    ]);
+  });
+
+  it("no longer exposes the tabs the refactor removed", () => {
+    const keys = detail.tabs.map((t) => t.key);
+    for (const gone of [
       "addresses",
       "contacts",
       "customer",
       "supplier",
       "banks",
-      "attachments",
       "sales-report",
       "purchase-history",
-      "activity",
-      "audit",
-    ]);
+    ]) {
+      expect(keys, gone).not.toContain(gone);
+    }
   });
 
-  it("shows the Customer tab and hides Supplier for a pure customer", () => {
-    const rec = bp(CUSTOMER);
-    const visible = detail.tabs.filter((t) => !t.when || t.when(rec)).map((t) => t.key);
-    expect(visible).toContain("customer");
-    expect(visible).toContain("sales-report");
-    expect(visible).not.toContain("supplier");
-    expect(visible).not.toContain("purchase-history");
+  it("shows the same five tabs whatever the partner is", () => {
+    /* Customer and Supplier used to appear and disappear, which moved the
+       tab a user was aiming at. The set is now stable; the CARDS inside
+       Business are what vary. */
+    for (const code of [BOTH, CUSTOMER, SUPPLIER]) {
+      const rec = bp(code);
+      const visible = detail.tabs.filter((t) => !t.when || t.when(rec)).map((t) => t.key);
+      expect(visible, code).toEqual([
+        "overview",
+        "business",
+        "activity",
+        "attachments",
+        "audit",
+      ]);
+    }
   });
 
-  it("shows the Supplier tab and hides Customer for a pure supplier", () => {
-    const rec = bp(SUPPLIER);
-    const visible = detail.tabs.filter((t) => !t.when || t.when(rec)).map((t) => t.key);
-    expect(visible).toContain("supplier");
-    expect(visible).toContain("purchase-history");
-    expect(visible).not.toContain("customer");
-    expect(visible).not.toContain("sales-report");
+  it("gates the Audit tab on the audit permission", () => {
+    const auditTab = detail.tabs.find((t) => t.key === "audit")!;
+    expect(auditTab.when).toBeDefined();
+
+    /* Super Admin sees it. */
+    expect(auditTab.when!(bp(BOTH))).toBe(true);
+
+    /* A Sales Rep has no audit access, so the tab is not rendered at all. */
+    const rep = USERS.find((u) => u.roleCode === "SALES_REP" && u.status === "Active")!;
+    setCurrentUser(rep.code);
+    expect(auditTab.when!(bp(BOTH))).toBe(false);
+    resetCurrentUser();
   });
 
-  it("shows both sections when the partner is Both", () => {
-    const rec = bp(BOTH);
-    const visible = detail.tabs.filter((t) => !t.when || t.when(rec)).map((t) => t.key);
-    expect(visible).toContain("customer");
-    expect(visible).toContain("supplier");
-  });
-
-  it("renders the detail page with the General Information block", () => {
+  it("renders the detail page with the Overview cards the spec lists", () => {
     renderDetail(BOTH);
-    expect(screen.getAllByText("General Information").length).toBeGreaterThan(0);
-    expect(screen.getByText("Bill Type")).toBeInTheDocument();
-    expect(screen.getByText("Credit Term")).toBeInTheDocument();
-    expect(screen.getByText("Starting Date")).toBeInTheDocument();
+    for (const title of [
+      "General Information",
+      "Primary Contact",
+      "Address Information",
+      "Business Summary",
+      "Credit Summary",
+      "Business KPI",
+    ]) {
+      expect(screen.getAllByText(title).length, title).toBeGreaterThan(0);
+    }
   });
 
-  it("builds every visible tab without throwing", () => {
-    const ctx = {
-      goto: () => {},
-      openEntity: () => {},
-      toast: () => {},
-      confirm: () => {},
-      formModal: () => {},
-      refresh: () => {},
-      quickView: () => {},
-    };
+  it("lays Overview out as a card grid rather than a stack", () => {
+    const ctx = makeCtx();
+    const blocks = detail.tabs[0].blocks(bp(BOTH), ctx);
+    const grids = blocks.filter(
+      (x) => x && typeof x === "object" && x.type === "grid",
+    ) as { cols?: number; items: unknown[] }[];
+
+    expect(grids.length).toBeGreaterThanOrEqual(2);
+    /* Identity / contact / address read side by side. */
+    expect(grids[0].cols).toBe(3);
+    expect(grids[0].items).toHaveLength(3);
+  });
+
+  it("builds every visible tab for every partner shape without throwing", () => {
+    const ctx = makeCtx();
     for (const code of [BOTH, CUSTOMER, SUPPLIER]) {
       const rec = bp(code);
       for (const tab of detail.tabs) {
@@ -922,21 +975,111 @@ describe("BP Master — detail tabs", () => {
       }
     }
   });
+});
 
-  it("summarises only the first two addresses and points at the rest", () => {
-    const b = bp(CUSTOMER);
-    bpAddAddress(b, { name: "สาขา A", type: "Branch", l1: "1" });
-    bpAddAddress(b, { name: "สาขา B", type: "Branch", l1: "2" });
+describe("BP Master — Overview first", () => {
+  it("gives Overview a sticky summary rail with the spec's rows", () => {
+    const ctx = makeCtx();
+    const aside = detail.tabs[0].aside!(bp(BOTH), ctx);
+    const labels = aside.rows.map((r) => r.label);
 
-    const ctx = { goto: () => {} } as never;
-    const blocks = detail.tabs.find((t) => t.key === "addresses")!.blocks(b, ctx);
-    const summary = blocks.find(
-      (x) => x && typeof x === "object" && x.type === "entity",
-    ) as { items: unknown[] };
+    for (const l of [
+      "Customer Since",
+      "Supplier Since",
+      "Sales Rep",
+      "Payment Terms",
+      "Price List",
+      "Currency",
+      "Outstanding",
+      "Credit Status",
+    ]) {
+      expect(labels, l).toContain(l);
+    }
+  });
 
-    expect(summary.items).toHaveLength(2);
-    expect(b.addresses.length).toBeGreaterThan(2);
-    expect(blocks.some((x) => x && typeof x === "object" && x.type === "note")).toBe(true);
+  it("puts View All and recent documents in the rail's quick links", () => {
+    const ctx = makeCtx();
+    const links = detail.tabs[0].aside!(bp(BOTH), ctx).links ?? [];
+    const labels = links.map((l) => l.label);
+
+    expect(labels).toContain("View All Addresses");
+    expect(labels).toContain("View All Contacts");
+    expect(labels).toContain("View All Bank Accounts");
+    /* Recent documents follow the View All links. */
+    expect(links.length).toBeGreaterThan(3);
+  });
+
+  it("opens the address list in a panel instead of a tab", () => {
+    const panel = vi.fn();
+    const ctx = makeCtx({ panel });
+    const link = detail.tabs[0].aside!(bp(BOTH), ctx).links!.find(
+      (l) => l.label === "View All Addresses",
+    )!;
+
+    link.run();
+    expect(panel).toHaveBeenCalledTimes(1);
+    const opts = panel.mock.calls[0][0];
+    expect(opts.title).toBe("All Addresses");
+    expect(opts.blocks.length).toBeGreaterThan(0);
+  });
+
+  it("opens the contact and bank lists in panels too", () => {
+    const panel = vi.fn();
+    const ctx = makeCtx({ panel });
+    const links = detail.tabs[0].aside!(bp(BOTH), ctx).links!;
+
+    links.find((l) => l.label === "View All Contacts")!.run();
+    expect(panel.mock.calls[0][0].title).toBe("All Contacts");
+
+    links.find((l) => l.label === "View All Bank Accounts")!.run();
+    expect(panel.mock.calls[1][0].title).toBe("All Bank Accounts");
+  });
+
+  it("shows only the default bank account on the Business tab", () => {
+    const ctx = makeCtx();
+    const titles = titlesOf(detail.tabs.find((t) => t.key === "business")!.blocks(bp(BOTH), ctx));
+
+    expect(titles).toContain("Default Bank Account");
+    /* The full list is behind the panel, not inline. */
+    expect(titles).not.toContain("Bank Accounts");
+  });
+
+  it("merges Customer and Supplier into one Business tab", () => {
+    const ctx = makeCtx();
+    const both = titlesOf(detail.tabs.find((t) => t.key === "business")!.blocks(bp(BOTH), ctx));
+    expect(both).toContain("Customer Information");
+    expect(both).toContain("Supplier Information");
+    expect(both.some((t) => t.startsWith("Supplier Items"))).toBe(true);
+    expect(both).toContain("Payment Information");
+
+    /* A pure customer gets the customer card and no supplier card. */
+    const custOnly = titlesOf(detail.tabs.find((t) => t.key === "business")!.blocks(bp(CUSTOMER), ctx));
+    expect(custOnly).toContain("Customer Information");
+    expect(custOnly).not.toContain("Supplier Information");
+  });
+
+  it("merges the sales and purchase reports into one Activity tab", () => {
+    const ctx = makeCtx();
+    const titles = titlesOf(detail.tabs.find((t) => t.key === "activity")!.blocks(bp(BOTH), ctx));
+
+    expect(titles).toContain("Document Statistics");
+    expect(titles).toContain("Sales Summary");
+    expect(titles).toContain("Purchase Summary");
+    expect(titles.some((t) => t?.startsWith("Latest Activities"))).toBe(true);
+  });
+
+  it("omits the credit card entirely for a role that cannot see credit", () => {
+    /* Layer 2 of the permission framework: not disabled, not dotted out —
+       the card is never built. */
+    const ctx = makeCtx();
+    const titleList = () => titlesOf(detail.tabs[0].blocks(bp(BOTH), ctx));
+
+    expect(titleList()).toContain("Credit Summary");
+
+    const rep = USERS.find((u) => u.roleCode === "SALES_REP" && u.status === "Active")!;
+    setCurrentUser(rep.code);
+    expect(titleList()).not.toContain("Credit Summary");
+    resetCurrentUser();
   });
 });
 
@@ -1114,6 +1257,7 @@ describe("BP Master — module wiring", () => {
       formModal: () => {},
       refresh: () => {},
       quickView: () => {},
+      panel: () => {},
     };
     const del = list.rowActions(withTxn, ctx).find((a) => a.label === "Delete")!;
     expect(del.disabled).toBe(true);

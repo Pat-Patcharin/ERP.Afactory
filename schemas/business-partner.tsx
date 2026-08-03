@@ -5,6 +5,7 @@ import {
   bpBillingAddress,
   bpDeliveryAddress,
   bpDaysUntil,
+  bpDefaultBank,
   bpExpiringDocs,
   bpValidate,
   canBill,
@@ -40,8 +41,15 @@ import {
 import { BP_TONE, CREDIT_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
 import { checkPermission, maskAccount } from "@/lib/permissions";
+import { can } from "@/lib/domain/admin";
 import { cn } from "@/lib/utils";
-import type { BadgeTone, DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
+import type {
+  ActionCtx,
+  BadgeTone,
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+} from "@/lib/types";
 import { Badge, CellSub, Thumb } from "@/components/ui";
 import { Icon, type IconName } from "@/lib/icons";
 import { BP_FORM } from "./forms/business-partner";
@@ -59,6 +67,191 @@ const SUPPLIER_STATUS_TONE: Record<string, BadgeTone> = {
   Watch: "warning",
   Suspended: "danger",
 };
+
+/* ============================================================
+   Overview-first helpers.
+
+   Overview shows the DEFAULT address, the PRIMARY contact and the
+   DEFAULT bank account. The full lists live behind ctx.panel() —
+   a drawer rather than a tab, because a user who wants the second
+   delivery address wants it without losing the page they are on.
+   ============================================================ */
+
+/** Inline "View All …" affordance inside a field row. */
+function LinkAction({
+  label,
+  icon = "arrowRight",
+  onClick,
+}: {
+  label: string;
+  icon?: IconName;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group inline-flex items-center gap-1 font-medium text-info hover:underline"
+    >
+      <Icon name={icon} size={14} />
+      {label}
+    </button>
+  );
+}
+
+/** Stand-in for the real asset; the gallery stores an emoji today. */
+function ImagePreview({ src, name }: { src: string; name: string }) {
+  return (
+    <div className="mb-4 grid place-items-center rounded-card border border-line bg-surface py-10 text-[64px]">
+      <span aria-label={name}>{src}</span>
+    </div>
+  );
+}
+
+function openAddressPanel(b: BpRow, ctx: ActionCtx) {
+  ctx.panel({
+    title: "All Addresses",
+    subtitle: `${b.nameTh} · ${b.addressCount} ที่อยู่`,
+    blocks: [
+      {
+        type: "table",
+        rows: b.addresses,
+        empty: "ยังไม่มีที่อยู่",
+        cols: [
+          {
+            key: "name",
+            label: "Address",
+            cell: (a: BpRow["addresses"][number]) => (
+              <span className="flex flex-col gap-1">
+                <span className="font-medium">
+                  {a.name}
+                  <span className="ml-1.5 inline-flex gap-1">
+                    {a.billingPrimary && <Badge tone="primary">Billing</Badge>}
+                    {a.deliveryPrimary && <Badge tone="info">Delivery</Badge>}
+                    {!a.active && <Badge tone="neutral">Inactive</Badge>}
+                  </span>
+                </span>
+                <span className="text-cap text-ink-2">{addressLine(a)}</span>
+                <span className="text-cap text-ink-3">
+                  {a.type}
+                  {a.contact ? ` · ${a.contact}` : ""}
+                  {a.phone ? ` · ${a.phone}` : ""}
+                  {a.email ? ` · ${a.email}` : ""}
+                </span>
+                {hasCoordinates(a) && (
+                  <button
+                    onClick={() => ctx.goto(mapUrl(a))}
+                    className="inline-flex items-center gap-1 self-start text-cap font-medium text-info hover:underline"
+                  >
+                    <Icon name="mapPin" size={13} />
+                    {a.lat}, {a.lng}
+                  </button>
+                )}
+                {a.remark && <span className="text-cap text-ink-3">{a.remark}</span>}
+              </span>
+            ),
+          },
+        ],
+      },
+    ],
+  });
+}
+
+function openContactPanel(b: BpRow, ctx: ActionCtx) {
+  ctx.panel({
+    title: "All Contacts",
+    subtitle: `${b.nameTh} · ${b.contactCount} คน`,
+    blocks: [
+      {
+        type: "table",
+        rows: b.contacts,
+        empty: "ยังไม่มีผู้ติดต่อ",
+        cols: [
+          {
+            key: "name",
+            label: "Contact",
+            cell: (c: BpRow["contacts"][number]) => (
+              <span className="flex flex-col gap-1">
+                <span className="font-medium">
+                  {c.prefix}
+                  {c.first} {c.last}
+                  {c.primary && (
+                    <span className="ml-1.5">
+                      <Badge tone="primary">Primary</Badge>
+                    </span>
+                  )}
+                  {!c.active && (
+                    <span className="ml-1.5">
+                      <Badge tone="neutral">Inactive</Badge>
+                    </span>
+                  )}
+                </span>
+                <span className="text-cap text-ink-2">
+                  {[c.pos, c.dept].filter(Boolean).join(" · ") || DASH}
+                </span>
+                <span className="text-cap text-ink-3 tnum">
+                  {[c.mobile, c.phone].filter(Boolean).join(" · ") || DASH}
+                </span>
+                <span className="text-cap text-ink-3">
+                  {[c.email, c.line].filter(Boolean).join(" · ") || DASH}
+                </span>
+                {c.remark && <span className="text-cap text-ink-3">{c.remark}</span>}
+              </span>
+            ),
+          },
+        ],
+      },
+    ],
+  });
+}
+
+function openBankPanel(b: BpRow, ctx: ActionCtx) {
+  ctx.panel({
+    title: "All Bank Accounts",
+    subtitle: `${b.nameTh} · ${b.bankCount} บัญชี`,
+    blocks: [
+      !checkPermission("canViewBank") && {
+        type: "alert",
+        tone: "warn",
+        title: "เลขบัญชีถูกปกปิด",
+        message: "ต้องมีสิทธิ์ Finance จึงจะเห็นเลขบัญชีเต็ม",
+      },
+      {
+        type: "table",
+        rows: b.banks,
+        empty: "ยังไม่มีบัญชีธนาคาร",
+        cols: [
+          {
+            key: "bank",
+            label: "Account",
+            cell: (k: BpRow["banks"][number]) => (
+              <span className="flex flex-col gap-1">
+                <span className="font-medium">
+                  {k.bank}
+                  {k.def && (
+                    <span className="ml-1.5">
+                      <Badge tone="primary">Default</Badge>
+                    </span>
+                  )}
+                  {!k.active && (
+                    <span className="ml-1.5">
+                      <Badge tone="neutral">Inactive</Badge>
+                    </span>
+                  )}
+                </span>
+                <span className="text-cap text-ink-2">{k.accName}</span>
+                <span className="text-cap text-ink-3 tnum">
+                  {maskAccount(k.accNo)} · {k.accType} · {k.currency}
+                  {k.swift ? ` · SWIFT ${k.swift}` : ""}
+                </span>
+                <span className="text-cap text-ink-3">{k.branch || DASH}</span>
+              </span>
+            ),
+          },
+        ],
+      },
+    ],
+  });
+}
 
 /* ============================================================
    BUSINESS PARTNER
@@ -460,76 +653,138 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
     tags: [b.type, b.nameEn || b.trade || "", b.province].filter(Boolean),
   }),
 
+  /* ---------- Sticky KPI summary ---------- */
   kpis: (b) => {
     const cust = b.customer;
     const sup = b.supplier;
+    const last = bpLastPurchase(b);
+    const credit = checkPermission("canViewCredit");
+
     return [
-      cust
-        ? {
-            icon: "tag",
-            label: "Credit Limit",
-            value: checkPermission("canViewCredit") ? money0(cust.creditLimit) : "••••",
-            sub: "THB",
-            goTab: "customer",
-          }
-        : {
-            icon: "truck",
-            label: "Lead Time",
-            value: sup ? `${bpAverageLeadTime(b)}` : DASH,
-            sub: "วัน",
-            goTab: "supplier",
-          },
-      cust
-        ? {
-            icon: "cart",
-            label: "Credit Used",
-            value: checkPermission("canViewCredit") ? money0(cust.creditUsed) : "••••",
-            sub: "THB",
-            goTab: "customer",
-          }
-        : {
-            icon: "box",
-            label: "Quoted Items",
-            value: fmt(b.supplierItemCount),
-            sub: "รายการ",
-            goTab: "supplier",
-          },
       {
-        icon: "shield",
-        label: cust ? "Available Credit" : "Supplier Status",
-        value: cust
-          ? checkPermission("canViewCredit")
-            ? money0(b.availableCredit)
-            : "••••"
-          : (sup?.status ?? DASH),
-        sub: cust ? `Term ${b.creditTerm}` : (sup?.supType ?? ""),
-        goTab: cust ? "customer" : "supplier",
+        icon: "tag",
+        label: "Credit Limit",
+        value: cust ? (credit ? money0(cust.creditLimit) : "••••") : DASH,
+        sub: cust ? "THB" : "ไม่ใช่ลูกค้า",
+        goTab: "business",
       },
       {
-        icon: "partner",
-        label: b.bpMode,
-        value: cust ? b.salesRep : (sup?.currency ?? DASH),
-        sub: b.province,
+        icon: "cart",
+        label: "Credit Used",
+        value: cust ? (credit ? money0(cust.creditUsed) : "••••") : DASH,
+        sub: cust ? `Term ${b.creditTerm}` : "",
+        goTab: "business",
+      },
+      {
+        icon: "shield",
+        label: "Available Credit",
+        value: cust ? (credit ? money0(b.availableCredit) : "••••") : DASH,
+        sub: b.creditStatus,
+        goTab: "business",
+      },
+      {
+        icon: "clock",
+        label: "Last Transaction",
+        value: last.date || DASH,
+        sub: last.doc || (sup ? "ผู้ขาย" : "ยังไม่มีรายการ"),
         wide: true,
-        goTab: cust ? "customer" : "supplier",
+        goTab: "activity",
       },
     ];
   },
 
+  /* ============================================================
+     FIVE TABS.
+
+     The eleven this replaced meant a user opened four of them
+     just to answer "who is this and can they order?". Overview
+     now carries that whole answer; the rest group by intent —
+     Business is configuration, Activity is what happened,
+     Attachments is files, Audit is the trail.
+
+     Nothing was dropped. Addresses, Contacts and Bank Accounts
+     moved into Overview and Business as summaries with a
+     "View All" panel behind them.
+     ============================================================ */
   tabs: [
     /* ============================================================
-       1. OVERVIEW — General Information, roles, tax and the gallery.
+       1. OVERVIEW — the whole record at a glance.
        ============================================================ */
     {
       key: "overview",
       label: "Overview",
-      blocks: (b) => {
+      aside: (b, ctx) => {
+        const last = bpLastPurchase(b);
+        const credit = checkPermission("canViewCredit");
+        const docs = [
+          ...bpSalesOrders(b).slice(0, 3).map((s) => ({
+            label: s.code,
+            sub: `${s.orderDate} · ${money0(s.total)}`,
+            icon: "salesOrder" as IconName,
+            run: () => ctx.openEntity("sales-order", s.code),
+          })),
+          ...(b.txn?.inv ?? []).slice(0, 2).map((i) => ({
+            label: i.no,
+            sub: `${i.date} · ${money0(i.amount)}`,
+            icon: "invoice" as IconName,
+            run: () => ctx.openEntity("sales-invoice", i.no),
+          })),
+        ];
+
+        return {
+          title: "Business Partner Summary",
+          rows: [
+            { icon: "calendar", label: "Customer Since", value: b.customer ? b.since || DASH : DASH },
+            { icon: "calendar", label: "Supplier Since", value: b.supplier ? b.since || DASH : DASH },
+            { icon: "salesRep", label: "Sales Rep", value: b.salesRep },
+            { icon: "tag", label: "Payment Terms", value: b.payTerm },
+            { icon: "priceList", label: "Price List", value: b.customer?.priceList ?? DASH },
+            { icon: "pricing", label: "Currency", value: b.supplier?.currency ?? "THB" },
+            {
+              icon: "cart",
+              label: "Outstanding",
+              value: credit ? money0(b.creditUsed) : "••••",
+            },
+            {
+              icon: "shield",
+              label: "Credit Status",
+              value: <Badge tone={tone(CREDIT_TONE, b.creditStatus)}>{b.creditStatus}</Badge>,
+            },
+          ],
+          links: [
+            {
+              label: "View All Addresses",
+              icon: "mapPin" as IconName,
+              sub: `${b.addressCount} ที่อยู่`,
+              run: () => openAddressPanel(b, ctx),
+            },
+            {
+              label: "View All Contacts",
+              icon: "users" as IconName,
+              sub: `${b.contactCount} คน`,
+              run: () => openContactPanel(b, ctx),
+            },
+            {
+              label: "View All Bank Accounts",
+              icon: "pricing" as IconName,
+              sub: `${b.bankCount} บัญชี`,
+              run: () => openBankPanel(b, ctx),
+            },
+            ...docs,
+          ],
+        };
+      },
+      blocks: (b, ctx) => {
         const issues = bpValidate(b);
         const blocking = issues.filter((i) => i.blocking);
-        const warnings = issues.filter((i) => !i.blocking);
         const billing = bpBillingAddress(b);
+        const delivery = bpDeliveryAddress(b);
+        const contact = b.contacts.find((c) => c.primary) ?? b.contacts[0] ?? null;
         const t = b.tax;
         const taxOk = validThaiTaxId(t.taxId);
+        const credit = checkPermission("canViewCredit");
+        const salesKpi = b.customer ? bpCustomerKpi(b) : null;
+        const purchaseKpi = b.supplier ? bpPurchaseKpi(b) : null;
 
         return [
           blocking.length > 0 && {
@@ -538,396 +793,242 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             title: `ข้อมูลไม่ครบ ${blocking.length} รายการ`,
             message: blocking.map((i) => i.message).join(" · "),
           },
-          warnings.length > 0 && {
-            type: "alert",
-            tone: "info",
-            title: `ข้อมูลที่ควรเพิ่ม ${warnings.length} รายการ`,
-            message: warnings.map((i) => i.message).join(" · "),
-          },
 
+          /* ---- Row 1: identity, contact, address ---- */
           {
-            type: "fields",
-            title: "General Information",
-            cols: 2,
+            type: "grid",
+            cols: 3,
             items: [
-              { label: "BP Code", value: b.code },
               {
-                label: "BP Type",
-                value: (
-                  <Badge
-                    tone={
-                      b.bpMode === "Both" ? "primary" : b.bpMode === "Supplier" ? "info" : "success"
-                    }
-                  >
-                    {b.bpMode}
-                  </Badge>
-                ),
-              },
-              { label: "BP Name (TH)", value: b.nameTh },
-              { label: "BP Name (EN)", value: b.nameEn || DASH },
-              { label: "Status", value: <Badge tone={tone(BP_TONE, b.status)}>{b.status}</Badge> },
-              {
-                label: "Tax ID",
-                value: t.taxId ? (
-                  <>
-                    <span className="tnum">{t.taxId}</span>
-                    {taxOk ? (
-                      <span className="ml-1 text-success-text">✓</span>
+                type: "fields",
+                title: "General Information",
+                cols: 1,
+                items: [
+                  { label: "BP Code", value: b.code },
+                  { label: "BP Name (TH)", value: b.nameTh },
+                  { label: "BP Name (EN)", value: b.nameEn || DASH },
+                  { label: "Status", value: <Badge tone={tone(BP_TONE, b.status)}>{b.status}</Badge> },
+                  {
+                    label: "BP Type",
+                    value: (
+                      <Badge
+                        tone={
+                          b.bpMode === "Both" ? "primary" : b.bpMode === "Supplier" ? "info" : "success"
+                        }
+                      >
+                        {b.bpMode}
+                      </Badge>
+                    ),
+                  },
+                  { label: "Entity Type", value: b.type },
+                  {
+                    label: "Tax ID",
+                    value: t.taxId ? (
+                      <>
+                        <span className="tnum">{t.taxId}</span>
+                        {taxOk ? (
+                          <span className="ml-1 text-success-text">✓</span>
+                        ) : (
+                          <span className="ml-1 text-danger-text">✕</span>
+                        )}
+                      </>
                     ) : (
-                      <span className="ml-1 text-danger-text">✕</span>
-                    )}
-                  </>
-                ) : (
-                  DASH
-                ),
+                      DASH
+                    ),
+                  },
+                  {
+                    label: "Bill Type",
+                    value: <Badge tone={b.billType === "VAT" ? "info" : "neutral"}>{b.billType}</Badge>,
+                  },
+                  {
+                    label: "Credit Term",
+                    value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน`,
+                  },
+                  { label: "Starting Date", value: b.since || DASH },
+                ],
               },
+
               {
-                label: "Bill Type",
-                value: <Badge tone={b.billType === "VAT" ? "info" : "neutral"}>{b.billType}</Badge>,
+                type: "fields",
+                title: "Primary Contact",
+                cols: 1,
+                items: [
+                  { label: "ชื่อผู้ติดต่อหลัก", value: b.contactName },
+                  { label: "ตำแหน่ง", value: contact?.pos || DASH },
+                  { label: "Telephone", value: <span className="tnum">{b.phone}</span> },
+                  { label: "Mobile Phone", value: <span className="tnum">{b.mobile}</span> },
+                  { label: "Email", value: b.email },
+                  { label: "Line ID", value: contact?.line || DASH, muted: true },
+                  {
+                    label: "",
+                    value: (
+                      <LinkAction
+                        label={`View All Contacts (${b.contactCount})`}
+                        onClick={() => openContactPanel(b, ctx)}
+                      />
+                    ),
+                    span: true,
+                  },
+                ],
               },
+
               {
-                label: "Credit Term",
-                value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน`,
+                type: "fields",
+                title: "Address Information",
+                cols: 1,
+                items: [
+                  {
+                    label: "ที่อยู่สำหรับออกบิล (Billing)",
+                    value: billing ? addressLine(billing) : DASH,
+                    span: true,
+                  },
+                  {
+                    label: "ที่อยู่สำหรับจัดส่ง (Delivery)",
+                    value: delivery ? addressLine(delivery) : "ใช้ที่อยู่ออกบิล",
+                    span: true,
+                  },
+                  { label: "Province", value: b.province },
+                  { label: "Postal Code", value: billing?.zip || DASH },
+                  { label: "Country", value: billing?.country || "ประเทศไทย" },
+                  {
+                    label: "Google Map",
+                    value:
+                      billing && hasCoordinates(billing) ? (
+                        <LinkAction
+                          label={`${billing.lat}, ${billing.lng}`}
+                          icon="mapPin"
+                          onClick={() => ctx.goto(mapUrl(billing))}
+                        />
+                      ) : (
+                        DASH
+                      ),
+                  },
+                  {
+                    label: "",
+                    value: (
+                      <LinkAction
+                        label={`View All Addresses (${b.addressCount})`}
+                        onClick={() => openAddressPanel(b, ctx)}
+                      />
+                    ),
+                    span: true,
+                  },
+                ],
               },
-              { label: "Starting Date", value: b.since || DASH },
-              { label: "Entity Type", value: b.type },
             ],
           },
 
+          /* ---- Row 2: business + credit ---- */
           {
-            type: "fields",
-            title: "Key Contact",
+            type: "grid",
             cols: 2,
             items: [
-              { label: "Key Contact Person", value: b.contactName },
-              { label: "Telephone", value: <span className="tnum">{b.phone}</span> },
-              { label: "Mobile Phone", value: <span className="tnum">{b.mobile}</span> },
-              { label: "Email", value: b.email },
-              { label: "Website", value: b.website || DASH },
-              { label: "Primary Province", value: b.province },
               {
-                label: "Billing Address",
-                value: addressLine(billing),
-                span: true,
-                muted: true,
+                type: "fields",
+                title: "Business Summary",
+                cols: 2,
+                items: [
+                  { label: "Sales Representative", value: b.salesRep },
+                  { label: "Customer Type", value: b.customerType },
+                  { label: "Supplier Type", value: b.supplierType },
+                  { label: "Business Type", value: b.businessType },
+                  { label: "Customer Size", value: b.customer?.size ?? DASH },
+                  {
+                    label: "Preferred Supplier",
+                    value: b.supplier ? (
+                      b.supplier.preferred ? (
+                        <Badge tone="success">Preferred</Badge>
+                      ) : (
+                        "ผู้ขายทั่วไป"
+                      )
+                    ) : (
+                      DASH
+                    ),
+                  },
+                  { label: "Payment Terms", value: b.payTerm },
+                  { label: "Price List", value: b.customer?.priceList ?? DASH },
+                  { label: "Currency", value: b.supplier?.currency ?? "THB" },
+                  { label: "Sale Area", value: b.salesArea },
+                ],
               },
+
+              credit
+                ? {
+                    type: "fields",
+                    title: "Credit Summary",
+                    cols: 2,
+                    items: [
+                      { label: "Credit Limit", value: `${money0(b.creditLimit)} THB` },
+                      { label: "Credit Used", value: `${money0(b.creditUsed)} THB` },
+                      { label: "Available Credit", value: `${money0(b.availableCredit)} THB` },
+                      { label: "Outstanding", value: `${money0(b.credit.openInv)} THB` },
+                      {
+                        label: "Credit Status",
+                        value: <Badge tone={tone(CREDIT_TONE, b.creditStatus)}>{b.creditStatus}</Badge>,
+                      },
+                      { label: "Credit Days", value: `${b.credit.days} วัน` },
+                      {
+                        label: "Credit Hold",
+                        value: b.customer?.creditHold ? (
+                          <Badge tone="danger">ระงับ</Badge>
+                        ) : (
+                          "ปกติ"
+                        ),
+                      },
+                      { label: "Risk Level", value: b.riskLevel },
+                    ],
+                  }
+                : /* Layer 2: a role without credit sight gets no card at all,
+                     not a card full of dots. */
+                  null,
             ],
           },
 
-          { type: "note", title: "Remarks", text: b.notes || DASH },
-
-          {
-            type: "fields",
-            title: "Roles & Classification",
-            cols: 2,
-            items: [
-              { label: "Roles", value: roleBadges(b) },
-              { label: "Industry", value: b.cls.industry || DASH },
-              { label: "Customer Group", value: b.cls.custGroup || DASH },
-              { label: "Supplier Group", value: b.cls.supGroup || DASH },
-              { label: "Customer Level", value: b.cls.custLevel || DASH },
-              { label: "Price Group", value: b.cls.priceGroup || DASH },
-              { label: "Territory", value: b.cls.territory || DASH },
-              { label: "Sales Channel", value: b.cls.channel || DASH },
-            ],
-          },
-
-          {
-            type: "fields",
-            title: "Tax & Legal",
-            cols: 2,
-            items: [
-              { label: "Legal Entity Type", value: t.entity },
-              { label: "Registered Name", value: t.regName || DASH },
-              { label: "Branch Type", value: t.branchType },
-              { label: "Branch Number", value: t.branchNo },
-              { label: "VAT Registered", value: t.vatReg ? "ใช่" : "ไม่ใช่" },
-              { label: "VAT Registration Date", value: t.vatDate || DASH },
-              { label: "Withholding Tax", value: t.wht ? "มีการหัก ณ ที่จ่าย" : "ไม่มี" },
-              { label: "Country of Registration", value: t.country },
-            ],
-          },
-
-          /* ---- Gallery. Cover first, the rest in upload order. ---- */
-          {
-            type: "table",
-            title: `Images (${b.imageCount})`,
-            rows: b.images ?? [],
-            empty: "ยังไม่มีรูปภาพ — อัปโหลดได้จากหน้าแก้ไข",
-            cols: [
-              {
-                key: "src",
-                label: "Image",
-                cell: (i) => (
-                  <span className="inline-flex items-center gap-2">
-                    <Thumb>{i.src}</Thumb>
-                    {i.cover && <Badge tone="primary">Cover</Badge>}
-                  </span>
-                ),
-              },
-              { key: "name", label: "Name" },
-              { key: "kind", label: "Type", muted: true },
-              { key: "by", label: "Uploaded By", muted: true },
-              { key: "date", label: "Upload Date", muted: true },
-              { key: "remark", label: "Remark", muted: true },
-            ],
-          },
-
-          {
-            type: "fields",
-            title: "System Information",
-            cols: 2,
-            items: [
-              { label: "Created Date", value: b.created, muted: true },
-              { label: "Created By", value: b.createdBy, muted: true },
-              { label: "Last Updated", value: b.updated, muted: true },
-              { label: "Updated By", value: b.updatedBy, muted: true },
-            ],
-          },
-        ];
-      },
-    },
-
-    /* ============================================================
-       2. ADDRESSES — summary of two, then the full list.
-       ============================================================ */
-    {
-      key: "addresses",
-      label: "Addresses",
-      blocks: (b, ctx) => {
-        const rows = b.addresses;
-        const billing = bpBillingAddress(b);
-        const delivery = bpDeliveryAddress(b);
-        /* The spec shows two on the summary; the rest sit in the table
-           below, which is already the "View All" the spec asks for. */
-        const summary = rows.slice(0, 2);
-        const rest = rows.length - summary.length;
-
-        return [
-          !rows.some(canBill) && {
-            type: "alert",
-            tone: "danger",
-            title: "ไม่มีที่อยู่สำหรับออกใบกำกับภาษี",
-            message: "ต้องมีที่อยู่ประเภท Billing, Both, Head Office หรือ Branch อย่างน้อย 1 แห่ง",
-          },
-          !rows.some(canDeliver) && {
-            type: "alert",
-            tone: "info",
-            title: "ยังไม่มีที่อยู่จัดส่ง",
-            message: "ระบบจะใช้ที่อยู่ออกบิลเป็นที่อยู่จัดส่งจนกว่าจะกำหนดเพิ่ม",
-          },
-
+          /* ---- Row 3: business KPI ---- */
           {
             type: "cards",
-            title: "Default Addresses",
-            cols: 2,
+            title: "Business KPI",
+            cols: 3,
             items: [
-              {
-                label: "Primary Billing",
-                value: billing ? billing.name : DASH,
-                sub: addressLine(billing),
-                tone: "accent",
+              salesKpi && { label: "Total Sales", value: money0(salesKpi.revenue), unit: "THB", tone: "accent" },
+              purchaseKpi && { label: "Total Purchase", value: money0(purchaseKpi.spend), unit: "THB" },
+              salesKpi && {
+                label: "Last Sales Order",
+                value: salesKpi.lastOrderDate || DASH,
+                sub: salesKpi.lastOrderAmount ? money0(salesKpi.lastOrderAmount) : "",
               },
-              {
-                label: "Primary Delivery",
-                value: delivery ? delivery.name : "ใช้ที่อยู่ออกบิล",
-                sub: delivery ? addressLine(delivery) : addressLine(billing),
+              purchaseKpi && {
+                label: "Last Purchase Order",
+                value: purchaseKpi.lastOrderDate || DASH,
+                sub: purchaseKpi.lastOrderAmount ? money0(purchaseKpi.lastOrderAmount) : "",
               },
+              salesKpi && { label: "Average Sales", value: money0(salesKpi.avgOrder), unit: "THB" },
+              purchaseKpi && { label: "Average Purchase", value: money0(purchaseKpi.avgOrder), unit: "THB" },
             ],
           },
 
-          {
-            type: "entity",
-            title: `Address Summary (${summary.length} จาก ${rows.length})`,
-            empty: "ยังไม่มีที่อยู่",
-            items: summary.map((a) => ({
-              name: a.name,
-              sub: `${a.type} · ${addressLine(a)}`,
-              avatar: a.image || "📍",
-              end: (
-                <span className="inline-flex flex-wrap items-center gap-1">
-                  {a.billingPrimary && <Badge tone="primary">Billing</Badge>}
-                  {a.deliveryPrimary && <Badge tone="info">Delivery</Badge>}
-                  {!a.active && <Badge tone="neutral">Inactive</Badge>}
-                </span>
-              ),
-            })),
-          },
-
-          rest > 0 && {
-            type: "note",
-            text: `อีก ${rest} ที่อยู่แสดงในตารางด้านล่าง — View All Addresses`,
-          },
-
-          {
-            type: "table",
-            title: `All Addresses (${rows.length})`,
-            rows,
-            empty: "ยังไม่มีที่อยู่",
-            cols: [
-              {
-                key: "name",
-                label: "Address Name",
-                cell: (a) => (
-                  <>
-                    {a.name}
-                    <span className="ml-1.5 inline-flex gap-1">
-                      {a.billingPrimary && <Badge tone="primary">Billing</Badge>}
-                      {a.deliveryPrimary && <Badge tone="info">Delivery</Badge>}
-                    </span>
-                  </>
-                ),
-              },
-              { key: "type", label: "Type", cell: (a) => <Badge tone="neutral">{a.type}</Badge> },
-              { key: "full", label: "Address Line", cell: (a) => addressLine(a) },
-              { key: "sub", label: "Sub District", muted: true },
-              { key: "dist", label: "District", muted: true },
-              { key: "prov", label: "Province", muted: true },
-              { key: "zip", label: "Postal Code", muted: true },
-              { key: "country", label: "Country", muted: true },
-              { key: "contact", label: "Contact Person", muted: true },
-              {
-                key: "phone",
-                label: "Phone",
-                cell: (a) => <span className="tnum">{a.phone || DASH}</span>,
-              },
-              { key: "email", label: "Email", muted: true, cell: (a) => a.email || DASH },
-              {
-                key: "geo",
-                label: "Map",
-                cell: (a) =>
-                  hasCoordinates(a) ? (
-                    <button
-                      onClick={() => ctx.goto(mapUrl(a))}
-                      className="inline-flex items-center gap-1 font-medium text-info hover:underline"
-                    >
-                      <Icon name="mapPin" size={14} />
-                      <span className="tnum">
-                        {a.lat}, {a.lng}
-                      </span>
-                    </button>
-                  ) : (
-                    <span className="text-ink-3">{DASH}</span>
-                  ),
-              },
-              { key: "remark", label: "Remark", muted: true, cell: (a) => a.remark || DASH },
-            ],
-          },
-
-          /* Coordinates are stored for the mobile app; the embed itself is
-             a Phase 2 concern, so the placeholder names what is held. */
-          {
-            type: "planned",
-            title: "Map",
-            label: "Embedded Map",
-            message: `${rows.filter(hasCoordinates).length} จาก ${rows.length} ที่อยู่มีพิกัดพร้อมใช้งานบนแอปมือถือ`,
-          },
+          b.notes ? { type: "note", title: "Remarks", text: b.notes } : null,
         ];
       },
     },
 
     /* ============================================================
-       3. CONTACTS
+       2. BUSINESS — configuration and the commercial relationship.
        ============================================================ */
     {
-      key: "contacts",
-      label: "Contacts",
-      blocks: (b) => [
-        {
-          type: "table",
-          title: `Contact Persons (${b.contactCount})`,
-          rows: b.contacts,
-          empty: "ยังไม่มีผู้ติดต่อ",
-          cols: [
-            { key: "code", label: "Code", muted: true },
-            {
-              key: "name",
-              label: "Name",
-              cell: (c) => (
-                <>
-                  {c.prefix}
-                  {c.first} {c.last}
-                  {c.primary && (
-                    <span className="ml-1.5">
-                      <Badge tone="primary">Primary</Badge>
-                    </span>
-                  )}
-                </>
-              ),
-            },
-            { key: "pos", label: "Position", muted: true },
-            { key: "dept", label: "Department", muted: true },
-            {
-              key: "phone",
-              label: "Phone",
-              cell: (c) => <span className="tnum">{c.phone || DASH}</span>,
-            },
-            {
-              key: "mobile",
-              label: "Mobile",
-              cell: (c) => <span className="tnum">{c.mobile || DASH}</span>,
-            },
-            { key: "email", label: "Email", muted: true, cell: (c) => c.email || DASH },
-            { key: "method", label: "Preferred", muted: true },
-            { key: "remark", label: "Remark", muted: true, cell: (c) => c.remark || DASH },
-            {
-              key: "active",
-              label: "Status",
-              cell: (c) => (
-                <Badge tone={c.active ? "success" : "neutral"}>
-                  {c.active ? "Active" : "Inactive"}
-                </Badge>
-              ),
-            },
-          ],
-        },
-      ],
-    },
+      key: "business",
+      label: "Business",
+      blocks: (b, ctx) => {
+        const c = b.customer;
+        const s = b.supplier;
+        const p = b.purchasing;
+        const items = b.supplierItems ?? [];
+        const bank = bpDefaultBank(b);
+        const credit = checkPermission("canViewCredit");
 
-    /* ============================================================
-       4. CUSTOMER — only when the partner sells to us.
-       ============================================================ */
-    {
-      key: "customer",
-      label: "Customer",
-      when: (b) => Boolean(b.customer),
-      blocks: (b) => {
-        const c = b.customer!;
-        if (!checkPermission("canViewCredit")) {
-          return [
-            {
-              type: "fields",
-              title: "Customer Information",
-              cols: 2,
-              items: [
-                { label: "Customer Type", value: c.custType },
-                { label: "Business Type", value: c.bizType },
-                { label: "Benefit Level", value: c.benefit },
-                { label: "Customer Size", value: c.size },
-                { label: "Sales Representative", value: c.rep },
-                { label: "Default Price List", value: c.priceList },
-              ],
-            },
-            { type: "restricted", title: "Credit" },
-          ];
-        }
-
-        const over = c.creditUsed > c.creditLimit && c.creditLimit > 0;
         return [
-          c.creditHold && {
-            type: "alert",
-            tone: "danger",
-            title: "ลูกค้ารายนี้ถูกระงับเครดิต",
-            message: c.holdReason || "ติดต่อฝ่ายการเงินก่อนเปิดคำสั่งขายใหม่",
-          },
-          over && {
-            type: "alert",
-            tone: "warn",
-            title: "ยอดใช้เครดิตเกินวงเงิน",
-            message: `เกินวงเงิน ${money0(c.creditUsed - c.creditLimit)} THB`,
-          },
-
-          {
+          /* ---- Customer ---- */
+          c && {
             type: "fields",
             title: "Customer Information",
             cols: 2,
@@ -936,73 +1037,26 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               { label: "Business Type", value: c.bizType },
               {
                 label: "Benefit Level",
-                value:
-                  c.benefit === "Custom" ? `Custom — ${c.benefitPct}%` : c.benefit,
+                value: c.benefit === "Custom" ? `Custom — ${c.benefitPct}%` : c.benefit,
               },
               { label: "Customer Size", value: <Badge tone="neutral">{c.size}</Badge> },
               { label: "Sales Representative", value: c.rep },
               { label: "Default Price List", value: c.priceList },
-              {
-                label: "Risk Level",
-                value: <Badge tone={tone(RISK_TONE, c.risk)}>{c.risk}</Badge>,
-              },
+              { label: "Risk Level", value: <Badge tone={tone(RISK_TONE, c.risk)}>{c.risk}</Badge> },
               { label: "Payment Method", value: c.payMethod },
-            ],
-          },
-
-          {
-            type: "cards",
-            title: "Credit",
-            items: [
-              { label: "Credit Limit", value: money0(c.creditLimit), unit: "THB", tone: "accent" },
-              { label: "Current Credit Used", value: money0(c.creditUsed), unit: "THB" },
-              {
-                label: "Available Credit",
-                value: money0(b.availableCredit),
-                unit: "THB",
-                tone: over ? "warn" : undefined,
-              },
+              credit && { label: "Credit Limit", value: `${money0(c.creditLimit)} THB` },
+              credit && { label: "Credit Used", value: `${money0(c.creditUsed)} THB` },
+              credit && { label: "Available Credit", value: `${money0(b.availableCredit)} THB` },
               {
                 label: "Credit Hold",
-                value: c.creditHold ? "ระงับ" : "ปกติ",
-                tone: c.creditHold ? "warn" : undefined,
+                value: c.creditHold ? <Badge tone="danger">ระงับ</Badge> : "ปกติ",
               },
+              c.creditHold ? { label: "Hold Reason", value: c.holdReason || DASH, span: true } : null,
             ],
           },
 
-          {
-            type: "fields",
-            title: "Credit Terms",
-            cols: 2,
-            items: [
-              { label: "Credit Term", value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน` },
-              { label: "Payment Term", value: b.credit.payTerm },
-              { label: "Credit Status", value: <Badge tone={tone(CREDIT_TONE, b.creditStatus)}>{b.creditStatus}</Badge> },
-              { label: "Credit Days", value: `${b.credit.days} วัน` },
-              { label: "Open Sales Orders", value: `${money0(b.credit.openSO)} THB` },
-              { label: "Open Invoices", value: `${money0(b.credit.openInv)} THB` },
-              { label: "Credit Hold Reason", value: c.holdReason || DASH },
-              { label: "Approved By", value: b.credit.approvedBy || DASH },
-            ],
-          },
-        ];
-      },
-    },
-
-    /* ============================================================
-       5. SUPPLIER — only when the partner sells to us.
-       ============================================================ */
-    {
-      key: "supplier",
-      label: "Supplier",
-      when: (b) => Boolean(b.supplier),
-      blocks: (b) => {
-        const s = b.supplier!;
-        const p = b.purchasing;
-        const items = b.supplierItems ?? [];
-
-        return [
-          {
+          /* ---- Supplier ---- */
+          s && {
             type: "fields",
             title: "Supplier Information",
             cols: 2,
@@ -1010,9 +1064,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               { label: "Supplier Type", value: s.supType },
               {
                 label: "Supplier Status",
-                value: (
-                  <Badge tone={tone(SUPPLIER_STATUS_TONE, s.status)}>{s.status}</Badge>
-                ),
+                value: <Badge tone={tone(SUPPLIER_STATUS_TONE, s.status)}>{s.status}</Badge>,
               },
               {
                 label: "Preferred Supplier",
@@ -1030,18 +1082,8 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             ],
           },
 
-          {
-            type: "cards",
-            title: "Supplier Items",
-            cols: 3,
-            items: [
-              { label: "Quoted Items", value: fmt(items.length), tone: "accent" },
-              { label: "Preferred Items", value: fmt(items.filter((i) => i.preferred).length) },
-              { label: "Average Lead Time", value: `${bpAverageLeadTime(b)}`, unit: "วัน" },
-            ],
-          },
-
-          {
+          /* ---- Supplier items ---- */
+          s && {
             type: "table",
             title: `Supplier Items (${items.length})`,
             rows: items,
@@ -1050,7 +1092,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               { key: "product", label: "Product" },
               { key: "productName", label: "Product Name", muted: true },
               { key: "sku", label: "Supplier SKU", cell: (i) => <span className="tnum">{i.sku}</span> },
-              { key: "supName", label: "Supplier Product Name", muted: true },
               { key: "moq", label: "MOQ", align: "right", cell: (i) => fmt(i.moq) },
               { key: "lead", label: "Lead Time", align: "right", cell: (i) => `${i.lead} วัน` },
               { key: "currency", label: "Currency", muted: true },
@@ -1066,16 +1107,81 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 label: "Status",
                 cell: (i) => (
                   <Badge
-                    tone={
-                      i.status === "Active" ? "success" : i.status === "Expired" ? "danger" : "neutral"
-                    }
+                    tone={i.status === "Active" ? "success" : i.status === "Expired" ? "danger" : "neutral"}
                   >
                     {i.status}
                   </Badge>
                 ),
               },
-              { key: "effective", label: "Effective Date", muted: true },
-              { key: "expiry", label: "Expiry Date", muted: true, cell: (i) => i.expiry || DASH },
+              { key: "effective", label: "Effective", muted: true },
+              { key: "expiry", label: "Expiry", muted: true, cell: (i) => i.expiry || DASH },
+            ],
+          },
+
+          /* ---- Bank: default only, rest behind the panel ---- */
+          !checkPermission("canViewBank") && {
+            type: "alert",
+            tone: "warn",
+            title: "ข้อมูลบัญชีธนาคารถูกปกปิดบางส่วน",
+            message: "เลขบัญชีถูกปกปิดตามสิทธิ์ — ต้องมีสิทธิ์ Finance จึงจะเห็นข้อมูลเต็ม",
+          },
+          {
+            type: "fields",
+            title: "Default Bank Account",
+            cols: 2,
+            items: bank
+              ? [
+                  { label: "Bank Name", value: bank.bank },
+                  { label: "Branch", value: bank.branch || DASH },
+                  { label: "Account Name", value: bank.accName },
+                  { label: "Account Number", value: <span className="tnum">{maskAccount(bank.accNo)}</span> },
+                  { label: "Account Type", value: bank.accType },
+                  { label: "Currency", value: bank.currency },
+                  { label: "SWIFT Code", value: bank.swift || DASH },
+                  {
+                    label: "",
+                    value: (
+                      <LinkAction
+                        label={`View All Bank Accounts (${b.bankCount})`}
+                        onClick={() => openBankPanel(b, ctx)}
+                      />
+                    ),
+                  },
+                ]
+              : [{ label: "", value: "ยังไม่มีบัญชีธนาคาร", span: true, muted: true }],
+          },
+
+          /* ---- Payment information ---- */
+          {
+            type: "fields",
+            title: "Payment Information",
+            cols: 2,
+            items: [
+              { label: "Payment Term", value: b.payTerm },
+              { label: "Credit Term", value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน` },
+              { label: "Bill Type", value: b.billType },
+              { label: "Customer Payment Method", value: c?.payMethod ?? DASH },
+              { label: "Supplier Payment Method", value: s?.payMethod ?? DASH },
+              { label: "Withholding Tax", value: b.tax.wht ? "มีการหัก ณ ที่จ่าย" : "ไม่มี" },
+              { label: "VAT Registered", value: b.tax.vatReg ? "ใช่" : "ไม่ใช่" },
+              { label: "VAT Registration Date", value: b.tax.vatDate || DASH },
+            ],
+          },
+
+          /* ---- Classification, kept from the old Roles tab ---- */
+          {
+            type: "fields",
+            title: "Classification",
+            cols: 2,
+            items: [
+              { label: "Roles", value: roleBadges(b) },
+              { label: "Industry", value: b.cls.industry || DASH },
+              { label: "Customer Group", value: b.cls.custGroup || DASH },
+              { label: "Supplier Group", value: b.cls.supGroup || DASH },
+              { label: "Customer Level", value: b.cls.custLevel || DASH },
+              { label: "Price Group", value: b.cls.priceGroup || DASH },
+              { label: "Territory", value: b.cls.territory || DASH },
+              { label: "Sales Channel", value: b.cls.channel || DASH },
             ],
           },
         ];
@@ -1083,60 +1189,217 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
     },
 
     /* ============================================================
-       6. BANK ACCOUNTS
+       3. ACTIVITY — sales, purchase and the timeline in one place.
        ============================================================ */
     {
-      key: "banks",
-      label: "Bank Accounts",
-      blocks: (b) => [
-        !checkPermission("canViewBank") && {
-          type: "alert",
-          tone: "warn",
-          title: "ข้อมูลบัญชีธนาคารถูกปกปิดบางส่วน",
-          message: "เลขบัญชีถูกปกปิดตามสิทธิ์ — ต้องมีสิทธิ์ Finance จึงจะเห็นข้อมูลเต็ม",
-        },
-        {
-          type: "table",
-          title: `Bank Accounts (${b.bankCount})`,
-          rows: b.banks,
-          empty: "ยังไม่มีบัญชีธนาคาร",
-          cols: [
-            { key: "bank", label: "Bank Name" },
-            { key: "branch", label: "Branch", muted: true },
-            { key: "accName", label: "Account Name" },
-            {
-              key: "accNo",
-              label: "Account Number",
-              cell: (a) => <span className="tnum">{maskAccount(a.accNo)}</span>,
-            },
-            { key: "swift", label: "SWIFT Code", muted: true, cell: (a) => a.swift || DASH },
-            { key: "accType", label: "Type", muted: true },
-            { key: "currency", label: "Currency", muted: true },
-            {
-              key: "def",
-              label: "Default Account",
-              cell: (a) =>
-                a.def ? <Badge tone="primary">Default</Badge> : <span className="text-ink-3">{DASH}</span>,
-            },
-            {
-              key: "active",
-              label: "Status",
-              cell: (a) => (
-                <Badge tone={a.active ? "success" : "neutral"}>{a.active ? "Active" : "Inactive"}</Badge>
-              ),
-            },
-          ],
-        },
-      ],
+      key: "activity",
+      label: "Activity",
+      blocks: (b, ctx) => {
+        const salesKpi = b.customer ? bpCustomerKpi(b) : null;
+        const purchaseKpi = b.supplier ? bpPurchaseKpi(b) : null;
+        const orders = b.customer ? bpSalesOrders(b) : [];
+        const top = b.customer ? bpTopProducts(b) : [];
+        const pos = b.supplier ? bpPurchaseOrders(b) : [];
+        const grs = b.supplier ? bpGoodsReceipts(b) : [];
+        const topBuy = b.supplier ? bpTopPurchasedProducts(b) : [];
+        const recordedPo = b.txn?.po ?? [];
+
+        return [
+          {
+            type: "cards",
+            title: "Document Statistics",
+            cols: 4,
+            items: [
+              { label: "Sales Orders", value: fmt(b.txn.so.length), tone: "accent" },
+              { label: "Purchase Orders", value: fmt(b.txn.po.length) },
+              { label: "Invoices", value: fmt(b.txn.inv.length) },
+              { label: "Attachments", value: fmt(b.docCount) },
+            ],
+          },
+
+          salesKpi && {
+            type: "cards",
+            title: "Sales Summary",
+            cols: 4,
+            items: [
+              { label: "Total Sales", value: money0(salesKpi.revenue), unit: "THB", tone: "accent" },
+              { label: "Average Order", value: money0(salesKpi.avgOrder), unit: "THB" },
+              { label: "Open Orders", value: fmt(salesKpi.openOrders) },
+              {
+                label: "Outstanding",
+                value: money0(salesKpi.outstanding),
+                unit: "THB",
+                tone: salesKpi.overdue > 0 ? "warn" : undefined,
+                sub: salesKpi.overdue > 0 ? `เกินกำหนด ${salesKpi.overdue} ใบ` : "",
+              },
+            ],
+          },
+
+          orders.length > 0 && {
+            type: "table",
+            title: `Recent Sales Orders (${orders.length})`,
+            rows: orders.slice(0, 8),
+            empty: "ยังไม่มีใบสั่งขาย",
+            cols: [
+              {
+                key: "code",
+                label: "SO No.",
+                cell: (s) => (
+                  <button
+                    onClick={() => ctx.openEntity("sales-order", s.code)}
+                    className="font-medium text-info hover:underline"
+                  >
+                    {s.code}
+                  </button>
+                ),
+              },
+              { key: "orderDate", label: "Order Date", muted: true },
+              { key: "itemCount", label: "Items", align: "right" },
+              { key: "total", label: "Amount", align: "right", cell: (s) => money0(s.total) },
+              { key: "status", label: "Status", cell: (s) => <Badge tone="neutral">{s.status}</Badge> },
+            ],
+          },
+
+          b.txn.inv.length > 0 && {
+            type: "table",
+            title: `Invoices (${b.txn.inv.length})`,
+            rows: b.txn.inv,
+            empty: "ไม่มีใบแจ้งหนี้",
+            cols: [
+              { key: "no", label: "Invoice No." },
+              { key: "date", label: "Date", muted: true },
+              { key: "amount", label: "Amount", align: "right", cell: (r) => money0(r.amount) },
+              {
+                key: "status",
+                label: "Status",
+                cell: (r) => (
+                  <Badge tone={r.status === "Overdue" ? "danger" : "neutral"}>{r.status}</Badge>
+                ),
+              },
+            ],
+          },
+
+          top.length > 0 && {
+            type: "table",
+            title: "Top Products Sold",
+            rows: top,
+            empty: "ยังไม่มีประวัติการซื้อสินค้า",
+            cols: [
+              { key: "code", label: "Product" },
+              { key: "name", label: "Product Name", muted: true },
+              { key: "qty", label: "Qty", align: "right", cell: (t) => fmt(t.qty) },
+              { key: "amount", label: "Amount", align: "right", cell: (t) => money0(t.amount) },
+            ],
+          },
+
+          purchaseKpi && {
+            type: "cards",
+            title: "Purchase Summary",
+            cols: 4,
+            items: [
+              { label: "Total Purchase", value: money0(purchaseKpi.spend), unit: "THB", tone: "accent" },
+              { label: "Average Order", value: money0(purchaseKpi.avgOrder), unit: "THB" },
+              { label: "Average Lead Time", value: `${purchaseKpi.avgLeadTime}`, unit: "วัน" },
+              { label: "Goods Receipts", value: fmt(purchaseKpi.receipts) },
+            ],
+          },
+
+          purchaseKpi?.fromRecord && {
+            type: "alert",
+            tone: "info",
+            title: "ยอดซื้อมาจากข้อมูลบนระเบียนคู่ค้า",
+            message:
+              "ใบสั่งซื้อและใบรับสินค้าในระบบยังอ้างอิงผู้ขายด้วยชื่อ ไม่ใช่รหัสคู่ค้า จึงจับคู่อัตโนมัติไม่ได้",
+          },
+
+          b.supplier && {
+            type: "table",
+            title: `Recent Purchase Orders (${pos.length || recordedPo.length})`,
+            rows: pos.length ? pos.slice(0, 8) : recordedPo,
+            empty: "ยังไม่มีใบสั่งซื้อ",
+            cols: pos.length
+              ? [
+                  {
+                    key: "code",
+                    label: "PO No.",
+                    cell: (p) => (
+                      <button
+                        onClick={() => ctx.openEntity("purchase-order", p.code)}
+                        className="font-medium text-info hover:underline"
+                      >
+                        {p.code}
+                      </button>
+                    ),
+                  },
+                  { key: "orderDate", label: "Order Date", muted: true },
+                  { key: "total", label: "Amount", align: "right", cell: (p) => money0(p.total) },
+                  { key: "status", label: "Status", cell: (p) => <Badge tone="neutral">{p.status}</Badge> },
+                ]
+              : [
+                  { key: "no", label: "PO No." },
+                  { key: "date", label: "Date", muted: true },
+                  { key: "amount", label: "Amount", align: "right", cell: (r) => money0(r.amount) },
+                  { key: "status", label: "Status", cell: (r) => <Badge tone="neutral">{r.status}</Badge> },
+                ],
+          },
+
+          grs.length > 0 && {
+            type: "table",
+            title: `Goods Receipts (${grs.length})`,
+            rows: grs.slice(0, 8),
+            empty: "",
+            cols: [
+              { key: "code", label: "GR No." },
+              { key: "receiptDate", label: "Receipt Date", muted: true },
+              { key: "warehouse", label: "Warehouse", muted: true },
+              { key: "totalReceiving", label: "Qty", align: "right", cell: (g) => fmt(g.totalReceiving) },
+              { key: "status", label: "Status", cell: (g) => <Badge tone="neutral">{g.status}</Badge> },
+            ],
+          },
+
+          topBuy.length > 0 && {
+            type: "table",
+            title: "Top Products Purchased",
+            rows: topBuy,
+            empty: "",
+            cols: [
+              { key: "code", label: "Product" },
+              { key: "name", label: "Product Name", muted: true },
+              { key: "qty", label: "Qty", align: "right", cell: (t) => fmt(t.qty) },
+              { key: "amount", label: "Amount", align: "right", cell: (t) => money0(t.amount) },
+            ],
+          },
+
+          {
+            type: "planned",
+            title: "Returns & Credit Notes",
+            label: "Sales Return / Credit Note",
+            message:
+              "เอกสารคืนสินค้าและใบลดหนี้ของคู่ค้ารายนี้ยังไม่ผูกด้วยรหัสคู่ค้า — จะแสดงที่นี่เมื่อเชื่อมแล้ว",
+          },
+
+          {
+            type: "timeline",
+            title: `Latest Activities (${b.history.length})`,
+            items: b.history.map((e) => ({
+              title: e.t,
+              detail: e.d,
+              user: e.u,
+              when: e.when,
+              kind: e.kind,
+            })),
+          },
+        ];
+      },
     },
 
     /* ============================================================
-       7. ATTACHMENTS
+       4. ATTACHMENTS — files and images.
        ============================================================ */
     {
       key: "attachments",
       label: "Attachments",
-      blocks: (b) => {
+      blocks: (b, ctx) => {
         const expiring = bpExpiringDocs(b, 90);
         const DOC_ICON: Record<string, IconName> = {
           pdf: "file",
@@ -1154,17 +1417,61 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               .map((x) => `${x.doc.name} (${x.days < 0 ? `เกิน ${-x.days} วัน` : `อีก ${x.days} วัน`})`)
               .join(" · "),
           },
+
+          {
+            type: "cards",
+            title: "Files",
+            cols: 4,
+            items: [
+              { label: "Attachments", value: fmt(b.docCount), tone: "accent" },
+              { label: "Images", value: fmt(b.imageCount) },
+              { label: "Expiring", value: fmt(expiring.length), tone: expiring.length ? "warn" : undefined },
+              { label: "Document Types", value: fmt(new Set(b.docs.map((d) => d.type)).size) },
+            ],
+          },
+
+          /* Grid view — the gallery reads as thumbnails. */
+          {
+            type: "entity",
+            title: `Images (${b.imageCount})`,
+            empty: "ยังไม่มีรูปภาพ",
+            items: (b.images ?? []).map((i) => ({
+              name: i.name,
+              sub: `${i.kind} · ${i.by} · ${i.date}`,
+              avatar: i.src,
+              end: i.cover ? <Badge tone="primary">Cover</Badge> : undefined,
+              onClick: () =>
+                ctx.panel({
+                  title: i.name,
+                  subtitle: `${i.kind} · อัปโหลดโดย ${i.by} · ${i.date}`,
+                  blocks: [
+                    { type: "node", node: <ImagePreview src={i.src} name={i.name} /> },
+                    {
+                      type: "fields",
+                      title: "Image",
+                      cols: 1,
+                      items: [
+                        { label: "Name", value: i.name },
+                        { label: "Type", value: i.kind },
+                        { label: "Uploaded By", value: i.by },
+                        { label: "Upload Date", value: i.date },
+                        { label: "Cover", value: i.cover ? "ใช่" : "ไม่ใช่" },
+                        { label: "Remark", value: i.remark || DASH },
+                      ],
+                    },
+                  ],
+                }),
+            })),
+          },
+
+          /* List view — documents read as a table. */
           {
             type: "table",
-            title: `Attachments (${b.docCount})`,
+            title: `Documents (${b.docCount})`,
             rows: b.docs,
             empty: "ยังไม่มีเอกสารแนบ",
             cols: [
-              {
-                key: "type",
-                label: "Document Type",
-                cell: (d) => <Badge tone="neutral">{d.type}</Badge>,
-              },
+              { key: "type", label: "Document Type", cell: (d) => <Badge tone="neutral">{d.type}</Badge> },
               {
                 key: "name",
                 label: "Filename",
@@ -1178,10 +1485,9 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               { key: "kind", label: "Format", muted: true, cell: (d) => (d.kind ?? "other").toUpperCase() },
               { key: "by", label: "Uploaded By", muted: true },
               { key: "date", label: "Upload Date", muted: true },
-              { key: "issue", label: "Issue Date", muted: true, cell: (d) => d.issue || DASH },
               {
                 key: "expiry",
-                label: "Expiry Date",
+                label: "Expiry",
                 cell: (d) => {
                   const dd = bpDaysUntil(d.expiry);
                   if (!d.expiry) return <span className="text-ink-3">{DASH}</span>;
@@ -1195,11 +1501,46 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               {
                 key: "status",
                 label: "Status",
+                cell: (d) => <Badge tone={d.status === "Active" ? "success" : "warning"}>{d.status}</Badge>,
+              },
+              {
+                key: "open",
+                label: "Preview",
                 cell: (d) => (
-                  <Badge tone={d.status === "Active" ? "success" : "warning"}>{d.status}</Badge>
+                  <LinkAction
+                    label="Preview"
+                    icon="eye"
+                    onClick={() =>
+                      ctx.panel({
+                        title: d.name,
+                        subtitle: `${d.type} · ${d.by} · ${d.date}`,
+                        blocks: [
+                          {
+                            type: "fields",
+                            title: "Document",
+                            cols: 1,
+                            items: [
+                              { label: "Type", value: d.type },
+                              { label: "Filename", value: d.name },
+                              { label: "Format", value: (d.kind ?? "other").toUpperCase() },
+                              { label: "Issue Date", value: d.issue || DASH },
+                              { label: "Expiry Date", value: d.expiry || DASH },
+                              { label: "Uploaded By", value: d.by },
+                              { label: "Upload Date", value: d.date },
+                              { label: "Remark", value: d.remark || DASH },
+                            ],
+                          },
+                          {
+                            type: "planned",
+                            label: "File Preview",
+                            message: "ตัวอย่างไฟล์และการดาวน์โหลดจะพร้อมเมื่อเชื่อมต่อที่เก็บไฟล์จริง",
+                          },
+                        ],
+                      })
+                    }
+                  />
                 ),
               },
-              { key: "remark", label: "Remark", muted: true, cell: (d) => d.remark || DASH },
             ],
           },
         ];
@@ -1207,242 +1548,14 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
     },
 
     /* ============================================================
-       8. SALES REPORT — live, joined on customerCode.
-       ============================================================ */
-    {
-      key: "sales-report",
-      label: "Sales Report",
-      when: (b) => Boolean(b.customer),
-      blocks: (b, ctx) => {
-        const kpi = bpCustomerKpi(b);
-        const orders = bpSalesOrders(b);
-        const top = bpTopProducts(b);
-        const recorded = b.txn?.so ?? [];
-
-        return [
-          {
-            type: "cards",
-            title: "Customer KPI",
-            items: [
-              { label: "Sales Orders", value: fmt(kpi.orders), tone: "accent" },
-              { label: "Total Revenue", value: money0(kpi.revenue), unit: "THB" },
-              { label: "Average Order", value: money0(kpi.avgOrder), unit: "THB" },
-              { label: "Open Orders", value: fmt(kpi.openOrders) },
-            ],
-          },
-          {
-            type: "cards",
-            title: "Sales Summary",
-            cols: 3,
-            items: [
-              {
-                label: "Last Purchase",
-                value: kpi.lastOrderDate || DASH,
-                sub: kpi.lastOrderAmount ? `${money0(kpi.lastOrderAmount)} THB` : "",
-              },
-              { label: "Distinct Products", value: fmt(kpi.skus), unit: "SKU" },
-              {
-                label: "Outstanding",
-                value: money0(kpi.outstanding),
-                unit: "THB",
-                tone: kpi.overdue > 0 ? "warn" : undefined,
-                sub: kpi.overdue > 0 ? `เกินกำหนด ${kpi.overdue} ใบ` : "",
-              },
-            ],
-          },
-          {
-            type: "table",
-            title: `Recent Sales Orders (${orders.length})`,
-            rows: orders.slice(0, 10),
-            empty: "ยังไม่มีใบสั่งขาย",
-            cols: [
-              {
-                key: "code",
-                label: "SO No.",
-                cell: (s) => (
-                  <button
-                    onClick={() => ctx.openEntity("sales-order", s.code)}
-                    className="font-medium text-info hover:underline"
-                  >
-                    {s.code}
-                  </button>
-                ),
-              },
-              { key: "orderDate", label: "Order Date", muted: true },
-              { key: "deliveryDate", label: "Delivery Date", muted: true },
-              { key: "itemCount", label: "Items", align: "right" },
-              { key: "total", label: "Amount", align: "right", cell: (s) => money0(s.total) },
-              { key: "status", label: "Status", cell: (s) => <Badge tone="neutral">{s.status}</Badge> },
-            ],
-          },
-          {
-            type: "table",
-            title: "Top Products",
-            rows: top,
-            empty: "ยังไม่มีประวัติการซื้อสินค้า",
-            cols: [
-              { key: "code", label: "Product" },
-              { key: "name", label: "Product Name", muted: true },
-              { key: "qty", label: "Qty", align: "right", cell: (t) => fmt(t.qty) },
-              { key: "orders", label: "Orders", align: "right" },
-              { key: "amount", label: "Amount", align: "right", cell: (t) => money0(t.amount) },
-            ],
-          },
-          recorded.length > 0 && {
-            type: "table",
-            title: "Recorded on the Partner",
-            rows: recorded,
-            empty: "",
-            cols: [
-              { key: "no", label: "SO No." },
-              { key: "date", label: "Date", muted: true },
-              { key: "amount", label: "Amount", align: "right", cell: (r) => money0(r.amount) },
-              { key: "status", label: "Status", cell: (r) => <Badge tone="neutral">{r.status}</Badge> },
-            ],
-          },
-        ];
-      },
-    },
-
-    /* ============================================================
-       9. PURCHASE HISTORY
-       ============================================================ */
-    {
-      key: "purchase-history",
-      label: "Purchase History",
-      when: (b) => Boolean(b.supplier),
-      blocks: (b, ctx) => {
-        const kpi = bpPurchaseKpi(b);
-        const pos = bpPurchaseOrders(b);
-        const grs = bpGoodsReceipts(b);
-        const top = bpTopPurchasedProducts(b);
-        const recorded = b.txn?.po ?? [];
-
-        return [
-          kpi.fromRecord && {
-            type: "alert",
-            tone: "info",
-            title: "ยอดซื้อมาจากข้อมูลบนระเบียนคู่ค้า",
-            message:
-              "ใบสั่งซื้อและใบรับสินค้าในระบบยังอ้างอิงผู้ขายด้วยชื่อ ไม่ใช่รหัสคู่ค้า จึงจับคู่อัตโนมัติไม่ได้ — เป็นงาน Master Data ที่ต้องเชื่อมภายหลัง",
-          },
-          {
-            type: "cards",
-            title: "Purchase Summary",
-            items: [
-              { label: "Purchase Orders", value: fmt(kpi.orders), tone: "accent" },
-              { label: "Total Spend", value: money0(kpi.spend), unit: "THB" },
-              { label: "Average Order", value: money0(kpi.avgOrder), unit: "THB" },
-              { label: "Average Lead Time", value: `${kpi.avgLeadTime}`, unit: "วัน" },
-            ],
-          },
-          {
-            type: "cards",
-            title: "Activity",
-            cols: 3,
-            items: [
-              {
-                label: "Last Purchase",
-                value: kpi.lastOrderDate || DASH,
-                sub: kpi.lastOrderAmount ? `${money0(kpi.lastOrderAmount)} THB` : "",
-              },
-              { label: "Goods Receipts", value: fmt(kpi.receipts) },
-              { label: "Quoted Items", value: fmt(kpi.quotedItems), sub: `Preferred ${kpi.preferredItems}` },
-            ],
-          },
-          {
-            type: "table",
-            title: `Purchase Orders (${pos.length || recorded.length})`,
-            rows: pos.length ? pos : recorded,
-            empty: "ยังไม่มีใบสั่งซื้อ",
-            cols: pos.length
-              ? [
-                  {
-                    key: "code",
-                    label: "PO No.",
-                    cell: (p) => (
-                      <button
-                        onClick={() => ctx.openEntity("purchase-order", p.code)}
-                        className="font-medium text-info hover:underline"
-                      >
-                        {p.code}
-                      </button>
-                    ),
-                  },
-                  { key: "orderDate", label: "Order Date", muted: true },
-                  { key: "expectedDate", label: "Expected", muted: true },
-                  { key: "total", label: "Amount", align: "right", cell: (p) => money0(p.total) },
-                  { key: "status", label: "Status", cell: (p) => <Badge tone="neutral">{p.status}</Badge> },
-                ]
-              : [
-                  { key: "no", label: "PO No." },
-                  { key: "date", label: "Date", muted: true },
-                  { key: "amount", label: "Amount", align: "right", cell: (r) => money0(r.amount) },
-                  { key: "status", label: "Status", cell: (r) => <Badge tone="neutral">{r.status}</Badge> },
-                ],
-          },
-          {
-            type: "table",
-            title: `Goods Receipts (${grs.length})`,
-            rows: grs.slice(0, 10),
-            empty: "ยังไม่มีใบรับสินค้าที่จับคู่กับผู้ขายรายนี้",
-            cols: [
-              { key: "code", label: "GR No." },
-              { key: "receiptDate", label: "Receipt Date", muted: true },
-              { key: "warehouse", label: "Warehouse", muted: true },
-              { key: "totalReceiving", label: "Qty", align: "right", cell: (g) => fmt(g.totalReceiving) },
-              { key: "status", label: "Status", cell: (g) => <Badge tone="neutral">{g.status}</Badge> },
-            ],
-          },
-          {
-            type: "table",
-            title: "Top Purchased Products",
-            rows: top,
-            empty: "ยังไม่มีรายการสินค้า",
-            cols: [
-              { key: "code", label: "Product" },
-              { key: "name", label: "Product Name", muted: true },
-              { key: "qty", label: "Qty", align: "right", cell: (t) => fmt(t.qty) },
-              { key: "amount", label: "Amount", align: "right", cell: (t) => money0(t.amount) },
-            ],
-          },
-          {
-            type: "planned",
-            title: "Supplier Claims",
-            label: "Supplier Claim",
-            message: "โมดูล Supplier Claim อยู่ใน Roadmap — เคลมของผู้ขายรายนี้จะแสดงที่นี่",
-          },
-        ];
-      },
-    },
-
-    /* ============================================================
-       10. ACTIVITY TIMELINE
-       ============================================================ */
-    {
-      key: "activity",
-      label: "Activity Timeline",
-      blocks: (b) => [
-        {
-          type: "timeline",
-          title: `Activity (${b.history.length})`,
-          items: b.history.map((e) => ({
-            title: e.t,
-            detail: e.d,
-            user: e.u,
-            when: e.when,
-            kind: e.kind,
-          })),
-        },
-      ],
-    },
-
-    /* ============================================================
-       11. AUDIT LOG
+       5. AUDIT — permission-gated.
        ============================================================ */
     {
       key: "audit",
-      label: "Audit Log",
+      label: "Audit",
+      /* Layer 1 of the Administration framework decides this: the tab is not
+         rendered at all for a role without audit access. */
+      when: () => can("admin-audit", "view"),
       blocks: (b) => [
         {
           type: "fields",
@@ -1457,7 +1570,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
         },
         {
           type: "audit",
-          title: "Change Log",
+          title: "Field Changes",
           items: b.history.map((e) => ({
             event: e.t,
             user: e.u,
@@ -1467,8 +1580,22 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
           })),
         },
         {
-          type: "note",
-          text: "บันทึกการเปลี่ยนแปลงระดับฟิลด์ (ค่าเดิม → ค่าใหม่) จะบันทึกครบเมื่อเชื่อมต่อ API จริง — ปัจจุบันเก็บเป็นเหตุการณ์ระดับเอกสาร",
+          type: "table",
+          title: "Approval History",
+          rows: b.history.filter((e) => /อนุมัติ|approve/i.test(`${e.t} ${e.d}`)),
+          empty: "ยังไม่มีประวัติการอนุมัติของคู่ค้ารายนี้",
+          cols: [
+            { key: "t", label: "Event" },
+            { key: "d", label: "Detail", muted: true },
+            { key: "u", label: "By" },
+            { key: "when", label: "When", muted: true },
+          ],
+        },
+        {
+          type: "planned",
+          title: "Login History",
+          label: "Login History",
+          message: "ประวัติการเข้าใช้งานผูกกับผู้ใช้ ไม่ใช่คู่ค้า — ดูได้ที่ Administration › Audit Log",
         },
       ],
     },

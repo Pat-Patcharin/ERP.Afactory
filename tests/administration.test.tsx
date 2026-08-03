@@ -588,7 +588,7 @@ describe("Administration — user and role screens", () => {
 
     const ctx = {
       goto: () => {}, openEntity: () => {}, toast: () => {}, confirm: () => {},
-      formModal: () => {}, refresh: () => {}, quickView: () => {},
+      formModal: () => {}, refresh: () => {}, quickView: () => {}, panel: () => {},
     };
     const superAdmin = adminRoleSchemas.list.source().find((r) => r.code === "SUPER_ADMIN")!;
     const del = adminRoleSchemas.list.rowActions(superAdmin, ctx).find((a) => a.label === "Delete")!;
@@ -599,7 +599,7 @@ describe("Administration — user and role screens", () => {
   it("refuses to delete a role that still has users", () => {
     const ctx = {
       goto: () => {}, openEntity: () => {}, toast: () => {}, confirm: () => {},
-      formModal: () => {}, refresh: () => {}, quickView: () => {},
+      formModal: () => {}, refresh: () => {}, quickView: () => {}, panel: () => {},
     };
     const inUse = adminRoleSchemas.list.source().find((r) => !r.system && r.userCount > 0)!;
     const del = adminRoleSchemas.list.rowActions(inUse, ctx).find((a) => a.label === "Delete")!;
@@ -610,7 +610,7 @@ describe("Administration — user and role screens", () => {
   it("lets a custom role with no users be deleted", () => {
     const ctx = {
       goto: () => {}, openEntity: () => {}, toast: () => {}, confirm: () => {},
-      formModal: () => {}, refresh: () => {}, quickView: () => {},
+      formModal: () => {}, refresh: () => {}, quickView: () => {}, panel: () => {},
     };
     const free = adminRoleSchemas.list.source().find((r) => !r.system && r.userCount === 0);
     if (!free) return;
@@ -621,7 +621,7 @@ describe("Administration — user and role screens", () => {
   it("builds every tab of every administration detail page", () => {
     const ctx = {
       goto: () => {}, openEntity: () => {}, toast: () => {}, confirm: () => {},
-      formModal: () => {}, refresh: () => {}, quickView: () => {},
+      formModal: () => {}, refresh: () => {}, quickView: () => {}, panel: () => {},
     };
     const pairs = [
       adminUserSchemas, adminRoleSchemas, adminScopeSchemas,

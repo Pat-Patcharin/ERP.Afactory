@@ -466,7 +466,14 @@ function BlockView({
 
     case "grid":
       return (
-        <div className="mb-4 grid grid-cols-2 gap-4 last:mb-0 max-[900px]:grid-cols-1">
+        <div
+          className={cn(
+            "mb-4 grid gap-4 last:mb-0 max-[900px]:grid-cols-1",
+            b.cols === 3
+              ? "grid-cols-3 max-[1400px]:grid-cols-2"
+              : "grid-cols-2",
+          )}
+        >
           {b.items.filter(Boolean).map((inner, i) => (
             <div key={i}>
               <BlockRenderer blocks={[inner]} scale={scale} />

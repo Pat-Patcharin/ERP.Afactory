@@ -64,6 +64,7 @@ export default function BarcodeLookupPage() {
   const formModal = useUI((s) => s.formModal);
   const openQuickView = useUI((s) => s.openQuickView);
   const refresh = useUI((s) => s.refresh);
+  const panel = useUI((s) => s.panel);
   const revision = useUI((s) => s.revision);
 
   const ctx: ActionCtx = useMemo(
@@ -76,8 +77,9 @@ export default function BarcodeLookupPage() {
       formModal,
       refresh,
       quickView: openQuickView,
+      panel,
     }),
-    [router, toast, confirm, formModal, refresh, openQuickView],
+    [router, toast, confirm, formModal, refresh, openQuickView, panel],
   );
 
   const [value, setValue] = useState("");

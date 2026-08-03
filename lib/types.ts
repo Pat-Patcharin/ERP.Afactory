@@ -27,6 +27,20 @@ export interface ActionCtx {
   refresh: () => void;
   /** Open the Quick View drawer for a record of any entity. */
   quickView: (entity: string, record: RecordBase) => void;
+  /**
+   * Open a side panel of blocks — the "View All" surface.
+   *
+   * Overview shows the default address and the primary contact; the rest go
+   * behind this rather than behind their own tab. Same BlockRenderer, so a
+   * panel costs a schema nothing beyond the blocks it already builds.
+   */
+  panel: (opts: PanelOptions) => void;
+}
+
+export interface PanelOptions {
+  title: string;
+  subtitle?: string;
+  blocks: Block[];
 }
 
 export type ToastTone = "success" | "info" | "warning" | "danger";
@@ -353,9 +367,16 @@ export interface NodeBlock extends BlockBase {
   node: ReactNode;
 }
 
-/** Two blocks side by side on a wide screen. */
+/**
+ * Blocks side by side on a wide screen, stacking as it narrows.
+ *
+ * This is what makes an "Overview first" page possible: six summary cards in
+ * a grid read in one screenful, where six stacked sections would not.
+ */
 export interface GridBlock extends BlockBase {
   type: "grid";
+  /** Defaults to 2. Three is for compact summary cards. */
+  cols?: 2 | 3;
   items: Block[];
 }
 
@@ -390,12 +411,16 @@ export interface Kpi {
 
 export interface AsidePanel {
   top?: ReactNode;
+  /** Heading above the rows. Omit for the unlabelled rail masters use today. */
+  title?: string;
   rows: {
     icon: IconName;
     label: string;
     value: ReactNode;
     muted?: boolean;
   }[];
+  /** Jump-off points rendered under the rows — Quick Links in the spec. */
+  links?: { label: string; icon?: IconName; sub?: string; run: () => void }[];
   bottom?: ReactNode;
 }
 

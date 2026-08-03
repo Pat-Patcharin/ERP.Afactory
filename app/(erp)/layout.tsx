@@ -4,6 +4,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { MainRegion } from "@/components/layout/MainRegion";
 import { ConfirmModalHost, FormModalHost, ToastHost } from "@/components/ui";
 import { QuickViewHost } from "@/components/engine/QuickViewHost";
+import { PanelHost } from "@/components/engine/PanelHost";
 
 /**
  * App shell. The sidebar is fixed, the main region offsets by its width, and
@@ -23,6 +24,7 @@ export default function ErpLayout({ children }: { children: ReactNode }) {
       <ConfirmModalHost />
       <FormModalHost />
       <QuickViewHost />
+      <PanelHost />
     </div>
   );
 }

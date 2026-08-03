@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type {
   ConfirmOptions,
   FormModalOptions,
+  PanelOptions,
   RecordBase,
   ToastTone,
 } from "./types";
@@ -35,6 +36,15 @@ interface UIState {
   quickView: { entity: string; record: RecordBase } | null;
   openQuickView: (entity: string, record: RecordBase) => void;
   closeQuickView: () => void;
+
+  /**
+   * Generic block panel — the "View All Addresses / Contacts / Bank Accounts"
+   * surface. Holds blocks rather than an entity, so any schema can raise one
+   * without the host knowing what is inside.
+   */
+  panelOpts: PanelOptions | null;
+  panel: (opts: PanelOptions) => void;
+  closePanel: () => void;
 
   /* ---- Advanced filter drawer ---- */
   filterDrawerOpen: boolean;
@@ -86,6 +96,10 @@ export const useUI = create<UIState>((set, get) => ({
   quickView: null,
   openQuickView: (entity, record) => set({ quickView: { entity, record } }),
   closeQuickView: () => set({ quickView: null }),
+
+  panelOpts: null,
+  panel: (opts) => set({ panelOpts: opts }),
+  closePanel: () => set({ panelOpts: null }),
 
   filterDrawerOpen: false,
   setFilterDrawer: (open) => set({ filterDrawerOpen: open }),

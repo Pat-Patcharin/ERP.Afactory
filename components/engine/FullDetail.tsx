@@ -19,13 +19,32 @@ import { BlockRenderer } from "./BlockRenderer";
 import { useActionCtx } from "./useActionCtx";
 import { copyValue } from "./copy";
 
-/**
- * Read-only record profile at page scale. Same schema as the drawer — the
- * difference is presentation: sections become cards, the KPI strip appears,
- * and Overview may carry a right-hand summary rail.
- *
- * Editing lives on a separate page; nothing here mutates.
- */
+/* ============================================================
+   ENTERPRISE DETAIL LAYOUT
+
+   The standard record page for every master in the ERP. Product,
+   Warehouse, Sales Rep and anything added later get this layout
+   by writing a schema — only the cards inside change.
+
+   Three decisions make it work, and all three are here rather
+   than in any schema:
+
+   · OVERVIEW FIRST. A record should read in one screenful, so
+     the first tab is a grid of summary cards and the rest of the
+     detail is reached by scrolling, not by tabbing. Schemas
+     express that with a `grid` block; the engine lays it out.
+
+   · THE HEADER STICKS. Identity, KPIs and tabs stay pinned while
+     the body scrolls — the figures that frame every other number
+     on the page must not scroll away from them.
+
+   · THE RAIL STICKS TOO. `aside` becomes a sticky summary column
+     on wide screens and folds under the content on narrow ones.
+     Nineteen schemas already declare an aside and all of them
+     inherit this.
+
+   Editing lives on a separate page; nothing here mutates.
+   ============================================================ */
 export function FullDetail<T extends RecordBase>({
   schema,
   record,
@@ -54,8 +73,11 @@ export function FullDetail<T extends RecordBase>({
 
   return (
     <div>
-      {/* ---------- Header: identity + actions + KPIs + tabs ---------- */}
-      <header className="border-b border-line bg-card px-6 pt-5 max-md:px-4 max-md:pt-4">
+      {/* ---------- Identity: scrolls away, it is read once ---------- */}
+      <header
+        data-testid="detail-header"
+        className="bg-card px-6 pt-5 max-md:px-4 max-md:pt-4"
+      >
         <div className="mb-4 flex items-center gap-1">
           <IconButton
             onClick={() => ctx.goto(`/m/${schema.key}`)}
@@ -194,9 +216,22 @@ export function FullDetail<T extends RecordBase>({
           </div>
         </div>
 
+      </header>
+
+      {/* ---------- Sticky band: KPI summary + tab rail ----------
+          These two stay pinned under the topbar. The KPI figures frame every
+          number in the body, and the tab rail must stay reachable however far
+          the Overview scrolls. `top-topbar` matches the 68px topbar. */}
+      <div
+        data-testid="detail-sticky"
+        className="sticky top-topbar z-20 border-b border-line bg-card px-6 pt-1 shadow-xs max-md:px-4"
+      >
         {/* Compact, clickable summary cards — each jumps to its related tab */}
         {kpis.length > 0 && (
-          <div className="mb-5 grid grid-cols-4 gap-3 max-[1100px]:grid-cols-2 max-md:gap-2">
+          <div
+            data-testid="detail-kpis"
+            className="mb-4 grid grid-cols-4 gap-3 max-[1100px]:grid-cols-2 max-md:gap-2"
+          >
             {kpis.map((k) => (
               <button
                 key={k.label}
@@ -235,19 +270,35 @@ export function FullDetail<T extends RecordBase>({
           onChange={setTab}
           className="-mx-6 border-b-0 px-6 max-md:-mx-4 max-md:px-4"
         />
-      </header>
+      </div>
 
       {/* ---------- Body ---------- */}
       <main className="max-w-[1440px] px-6 pb-12 pt-8 max-md:px-4 max-md:pb-10 max-md:pt-5">
         <section key={active?.key} className="animate-paneIn">
           {aside ? (
-            <div className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-4 max-[1240px]:grid-cols-1">
+            /* 70 / 30 on desktop, stacked below 1240px. */
+            <div
+              data-testid="detail-split"
+              className="grid grid-cols-[minmax(0,1fr)_320px] items-start gap-4 max-[1240px]:grid-cols-1"
+            >
               <div className="min-w-0">
                 {active && <BlockRenderer blocks={active.blocks(record, ctx)} />}
               </div>
-              <aside className="flex flex-col gap-4 max-[1240px]:flex-row max-[1240px]:flex-wrap max-md:flex-col">
+
+              {/* Sticky while the content scrolls. `top` clears the topbar plus
+                  the sticky KPI band above it. */}
+              <aside
+                data-testid="detail-aside"
+                className="sticky top-[220px] flex flex-col gap-4 max-[1240px]:static max-[1240px]:flex-row max-[1240px]:flex-wrap max-md:flex-col"
+              >
                 {aside.top}
+
                 <div className="flex-1 rounded-card border border-line bg-card px-5 py-4 shadow-xs max-[1240px]:min-w-[260px]">
+                  {aside.title && (
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+                      {aside.title}
+                    </p>
+                  )}
                   {aside.rows.map((r, i) => (
                     <div
                       key={i}
@@ -266,6 +317,43 @@ export function FullDetail<T extends RecordBase>({
                     </div>
                   ))}
                 </div>
+
+                {aside.links && aside.links.length > 0 && (
+                  <div
+                    data-testid="detail-quick-links"
+                    className="flex-1 overflow-hidden rounded-card border border-line bg-card shadow-xs max-[1240px]:min-w-[260px]"
+                  >
+                    <p className="border-b border-line px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
+                      Quick Links
+                    </p>
+                    {aside.links.map((l) => (
+                      <button
+                        key={l.label}
+                        onClick={l.run}
+                        className="group flex w-full items-center gap-3 border-b border-line px-5 py-2.5 text-left
+                                   transition-colors duration-fast last:border-b-0 hover:bg-surface"
+                      >
+                        <Icon
+                          name={l.icon ?? "arrowRight"}
+                          size={15}
+                          className="flex-shrink-0 text-ink-3"
+                        />
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-[13px] font-medium">{l.label}</span>
+                          {l.sub && (
+                            <span className="truncate text-[11px] text-ink-3">{l.sub}</span>
+                          )}
+                        </span>
+                        <Icon
+                          name="chevronRight"
+                          size={15}
+                          className="flex-shrink-0 text-ink-3 transition-transform duration-fast group-hover:translate-x-0.5"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {aside.bottom}
               </aside>
             </div>

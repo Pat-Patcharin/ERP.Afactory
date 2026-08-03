@@ -17,6 +17,7 @@ export function useActionCtx(): ActionCtx {
   const formModal = useUI((s) => s.formModal);
   const refresh = useUI((s) => s.refresh);
   const openQuickView = useUI((s) => s.openQuickView);
+  const panel = useUI((s) => s.panel);
 
   return useMemo<ActionCtx>(
     () => ({
@@ -30,7 +31,8 @@ export function useActionCtx(): ActionCtx {
       formModal,
       refresh,
       quickView: openQuickView,
+      panel,
     }),
-    [router, toast, confirm, formModal, refresh, openQuickView],
+    [router, toast, confirm, formModal, refresh, openQuickView, panel],
   );
 }
