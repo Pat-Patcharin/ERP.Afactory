@@ -5,12 +5,16 @@ import { Icon, type IconName } from "@/lib/icons";
 export function Card({
   className,
   children,
+  /** Lets a page address one card from a test without wrapping it. */
+  "data-testid": testId,
 }: {
   className?: string;
   children: ReactNode;
+  "data-testid"?: string;
 }) {
   return (
     <div
+      data-testid={testId}
       className={cn(
         "rounded-card border border-line bg-card shadow-xs",
         className,

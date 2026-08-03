@@ -873,9 +873,12 @@ describe("Stock Adjustment — navigation", () => {
     expect(pageHref("Stock Adjustment")).toBe("/m/stock-adjustment");
   });
 
-  it("leaves the modules this round must not build as coming soon", () => {
-    for (const label of ["Barcode Lookup"]) {
-      expect(pageHref(label)).toBe(`/soon?m=${encodeURIComponent(label)}`);
+  it("leaves the phases after Inventory as coming soon", () => {
+    /* Inventory is complete; Finance and the rest are the next phase. */
+    for (const label of ["Finance", "Service", "Reports", "Settings"]) {
+      const group = NAV.find((g) => g.label === label);
+      expect(group, label).toBeDefined();
+      expect(group!.items.every((i) => i.soon), label).toBe(true);
     }
   });
 

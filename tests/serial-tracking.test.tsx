@@ -905,8 +905,13 @@ describe("Serial Tracking — navigation", () => {
     expect(pageHref("Serial Tracking")).toBe("/m/serial-tracking");
   });
 
-  it("leaves the module this round must not build as coming soon", () => {
-    expect(pageHref("Barcode Lookup")).toBe("/soon?m=Barcode%20Lookup");
+  it("leaves the phases after Inventory as coming soon", () => {
+    /* Inventory is complete; Finance and the rest are the next phase. */
+    for (const label of ["Finance", "Service", "Reports", "Settings"]) {
+      const group = NAV.find((g) => g.label === label);
+      expect(group, label).toBeDefined();
+      expect(group!.items.every((i) => i.soon), label).toBe(true);
+    }
   });
 
   it("keeps the other Inventory modules untouched", () => {

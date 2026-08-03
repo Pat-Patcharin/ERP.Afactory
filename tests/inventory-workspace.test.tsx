@@ -387,7 +387,7 @@ describe("Inventory Workspace — navigation", () => {
     expect(routerPush).toHaveBeenCalledWith("/m/warehouse");
   });
 
-  it("registers the Inventory group with the workspace built and the rest coming soon", () => {
+  it("registers the Inventory group with every module built", () => {
     const group = NAV.find((g) => g.label === "Inventory");
     expect(group).toBeDefined();
 
@@ -414,6 +414,7 @@ describe("Inventory Workspace — navigation", () => {
       ["Cycle Count", "/m/cycle-count"],
       ["Lot Tracking", "/m/lot-tracking"],
       ["Serial Tracking", "/m/serial-tracking"],
+      ["Barcode Lookup", "/barcode"],
     ];
     built.forEach(([label, href], i) => {
       expect(group!.items[i].label).toBe(label);
@@ -421,8 +422,8 @@ describe("Inventory Workspace — navigation", () => {
       expect(group!.items[i].soon).toBeUndefined();
     });
 
-    /* Barcode Lookup stays unbuilt. */
-    for (const item of group!.items.slice(built.length)) expect(item.soon).toBe(true);
+    /* Inventory is complete — nothing in the group is a placeholder. */
+    expect(group!.items).toHaveLength(built.length);
   });
 
   it("keeps Finance, Service, Reports and Settings as coming soon", () => {
