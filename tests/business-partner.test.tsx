@@ -756,6 +756,101 @@ describe("BP Master — list view", () => {
 });
 
 /* ============================================================
+   Quick vs advanced filters
+   ============================================================ */
+
+describe("BP Master — More Filters drawer", () => {
+  const ADVANCED = ["custType", "supType", "bizType", "size", "risk"];
+
+  it("keeps only the everyday filters on the toolbar", () => {
+    const quick = list.filters.filter((f) => !f.advanced).map((f) => f.id);
+    expect(quick).toEqual(["role", "type", "status", "province", "rep", "credit"]);
+  });
+
+  it("moves the five new dimensions behind More Filters", () => {
+    const advanced = list.filters.filter((f) => f.advanced).map((f) => f.id);
+    expect(advanced).toEqual(ADVANCED);
+  });
+
+  it("renders each filter in exactly one place", () => {
+    /* The drawer stays mounted while closed, so a document-wide query finds
+       both — what matters is which container each control sits in. */
+    renderList();
+    const drawer = screen.getByTestId("filter-drawer-fields");
+
+    for (const label of [
+      "Customer Type",
+      "Supplier Type",
+      "Business Type",
+      "Customer Size",
+      "Risk Level",
+    ]) {
+      const el = screen.getByLabelText(label);
+      expect(drawer.contains(el), `${label} is in the drawer`).toBe(true);
+    }
+
+    for (const label of ["Province", "Sales Rep", "Status", "BP Type"]) {
+      const el = screen.getByLabelText(label);
+      expect(drawer.contains(el), `${label} is on the toolbar`).toBe(false);
+    }
+  });
+
+  it("renders them inside the drawer when it opens", async () => {
+    const user = userEvent.setup();
+    renderList();
+    await user.click(screen.getByRole("button", { name: /More Filters/ }));
+
+    const fields = await screen.findByTestId("filter-drawer-fields");
+    for (const label of ["Customer Type", "Supplier Type", "Business Type", "Customer Size", "Risk Level"]) {
+      expect(within(fields).getByLabelText(label), label).toBeInTheDocument();
+    }
+  });
+
+  it("narrows the table from inside the drawer", async () => {
+    const user = userEvent.setup();
+    renderList();
+    await user.click(screen.getByRole("button", { name: /More Filters/ }));
+
+    const risk = await screen.findByLabelText("Risk Level");
+    await user.selectOptions(risk, "High");
+
+    const expected = BUSINESS_PARTNERS.filter((b) => b.riskLevel === "High").length;
+    expect(expected).toBeGreaterThan(0);
+    expect(screen.getByText(new RegExp(`^${expected} Business Partners$`))).toBeInTheDocument();
+  });
+
+  it("counts the active drawer filters on the button", async () => {
+    const user = userEvent.setup();
+    renderList();
+    const open = screen.getByRole("button", { name: /More Filters/ });
+    expect(open.textContent).toBe("More Filters");
+
+    await user.click(open);
+    await user.selectOptions(await screen.findByLabelText("Risk Level"), "High");
+    await user.selectOptions(screen.getByLabelText("Customer Type"), "Private");
+
+    /* Without the badge a drawer filter narrows the table invisibly. */
+    expect(screen.getByRole("button", { name: /More Filters/ }).textContent).toBe(
+      "More Filters2",
+    );
+  });
+
+  it("clears only the drawer filters, leaving the toolbar alone", async () => {
+    const user = userEvent.setup();
+    renderList();
+
+    await user.selectOptions(screen.getByLabelText("Status"), "Active");
+    await user.click(screen.getByRole("button", { name: /More Filters/ }));
+    await user.selectOptions(await screen.findByLabelText("Risk Level"), "High");
+
+    await user.click(screen.getByRole("button", { name: /^Clear/ }));
+
+    expect((screen.getByLabelText("Risk Level") as HTMLSelectElement).value).toBe("");
+    expect((screen.getByLabelText("Status") as HTMLSelectElement).value).toBe("Active");
+  });
+});
+
+/* ============================================================
    Detail page
    ============================================================ */
 

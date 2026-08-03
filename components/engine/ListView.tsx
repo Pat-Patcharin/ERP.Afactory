@@ -143,6 +143,26 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
   const allOnPageSelected =
     pageRows.length > 0 && pageRows.every((r) => selected.has(r.code));
 
+  /* Where each filter renders. `test` is identical either way — this only
+     decides whether the control sits on the toolbar or in the drawer. */
+  const quickFilters = schema.filters.filter((f) => !f.advanced);
+  const advancedFilters = schema.filters.filter((f) => f.advanced);
+  const activeAdvanced = advancedFilters.filter((f) => filters[f.id]).length;
+
+  const setFilter = (id: string, value: string) => {
+    setFilters((s) => ({ ...s, [id]: value }));
+    setPage(1);
+  };
+
+  const clearAdvanced = () => {
+    setFilters((s) => {
+      const next = { ...s };
+      for (const f of advancedFilters) delete next[f.id];
+      return next;
+    });
+    setPage(1);
+  };
+
   const reset = () => {
     setQuery("");
     setFilters({});
@@ -260,7 +280,7 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
         </div>
 
         <div className="flex flex-wrap gap-3 max-md:w-full">
-          {schema.filters.map((f) => (
+          {quickFilters.map((f) => (
             <div key={f.id} className="w-[170px] max-md:min-w-[140px] max-md:flex-1">
               <FieldShell label={f.label}>
                 <Select
@@ -284,9 +304,18 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
         </div>
 
         <Button onClick={reset}>Reset</Button>
+        {/* Always present, so every list has the same toolbar. Lists with
+            nothing advanced open a drawer that says so. */}
         <Button onClick={() => setFilterDrawer(true)}>
           <Icon name="filter" size={17} strokeWidth={2} />
           More Filters
+          {/* The count is the only cue that a hidden filter is narrowing the
+              table — without it a drawer filter is invisible. */}
+          {activeAdvanced > 0 && (
+            <span className="grid h-5 min-w-5 place-items-center rounded-pill bg-primary px-1.5 text-[11px] font-semibold text-white">
+              {activeAdvanced}
+            </span>
+          )}
         </Button>
       </div>
 
@@ -540,7 +569,12 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
         </div>
       )}
 
-      <FilterDrawer />
+      <FilterDrawer
+        filters={advancedFilters}
+        values={filters}
+        onChange={setFilter}
+        onClear={clearAdvanced}
+      />
     </main>
   );
 }

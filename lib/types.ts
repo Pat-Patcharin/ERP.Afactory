@@ -92,6 +92,13 @@ export interface ListFilter<T> {
   label: string;
   options: () => string[];
   test: (rec: T, value: string) => boolean;
+  /**
+   * Move this filter off the toolbar and into the More Filters drawer.
+   * The toolbar holds the handful a user reaches for daily; everything
+   * else belongs behind the drawer rather than pushing the table down
+   * the page. Filtering behaviour is identical either way.
+   */
+  advanced?: boolean;
 }
 
 /** Optional operational banner + KPI strip above the table. */

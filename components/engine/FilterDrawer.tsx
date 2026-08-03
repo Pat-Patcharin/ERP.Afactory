@@ -1,130 +1,89 @@
 "use client";
 
-import { useState } from "react";
-import { cn } from "@/lib/utils";
 import { useUI } from "@/lib/store";
+import type { ListFilter, RecordBase } from "@/lib/types";
 import {
   Button,
-  Checkbox,
   Drawer,
   DrawerBody,
   DrawerFoot,
   DrawerHead,
-  Input,
+  FieldShell,
   Select,
 } from "@/components/ui";
 
-const WAREHOUSES = ["All", "WH-01 Samut Prakan", "WH-02 Bangkok", "WH-03 Service"];
+/* ============================================================
+   MORE FILTERS
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-5 border-b border-line pb-5 last:mb-0 last:border-b-0 last:pb-0">
-      <p className="mb-3 text-[13px] font-semibold">{title}</p>
-      {children}
-    </div>
-  );
-}
+   Schema-driven, like every other engine here: a list declares
+   which of its filters are `advanced`, and those render in this
+   drawer instead of on the toolbar. Same `test` function either
+   way — the drawer decides where a control lives, never what it
+   means.
 
-function CheckRow({ label }: { label: string }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-3 py-2">
-      <Checkbox />
-      <span>{label}</span>
-    </label>
-  );
-}
+   (This replaced a hardcoded panel of warehouse / price / stock
+   controls that filtered nothing. Controls that look real and do
+   nothing are worse than no controls.)
 
-/**
- * Advanced filter panel. Kept as a prototype surface: the quick filters in the
- * toolbar already cover the daily cases, and these compound criteria need the
- * query API before they can do real work.
- */
-export function FilterDrawer() {
+   Values apply as they change rather than on an Apply click. The
+   table is visible behind the drawer, so the effect is immediate;
+   an Apply button would only add a step that can be forgotten.
+   ============================================================ */
+
+export function FilterDrawer<T extends RecordBase>({
+  filters,
+  values,
+  onChange,
+  onClear,
+}: {
+  /** The advanced subset — the toolbar renders the rest. */
+  filters: ListFilter<T>[];
+  values: Record<string, string>;
+  onChange: (id: string, value: string) => void;
+  onClear: () => void;
+}) {
   const open = useUI((s) => s.filterDrawerOpen);
   const setOpen = useUI((s) => s.setFilterDrawer);
-  const toast = useUI((s) => s.toast);
-  const [wh, setWh] = useState("All");
+
+  const active = filters.filter((f) => values[f.id]).length;
 
   return (
     <Drawer open={open} onClose={() => setOpen(false)} label="Advanced filters">
       <DrawerHead title="More Filters" onClose={() => setOpen(false)} />
+
       <DrawerBody>
-        <Section title="Warehouse">
-          <div className="flex flex-wrap gap-2">
-            {WAREHOUSES.map((w) => (
-              <button
-                key={w}
-                onClick={() => setWh(w)}
-                className={cn(
-                  "rounded-pill border px-3 py-1.5 text-[13px] transition-all duration-fast",
-                  wh === w
-                    ? "border-primary bg-primary-soft font-medium text-primary-active"
-                    : "border-line text-ink-2 hover:border-line-strong hover:text-ink",
-                )}
-              >
-                {w}
-              </button>
+        {filters.length === 0 ? (
+          <p className="py-8 text-center text-ink-2">
+            รายการนี้ไม่มีตัวกรองเพิ่มเติม — ตัวกรองทั้งหมดอยู่บนแถบด้านบนแล้ว
+          </p>
+        ) : (
+          <div data-testid="filter-drawer-fields" className="flex flex-col gap-4">
+            {filters.map((f) => (
+              <FieldShell key={f.id} label={f.label}>
+                <Select
+                  aria-label={f.label}
+                  value={values[f.id] ?? ""}
+                  onChange={(e) => onChange(f.id, e.target.value)}
+                >
+                  <option value="">All</option>
+                  {f.options().map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </Select>
+              </FieldShell>
             ))}
           </div>
-        </Section>
-
-        <Section title="Selling Price (THB)">
-          <div className="flex items-center gap-2">
-            <Input type="number" placeholder="Min" />
-            <span className="text-ink-2">—</span>
-            <Input type="number" placeholder="Max" />
-          </div>
-        </Section>
-
-        <Section title="Stock Level">
-          <CheckRow label="Below reorder point" />
-          <CheckRow label="Out of stock" />
-          <CheckRow label="Overstock" />
-        </Section>
-
-        <Section title="Registration">
-          <CheckRow label="Expiring within 90 days" />
-          <CheckRow label="Expired" />
-        </Section>
-
-        <Section title="Main Supplier">
-          <Select defaultValue="">
-            <option value="">All suppliers</option>
-            <option>Supplier A Co., Ltd.</option>
-            <option>HDX WILL</option>
-            <option>DGSHAPE</option>
-            <option>Andaman Medical</option>
-          </Select>
-        </Section>
-
-        <Section title="Created date">
-          <div className="flex items-center gap-2">
-            <Input type="date" />
-            <span className="text-ink-2">—</span>
-            <Input type="date" />
-          </div>
-        </Section>
+        )}
       </DrawerBody>
 
       <DrawerFoot>
-        <Button
-          className="flex-1"
-          onClick={() => {
-            setWh("All");
-            toast("ล้างตัวกรอง", "รีเซ็ตตัวกรองทั้งหมดแล้ว", "info");
-          }}
-        >
-          Clear all
+        <Button className="flex-1" disabled={active === 0} onClick={onClear}>
+          Clear {active > 0 ? `(${active})` : "all"}
         </Button>
-        <Button
-          variant="primary"
-          className="flex-1"
-          onClick={() => {
-            setOpen(false);
-            toast("ใช้ตัวกรองแล้ว", "แสดงผลตามเงื่อนไขที่เลือก");
-          }}
-        >
-          Apply filters
+        <Button variant="primary" className="flex-1" onClick={() => setOpen(false)}>
+          Done
         </Button>
       </DrawerFoot>
     </Drawer>
