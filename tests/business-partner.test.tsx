@@ -53,6 +53,7 @@ import {
 } from "@/lib/domain/partner";
 import {
   bpCustomerKpi,
+  bpLastPurchase,
   bpPurchaseKpi,
   bpSalesOrders,
   bpTopProducts,
@@ -632,6 +633,75 @@ describe("BP Master — list view", () => {
     for (const k of ["customerType", "supplierType", "creditLimit", "riskLevel"]) {
       expect(list.columns.find((c) => c.key === k)!.defaultHidden, k).toBe(true);
     }
+  });
+
+  it("shows the trimmed column set", () => {
+    const keys = list.columns.filter((c) => !c.defaultHidden).map((c) => c.key);
+    expect(keys).toEqual([
+      "code",
+      "nameTh",
+      "type",
+      "bpMode",
+      "contactName",
+      "phone",
+      "province",
+      "salesArea",
+      "creditStatus",
+      "status",
+      "lastPurchase",
+    ]);
+  });
+
+  it("drops Tax ID and Roles from the table but keeps them findable", () => {
+    const keys = list.columns.map((c) => c.key);
+    expect(keys).not.toContain("taxId");
+    expect(keys).not.toContain("roles");
+    /* Removed from the view, not from the index. */
+    expect(list.searchFields).toContain("taxId");
+  });
+
+  it("renders the BP code without a thumbnail", () => {
+    renderList();
+    const cell = screen.getByText(BOTH).closest("td")!;
+    expect(within(cell).queryByRole("img")).toBeNull();
+    expect(cell.querySelector("img")).toBeNull();
+    /* The logo emoji is not rendered in the code cell. */
+    expect(cell.textContent).toBe(BOTH);
+  });
+
+  it("shows Sale Area from the sales territory", () => {
+    const col = list.columns.find((c) => c.key === "salesArea")!;
+    expect(col.label).toBe("Sale Area");
+    expect(bp(BOTH).salesArea).toBe(bp(BOTH).sales!.territory);
+    renderList();
+    expect(screen.getAllByText(bp(BOTH).salesArea).length).toBeGreaterThan(0);
+  });
+
+  it("replaces Last Updated with Last Purchase, sorted on the real date", () => {
+    const keys = list.columns.map((c) => c.key);
+    expect(keys).not.toContain("updated");
+
+    const col = list.columns.find((c) => c.key === "lastPurchase")!;
+    expect(col.label).toBe("Last Purchase");
+    expect(col.sortable).toBe(true);
+
+    /* Sorting on the parsed date, not the dd/mm/yyyy string — otherwise
+       01/12 would sort above 02/11 of the same year. */
+    const withOrder = BUSINESS_PARTNERS.find((b) => bpLastPurchase(b).date)!;
+    expect(col.sortValue!(withOrder)).toBeGreaterThan(0);
+    const without = BUSINESS_PARTNERS.find((b) => !bpLastPurchase(b).date);
+    if (without) expect(col.sortValue!(without)).toBe(0);
+  });
+
+  it("reads last purchase from the sell side, falling back to the buy side", () => {
+    /* A customer's last purchase is the order they placed. */
+    const cust = bpLastPurchase(bp(BOTH));
+    expect(cust.date).toBe(bpSalesOrders(bp(BOTH))[0].orderDate);
+    expect(cust.doc).toBe(bpSalesOrders(bp(BOTH))[0].code);
+
+    /* A pure supplier has none, so the column reports what we bought. */
+    const sup = bpLastPurchase(bp(SUPPLIER));
+    expect(sup.date).toBe(bp(SUPPLIER).txn.po[0].date);
   });
 
   it("searches every field the spec lists", () => {

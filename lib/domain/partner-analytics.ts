@@ -170,6 +170,65 @@ export function bpTopPurchasedProducts(bp: BusinessPartner, limit = 5): ProductT
   return rank(tally, limit);
 }
 
+/* ---------- Last purchase ---------- */
+
+export interface LastPurchase {
+  /** dd/mm/yyyy as the document carries it, or "" when there is none. */
+  date: string;
+  amount: number;
+  doc: string;
+  /** Epoch millis for sorting; 0 when undated. Buddhist years included. */
+  ts: number;
+}
+
+const EMPTY_PURCHASE: LastPurchase = { date: "", amount: 0, doc: "", ts: 0 };
+
+/** dd/mm/yyyy → millis, accepting both eras the modules mix. */
+function dateTs(v: string): number {
+  const [d, m, y] = String(v ?? "").split("/").map(Number);
+  if (!d || !m || !y) return 0;
+  return new Date(y > 2400 ? y - 543 : y, m - 1, d).getTime();
+}
+
+/**
+ * When this partner last transacted.
+ *
+ * A customer's last purchase is the last order they placed with us. A pure
+ * supplier has no sales orders, so the equivalent question is the last order
+ * WE placed with them — reported from the same field so one column answers
+ * both without a second one that is blank half the time.
+ */
+export function bpLastPurchase(bp: BusinessPartner): LastPurchase {
+  const so = bpSalesOrders(bp)[0];
+  if (so) return { date: so.orderDate, amount: so.total, doc: so.code, ts: dateTs(so.orderDate) };
+
+  /* Sales orders recorded on the partner itself, for records the join misses. */
+  const recordedSo = (bp.txn?.so ?? [])[0];
+  if (recordedSo) {
+    return {
+      date: recordedSo.date,
+      amount: recordedSo.amount,
+      doc: recordedSo.no,
+      ts: dateTs(recordedSo.date),
+    };
+  }
+
+  const po = bpPurchaseOrders(bp)[0];
+  if (po) return { date: po.orderDate, amount: po.total, doc: po.code, ts: dateTs(po.orderDate) };
+
+  const recordedPo = (bp.txn?.po ?? [])[0];
+  if (recordedPo) {
+    return {
+      date: recordedPo.date,
+      amount: recordedPo.amount,
+      doc: recordedPo.no,
+      ts: dateTs(recordedPo.date),
+    };
+  }
+
+  return EMPTY_PURCHASE;
+}
+
 export interface PurchaseKpi {
   orders: number;
   spend: number;

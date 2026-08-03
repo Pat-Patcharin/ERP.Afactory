@@ -18,6 +18,7 @@ import {
 import {
   bpCustomerKpi,
   bpGoodsReceipts,
+  bpLastPurchase,
   bpPurchaseKpi,
   bpPurchaseOrders,
   bpSalesOrders,
@@ -41,7 +42,7 @@ import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
 import { checkPermission, maskAccount } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import type { BadgeTone, DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
-import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
+import { Badge, CellSub, Thumb } from "@/components/ui";
 import { Icon, type IconName } from "@/lib/icons";
 import { BP_FORM } from "./forms/business-partner";
 
@@ -186,15 +187,13 @@ export const BP_LIST: ListSchema<BpRow> = {
 
   columns: [
     {
+      /* No thumbnail: the logo is decorative here and the code is what a
+         user scans for. The image still identifies the record on the
+         detail page, where there is room for it. */
       key: "code",
       label: "BP Code",
       sortable: true,
-      cell: (b) => (
-        <CellMedia>
-          <Thumb>{b.logo}</Thumb>
-          <span className="font-medium">{b.code}</span>
-        </CellMedia>
-      ),
+      cell: (b) => <span className="font-medium tnum">{b.code}</span>,
     },
     {
       key: "nameTh",
@@ -217,13 +216,9 @@ export const BP_LIST: ListSchema<BpRow> = {
         </Badge>
       ),
     },
-    { key: "roles", label: "Roles", cell: roleBadges },
-    {
-      key: "taxId",
-      label: "Tax ID",
-      muted: true,
-      cell: (b) => <span className="tnum">{b.taxId || DASH}</span>,
-    },
+    /* Roles and Tax ID are off the table — the Customer / Supplier column
+       already carries the role, and a tax number is a detail-page fact
+       nobody scans a list for. Both stay searchable. */
     { key: "contactName", label: "Primary Contact", muted: true, cell: (b) => b.contactName },
     {
       key: "phone",
@@ -232,6 +227,7 @@ export const BP_LIST: ListSchema<BpRow> = {
       cell: (b) => <span className="tnum">{b.phone}</span>,
     },
     { key: "province", label: "Province", muted: true, cell: (b) => b.province },
+    { key: "salesArea", label: "Sale Area", muted: true, cell: (b) => b.salesArea },
     {
       key: "creditStatus",
       label: "Credit Status",
@@ -334,11 +330,24 @@ export const BP_LIST: ListSchema<BpRow> = {
       cell: (b) => b.addressCount,
     },
     {
-      key: "updated",
-      label: "Last Updated",
-      muted: true,
+      /* Sorts on the parsed date, not the dd/mm/yyyy string — and undated
+         partners fall to the bottom rather than sorting as the year zero. */
+      key: "lastPurchase",
+      label: "Last Purchase",
       sortable: true,
-      cell: (b) => b.updated.split(" ")[0],
+      sortValue: (b) => bpLastPurchase(b).ts,
+      cell: (b) => {
+        const last = bpLastPurchase(b);
+        if (!last.date) return <span className="text-ink-3">{DASH}</span>;
+        return (
+          <>
+            <span className="tnum">{last.date}</span>
+            <CellSub>
+              {last.doc} · {money0(last.amount)}
+            </CellSub>
+          </>
+        );
+      },
     },
   ],
 

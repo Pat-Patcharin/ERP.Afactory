@@ -62,6 +62,8 @@ export interface BpRow extends BusinessPartner {
   supplierType: string;
   businessType: string;
   riskLevel: string;
+  /** Sales territory — from the sales block, falling back to classification. */
+  salesArea: string;
   creditLimit: number;
   creditUsed: number;
   availableCredit: number;
@@ -316,6 +318,7 @@ export function decorateBPs() {
     bp.supplierType = bp.supplier?.supType ?? DASH;
     bp.businessType = bp.customer?.bizType ?? bp.cls?.bizType ?? DASH;
     bp.riskLevel = bp.customer?.risk ?? DASH;
+    bp.salesArea = bp.sales?.territory || bp.cls?.territory || DASH;
     bp.creditLimit = bp.credit?.limit ?? 0;
     bp.creditUsed = bp.credit?.outstanding ?? 0;
     bp.availableCredit = Math.max(0, bp.creditLimit - bp.creditUsed);
