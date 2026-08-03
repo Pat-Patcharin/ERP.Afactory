@@ -465,7 +465,10 @@ export type FieldType =
   | "select"
   | "textarea"
   | "toggle"
+  /** Emoji stand-in picker plus upload — masters that only need a marker. */
   | "image"
+  /** Upload only. A real photograph, no icon to fall back on. */
+  | "photo"
   | "static"
   | "grid"
   | "cards"

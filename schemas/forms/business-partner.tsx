@@ -37,9 +37,8 @@ import {
 } from "@/lib/domain/partner";
 import { BILLING_ADDRESS_TYPES, DELIVERY_ADDRESS_TYPES } from "@/data/partners";
 import { money0, stamp, toDisplayDate, toInputDate } from "@/lib/format";
-import { checkPermission } from "@/lib/permissions";
 import type { FormSchema, GridRow } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, isCreate, opts, saved } from "./common";
+import { FORM_USER, opts, saved } from "./common";
 
 /* ============================================================
    BUSINESS PARTNER FORM
@@ -62,7 +61,6 @@ const ENTITY_TYPES = [
 const BRANCH_TYPES = ["สำนักงานใหญ่", "สาขา"];
 const CUST_GROUPS = ["คลินิกทั่วไป", "คลินิกเฉพาะทาง", "โรงพยาบาล", "ตัวแทนจำหน่าย", "หน่วยงานราชการ", "มหาวิทยาลัย"];
 const SUP_GROUPS = ["วัสดุสิ้นเปลือง", "เครื่องมือแพทย์", "อะไหล่", "บริการ", "ขนส่ง"];
-const INDUSTRIES = ["บริการทางการแพทย์", "ค้าส่ง-ค้าปลีก", "การผลิต", "การศึกษา", "ราชการ", "อื่น ๆ"];
 const CUST_LEVELS = ["Platinum", "Gold", "Silver", "Bronze", "New"];
 const PRICE_GROUPS = ["Retail", "Dealer", "Government", "Chain Clinic", "Contract"];
 const TERRITORIES = ["กรุงเทพฯ-ปริมณฑล", "ภาคกลาง", "ภาคเหนือ", "ภาคอีสาน", "ภาคใต้", "ภาคตะวันออก"];
@@ -95,7 +93,7 @@ export const BP_FORM: FormSchema<BpRow> = {
   blank: () => ({
     _mode: "create",
     code: nextBPCode(),
-    logo: "🏢",
+    logo: "",
     nameTh: "",
     nameEn: "",
     trade: "",
@@ -110,7 +108,6 @@ export const BP_FORM: FormSchema<BpRow> = {
     cls: {
       custGroup: "",
       supGroup: "",
-      industry: "",
       bizType: "นิติบุคคล",
       custLevel: "New",
       priceGroup: "Retail",
@@ -255,20 +252,19 @@ export const BP_FORM: FormSchema<BpRow> = {
           title: "Organisation",
           cols: "2",
           fields: [
-            { type: "image", path: "logo", label: "Logo", span: true },
             {
+              type: "photo",
+              path: "logo",
+              label: "รูปคลินิก / สถานประกอบการ",
+              span: true,
+              hint: "อัปโหลดรูปจริงของคู่ค้า — JPG หรือ PNG ไม่เกิน 2 MB",
+            },
+            {
+              /* The code is issued by the system and never typed. */
               type: "static",
               path: "code",
               label: "Partner Code",
               hint: "ระบบออกรหัสให้อัตโนมัติ — บทบาทไม่ถูกเข้ารหัสไว้ในรหัสคู่ค้า",
-              when: (s) => !checkPermission("canSetBPCode") || !isCreate(s),
-            },
-            {
-              type: "text",
-              path: "code",
-              label: "Partner Code",
-              required: true,
-              when: (s) => checkPermission("canSetBPCode") && isCreate(s),
             },
             {
               type: "select",
@@ -317,12 +313,12 @@ export const BP_FORM: FormSchema<BpRow> = {
       ],
     },
 
-    /* ---------- 2. ROLES ---------- */
+    /* ---------- 2. ROLES AND GROUPING ---------- */
     {
       key: "roles",
       label: "Roles",
       railLabel: "บทบาท",
-      labelTh: "ลูกค้า / ผู้ขาย / ตัวแทน",
+      labelTh: "บทบาทและการจัดกลุ่ม",
       blocks: () => [
         {
           type: "note",
@@ -341,16 +337,8 @@ export const BP_FORM: FormSchema<BpRow> = {
             desc: r.desc,
           })),
         },
-      ],
-    },
-
-    /* ---------- 3. CLASSIFICATION ---------- */
-    {
-      key: "classification",
-      label: "Classification",
-      railLabel: "การจัดกลุ่ม",
-      labelTh: "กลุ่มและเขตการขาย",
-      blocks: () => [
+        /* The groups a partner belongs to follow from its roles, so they are
+           picked here rather than on a step of their own. */
         {
           type: "card",
           title: "Grouping",
@@ -370,7 +358,6 @@ export const BP_FORM: FormSchema<BpRow> = {
               options: SUP_GROUPS,
               when: isSupplier,
             },
-            { type: "select", path: "cls.industry", label: "Industry", options: INDUSTRIES },
             {
               type: "select",
               path: "cls.custLevel",
@@ -392,7 +379,7 @@ export const BP_FORM: FormSchema<BpRow> = {
       ],
     },
 
-    /* ---------- 4. TAX ---------- */
+    /* ---------- 3. TAX ---------- */
     {
       key: "tax",
       label: "Tax",
@@ -410,6 +397,8 @@ export const BP_FORM: FormSchema<BpRow> = {
               label: "Legal Entity",
               options: ENTITY_TYPES,
             },
+            /* A VAT registrant must have a Tax ID; anyone else may not have
+               one at all, so the same field stops being mandatory. */
             {
               type: "text",
               path: "tax.taxId",
@@ -417,6 +406,15 @@ export const BP_FORM: FormSchema<BpRow> = {
               required: true,
               placeholder: "0105560112347",
               hint: "13 หลัก ระบบตรวจสอบหลักตรวจสอบให้อัตโนมัติ",
+              when: (s) => Boolean(s.tax?.vatReg),
+            },
+            {
+              type: "text",
+              path: "tax.taxId",
+              label: "Tax ID",
+              placeholder: "0105560112347",
+              hint: "ไม่จด VAT จึงไม่บังคับ — ถ้ากรอกต้องเป็น 13 หลักที่ถูกต้อง",
+              when: (s) => !s.tax?.vatReg,
             },
             {
               type: "select",
@@ -944,7 +942,13 @@ export const BP_FORM: FormSchema<BpRow> = {
       step: "roles",
       test: (s) => Object.values(s.roles ?? {}).some(Boolean),
     },
-    { path: "tax.taxId", label: "Tax ID", step: "tax" },
+    {
+      /* Only a VAT registrant is obliged to have one. */
+      path: "tax.taxId",
+      label: "Tax ID (เมื่อจดทะเบียน VAT)",
+      step: "tax",
+      test: (s) => !s.tax?.vatReg || Boolean(String(s.tax?.taxId ?? "").trim()),
+    },
     {
       path: "contacts",
       label: "ผู้ติดต่ออย่างน้อย 1 คน",
@@ -1256,38 +1260,8 @@ export const BP_FORM: FormSchema<BpRow> = {
 
   openDuplicate: (code, ctx) => ctx.openEntity("business-partner", code),
 
-  sidePanel: (s) => {
-    const roles = BP_ROLE_DEFS.filter((r) => s.roles?.[r.key]).map((r) => r.label);
-    const limit = num(s.credit?.limit);
-
-    return (
-      <RailCard icon="partner" title="Partner Summary">
-        <RailRow label="บทบาท" value={roles.length ? roles.join(", ") : "ยังไม่ได้เลือก"} />
-        <RailRow label="ผู้ติดต่อ" value={`${((s.contacts ?? []) as GridRow[]).length} คน`} />
-        <RailRow label="ที่อยู่" value={`${((s.addresses ?? []) as GridRow[]).length} แห่ง`} />
-        {checkPermission("canViewCredit") && (
-          <RailRow
-            label="วงเงินเครดิต"
-            value={limit ? money0(limit) : "ไม่ให้เครดิต"}
-            tone={limit ? "ok" : undefined}
-          />
-        )}
-        <RailRow
-          label="เลขผู้เสียภาษี"
-          value={
-            s.tax?.taxId
-              ? validThaiTaxId(String(s.tax.taxId))
-                ? "ถูกต้อง"
-                : "ไม่ถูกต้อง"
-              : "ยังไม่ระบุ"
-          }
-          tone={
-            s.tax?.taxId ? (validThaiTaxId(String(s.tax.taxId)) ? "ok" : "danger") : undefined
-          }
-        />
-      </RailCard>
-    );
-  },
+  /* No side panel: the rail already shows step progress, and a second
+     summary of the same draft only competed with the fields being filled. */
 
   save: (s, ctx) => {
     const now = stamp();
@@ -1295,7 +1269,7 @@ export const BP_FORM: FormSchema<BpRow> = {
     const existing = BUSINESS_PARTNERS.find((b) => b.code === code);
 
     const patch = {
-      logo: String(s.logo ?? "🏢"),
+      logo: String(s.logo ?? ""),
       nameTh: String(s.nameTh ?? "").trim(),
       nameEn: String(s.nameEn ?? ""),
       trade: String(s.trade ?? ""),

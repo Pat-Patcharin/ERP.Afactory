@@ -51,8 +51,29 @@ import type {
   ListSchema,
 } from "@/lib/types";
 import { Badge, CellSub, Thumb } from "@/components/ui";
+import { isPhoto } from "@/components/engine/FormFields";
 import { Icon, type IconName } from "@/lib/icons";
 import { BP_FORM } from "./forms/business-partner";
+
+/**
+ * The logo is an uploaded photograph now, so it can be a data URL rather than
+ * an emoji. Anything the browser can display becomes an image; the older
+ * emoji records keep rendering as text, and a partner with neither falls back
+ * to the generic mark rather than an empty square.
+ */
+function PartnerAvatar({ value, name }: { value: string; name: string }) {
+  if (isPhoto(value)) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={value} alt={name} className="h-full w-full rounded-card object-cover" />
+    );
+  }
+  return value ? (
+    <>{value}</>
+  ) : (
+    <Icon name="partner" size={34} className="text-ink-3" />
+  );
+}
 
 /** Risk reads the same way everywhere it appears. */
 const RISK_TONE: Record<string, BadgeTone> = {
@@ -636,7 +657,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
   entityLabel: "Business Partner",
 
   identity: (b) => ({
-    image: b.logo,
+    image: <PartnerAvatar value={b.profileImage || b.logo} name={b.nameTh} />,
     code: b.code,
     title: b.nameTh,
     copyFields: [
@@ -1175,7 +1196,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             cols: 2,
             items: [
               { label: "Roles", value: roleBadges(b) },
-              { label: "Industry", value: b.cls.industry || DASH },
               { label: "Customer Group", value: b.cls.custGroup || DASH },
               { label: "Supplier Group", value: b.cls.supGroup || DASH },
               { label: "Customer Level", value: b.cls.custLevel || DASH },

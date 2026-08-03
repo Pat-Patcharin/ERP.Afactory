@@ -175,6 +175,9 @@ export function FieldView({ field: f, api }: { field: FormField; api: FormApi })
       case "image":
         return <ImageControl field={f} api={api} />;
 
+      case "photo":
+        return <PhotoControl field={f} api={api} />;
+
       case "static":
         return (
           <div className="flex min-h-10 items-center rounded-input border border-line bg-surface px-3 text-body text-ink-2 tnum">
@@ -250,6 +253,95 @@ function ImageControl({ field: f, api }: { field: FormField; api: FormApi }) {
           <Icon name="upload" size={14} />
           อัปโหลดรูปภาพจริง
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- photo — a real photograph, with no icon to hide behind ------- */
+
+/** Anything the browser can put in an <img>, rather than an emoji marker. */
+export const isPhoto = (v: string) => /^(data:image\/|https?:\/\/|\/)/.test(v);
+
+function PhotoControl({ field: f, api }: { field: FormField; api: FormApi }) {
+  const path = f.path ?? "";
+  const value = String(getPath(api.state, path) ?? "");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const has = isPhoto(value);
+
+  /* Read the file into the draft. Nothing is uploaded anywhere — the picture
+     lives in the record exactly like every other field until an API exists. */
+  const pick = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      api.ctx.toast("ไฟล์ไม่ใช่รูปภาพ", file.name, "danger");
+      return;
+    }
+    if (file.size > 2_000_000) {
+      api.ctx.toast("ไฟล์ใหญ่เกินไป", "รองรับไฟล์ไม่เกิน 2 MB", "danger");
+      return;
+    }
+    setBusy(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      api.set(path, String(reader.result ?? ""));
+      setBusy(false);
+      api.ctx.toast("อัปโหลดรูปแล้ว", file.name, "success");
+    };
+    reader.onerror = () => {
+      setBusy(false);
+      api.ctx.toast("อ่านไฟล์ไม่สำเร็จ", file.name, "danger");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="flex items-start gap-4">
+      <div className="grid h-[88px] w-[88px] flex-shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-surface">
+        {has ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt={f.label} className="h-full w-full object-cover" />
+        ) : (
+          <Icon name="partner" size={28} className="text-ink-3" />
+        )}
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          aria-label={f.label}
+          className="hidden"
+          onChange={(e) => {
+            pick(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => fileRef.current?.click()}
+            className="inline-flex w-fit items-center gap-1.5 rounded-btn border border-line bg-card px-3 py-1.5 text-[13px] font-medium hover:bg-surface disabled:opacity-50"
+          >
+            <Icon name={busy ? "spinner" : "upload"} size={14} />
+            {has ? "เปลี่ยนรูป" : "อัปโหลดรูปจริง"}
+          </button>
+          {has && (
+            <button
+              type="button"
+              onClick={() => api.set(path, "")}
+              className="text-[13px] font-medium text-danger hover:underline"
+            >
+              ลบรูป
+            </button>
+          )}
+        </div>
+        <span className="text-cap text-ink-3">
+          {f.hint ?? "รองรับ JPG หรือ PNG ไม่เกิน 2 MB"}
+        </span>
       </div>
     </div>
   );

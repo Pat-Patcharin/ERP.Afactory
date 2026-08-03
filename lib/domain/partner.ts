@@ -730,6 +730,15 @@ export function bpValidate(bp: Partial<BusinessPartner>): BpIssue[] {
       blocking: true,
     });
   }
+  /* A VAT registrant must have a Tax ID; anyone else may legitimately have
+     none, which is why the rule hangs off the registration flag. */
+  if (!taxId && bp.tax?.vatReg) {
+    issues.push({
+      field: "tax.taxId",
+      message: "จดทะเบียน VAT ต้องระบุเลขประจำตัวผู้เสียภาษี",
+      blocking: true,
+    });
+  }
 
   const addresses = bp.addresses ?? [];
   if (!addresses.some((a) => canBill(a))) {

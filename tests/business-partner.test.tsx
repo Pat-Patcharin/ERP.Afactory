@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ListView } from "@/components/engine/ListView";
+import { isPhoto } from "@/components/engine/FormFields";
 import { FullDetail } from "@/components/engine/FullDetail";
 import { QuickViewHost } from "@/components/engine/QuickViewHost";
 import {
@@ -69,6 +70,7 @@ import { getSchemas } from "@/schemas/registry";
 import type { ActionCtx } from "@/lib/types";
 import { bpSchemas } from "@/schemas/business-partner";
 import { BP_FORM } from "@/schemas/forms/business-partner";
+import type { FormField, FormState } from "@/lib/types";
 
 /* ============================================================
    BUSINESS PARTNER MASTER regression suite.
@@ -1227,6 +1229,125 @@ describe("BP Master — create / edit form", () => {
     BP_FORM.onLookupPick!("product", "supplierItems", 0, hits[0], state);
     expect(state.supplierItems[0].product).toBe(hits[0].code);
     expect(state.supplierItems[0].productName).toBe(hits[0].name);
+  });
+});
+
+/* ============================================================
+   Form revisions
+   ============================================================ */
+
+/** Every field a step renders for this draft, cards flattened. */
+const fieldsOf = (stepKey: string, state: FormState) => {
+  const step = BP_FORM.steps.find((s) => s.key === stepKey)!;
+  return step
+    .blocks(state)
+    .filter(Boolean)
+    .flatMap((b) => (b && "fields" in b ? b.fields : [b]))
+    .filter((f): f is FormField => Boolean(f))
+    .filter((f) => !f.when || f.when(state));
+};
+
+describe("BP Master — form revisions", () => {
+  it("carries no side summary of the draft", () => {
+    expect(BP_FORM.sidePanel).toBeUndefined();
+  });
+
+  it("issues the partner code and never asks for it", () => {
+    const blank = BP_FORM.blank();
+    expect(String(blank.code)).toMatch(/^BP\d+$/);
+
+    const code = fieldsOf("identity", blank).filter((f) => f.path === "code");
+    expect(code).toHaveLength(1);
+    expect(code[0].type).toBe("static");
+    expect(code[0].required).toBeFalsy();
+  });
+
+  it("takes a photograph for the logo and offers no icon to pick", () => {
+    const logo = fieldsOf("identity", BP_FORM.blank()).find((f) => f.path === "logo")!;
+    expect(logo.type).toBe("photo");
+    /* A new partner starts with no picture rather than a stock emoji. */
+    expect(BP_FORM.blank().logo).toBe("");
+  });
+
+  it("renders an uploaded photo as an image and an old emoji as text", () => {
+    expect(isPhoto("data:image/png;base64,AAAA")).toBe(true);
+    expect(isPhoto("https://example.com/clinic.jpg")).toBe(true);
+    expect(isPhoto("🏢")).toBe(false);
+    expect(isPhoto("")).toBe(false);
+  });
+
+  it("groups the partner on the roles step instead of a step of its own", () => {
+    expect(BP_FORM.steps.map((s) => s.key)).not.toContain("classification");
+
+    const both = { roles: { customer: true, supplier: true } };
+    const paths = fieldsOf("roles", both).map((f) => f.path);
+    for (const p of [
+      "roles",
+      "cls.custGroup",
+      "cls.supGroup",
+      "cls.custLevel",
+      "cls.priceGroup",
+      "cls.territory",
+      "cls.channel",
+    ]) {
+      expect(paths, p).toContain(p);
+    }
+  });
+
+  it("drops Industry from the form and from the record it writes", () => {
+    const paths = BP_FORM.steps.flatMap((s) =>
+      fieldsOf(s.key, { roles: { customer: true, supplier: true } }).map((f) => f.path),
+    );
+    expect(paths).not.toContain("cls.industry");
+    expect(BP_FORM.blank().cls).not.toHaveProperty("industry");
+  });
+
+  it("keeps the grouping fields role-conditional after the move", () => {
+    const supplierOnly = fieldsOf("roles", { roles: { supplier: true } }).map((f) => f.path);
+    expect(supplierOnly).toContain("cls.supGroup");
+    expect(supplierOnly).not.toContain("cls.custGroup");
+    expect(supplierOnly).not.toContain("cls.custLevel");
+  });
+
+  it("requires the Tax ID only when the partner is VAT registered", () => {
+    const rule = BP_FORM.required.find((r) => r.path === "tax.taxId")!;
+    expect(rule.test!({ tax: { vatReg: true, taxId: "" } })).toBe(false);
+    expect(rule.test!({ tax: { vatReg: true, taxId: "0105560112347" } })).toBe(true);
+    /* Not registered — the field is simply not owed. */
+    expect(rule.test!({ tax: { vatReg: false, taxId: "" } })).toBe(true);
+    expect(rule.test!({ tax: {} })).toBe(true);
+  });
+
+  it("marks the Tax ID field required only in the VAT-registered draft", () => {
+    const on = fieldsOf("tax", { tax: { vatReg: true } }).filter((f) => f.path === "tax.taxId");
+    const off = fieldsOf("tax", { tax: { vatReg: false } }).filter((f) => f.path === "tax.taxId");
+    expect(on).toHaveLength(1);
+    expect(off).toHaveLength(1);
+    expect(on[0].required).toBe(true);
+    expect(off[0].required).toBeFalsy();
+  });
+
+  it("blocks a VAT-registered record with no Tax ID, and only then", () => {
+    const base = {
+      code: "BP999999",
+      nameTh: "ทดสอบ",
+      type: "Company",
+      status: "Active",
+      roles: { customer: true },
+      addresses: [{ type: "Billing", zip: "10110" }],
+    } as unknown as BusinessPartner;
+
+    const registered = bpValidate({ ...base, tax: { vatReg: true, taxId: "" } } as never);
+    expect(registered.some((i) => i.blocking && i.field === "tax.taxId")).toBe(true);
+
+    const notRegistered = bpValidate({ ...base, tax: { vatReg: false, taxId: "" } } as never);
+    expect(notRegistered.filter((i) => i.blocking)).toHaveLength(0);
+
+    const filled = bpValidate({
+      ...base,
+      tax: { vatReg: true, taxId: "0105560112347" },
+    } as never);
+    expect(filled.filter((i) => i.blocking)).toHaveLength(0);
   });
 });
 
