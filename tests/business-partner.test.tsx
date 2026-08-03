@@ -650,7 +650,6 @@ describe("BP Master — list view", () => {
       "creditUsed",
       "riskLevel",
       "province",
-      "contactName",
     ]) {
       expect(keys, k).toContain(k);
     }
@@ -669,8 +668,6 @@ describe("BP Master — list view", () => {
       "nameTh",
       "type",
       "bpMode",
-      "contactName",
-      "phone",
       "province",
       "salesArea",
       "creditStatus",
@@ -679,12 +676,15 @@ describe("BP Master — list view", () => {
     ]);
   });
 
-  it("drops Tax ID and Roles from the table but keeps them findable", () => {
+  it("drops Tax ID, Roles, the contact and the phone from the table", () => {
     const keys = list.columns.map((c) => c.key);
-    expect(keys).not.toContain("taxId");
-    expect(keys).not.toContain("roles");
+    for (const k of ["taxId", "roles", "contactName", "phone"]) {
+      expect(keys, k).not.toContain(k);
+    }
     /* Removed from the view, not from the index. */
-    expect(list.searchFields).toContain("taxId");
+    for (const f of ["taxId", "contactName", "contactNames", "phone"]) {
+      expect(list.searchFields, f).toContain(f);
+    }
   });
 
   it("renders the BP code without a thumbnail", () => {

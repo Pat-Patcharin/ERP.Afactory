@@ -435,16 +435,10 @@ export const BP_LIST: ListSchema<BpRow> = {
         </Badge>
       ),
     },
-    /* Roles and Tax ID are off the table — the Customer / Supplier column
-       already carries the role, and a tax number is a detail-page fact
-       nobody scans a list for. Both stay searchable. */
-    { key: "contactName", label: "Primary Contact", muted: true, cell: (b) => b.contactName },
-    {
-      key: "phone",
-      label: "Phone",
-      muted: true,
-      cell: (b) => <span className="tnum">{b.phone}</span>,
-    },
+    /* Roles, Tax ID, the primary contact and the phone number are off the
+       table — the Customer / Supplier column already carries the role, and
+       who to ring is a detail-page fact nobody scans a list for. All of them
+       stay searchable. */
     { key: "province", label: "Province", muted: true, cell: (b) => b.province },
     { key: "salesArea", label: "Sale Area", muted: true, cell: (b) => b.salesArea },
     {
