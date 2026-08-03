@@ -12,10 +12,8 @@ import {
   CUSTOMER_SIZES,
   CUSTOMER_TYPES,
   IMAGE_KINDS,
-  PAYMENT_METHODS,
   PAY_TERMS,
   PROVINCES,
-  RISK_LEVELS,
   SALES_REPS,
   SUPPLIER_ITEM_STATUS,
   SUPPLIER_STATUSES,
@@ -61,7 +59,6 @@ const ENTITY_TYPES = [
 const BRANCH_TYPES = ["สำนักงานใหญ่", "สาขา"];
 const CUST_GROUPS = ["คลินิกทั่วไป", "คลินิกเฉพาะทาง", "โรงพยาบาล", "ตัวแทนจำหน่าย", "หน่วยงานราชการ", "มหาวิทยาลัย"];
 const SUP_GROUPS = ["วัสดุสิ้นเปลือง", "เครื่องมือแพทย์", "อะไหล่", "บริการ", "ขนส่ง"];
-const CUST_LEVELS = ["Platinum", "Gold", "Silver", "Bronze", "New"];
 const PRICE_GROUPS = ["Retail", "Dealer", "Government", "Chain Clinic", "Contract"];
 const TERRITORIES = ["กรุงเทพฯ-ปริมณฑล", "ภาคกลาง", "ภาคเหนือ", "ภาคอีสาน", "ภาคใต้", "ภาคตะวันออก"];
 const CHANNELS = ["Direct Sales", "Dealer", "Online", "Government", "Export"];
@@ -109,7 +106,6 @@ export const BP_FORM: FormSchema<BpRow> = {
       custGroup: "",
       supGroup: "",
       bizType: "นิติบุคคล",
-      custLevel: "New",
       priceGroup: "Retail",
       territory: "",
       channel: "",
@@ -167,15 +163,12 @@ export const BP_FORM: FormSchema<BpRow> = {
       benefit: "0%",
       benefitPct: 0,
       size: "S",
-      risk: "Medium",
-      payMethod: "Transfer",
       creditHold: false,
       holdReason: "",
     },
     supplier: {
       supType: "Distributor",
       status: "Approved",
-      payMethod: "Transfer",
     },
     supplierItems: [],
     docs: [],
@@ -221,8 +214,6 @@ export const BP_FORM: FormSchema<BpRow> = {
           benefit: b.customer.benefit,
           benefitPct: b.customer.benefitPct,
           size: b.customer.size,
-          risk: b.customer.risk,
-          payMethod: b.customer.payMethod,
           creditHold: b.customer.creditHold,
           holdReason: b.customer.holdReason,
         }
@@ -231,7 +222,6 @@ export const BP_FORM: FormSchema<BpRow> = {
       ? {
           supType: b.supplier.supType,
           status: b.supplier.status,
-          payMethod: b.supplier.payMethod,
         }
       : {},
     supplierItems: (b.supplierItems ?? []).map((i) => ({ ...i })),
@@ -360,13 +350,6 @@ export const BP_FORM: FormSchema<BpRow> = {
             },
             {
               type: "select",
-              path: "cls.custLevel",
-              label: "Customer Level",
-              options: CUST_LEVELS,
-              when: isCustomer,
-            },
-            {
-              type: "select",
               path: "cls.priceGroup",
               label: "Price Group",
               options: PRICE_GROUPS,
@@ -470,6 +453,9 @@ export const BP_FORM: FormSchema<BpRow> = {
           addLabel: "เพิ่มผู้ติดต่อ",
           empty: "ยังไม่มีผู้ติดต่อ — ต้องมีอย่างน้อย 1 คน",
           hint: "เลือกผู้ติดต่อหลัก 1 คน — ระบบใช้ชื่อนี้ในหน้ารายการและเอกสาร",
+          /* Eleven columns on one line leaves every box too narrow to read. */
+          layout: "stacked",
+          rowLabel: "ผู้ติดต่อ",
           cols: [
             { key: "prefix", label: "คำนำหน้า", type: "text", width: "80px", placeholder: "คุณ" },
             { key: "first", label: "ชื่อ", type: "text", required: true },
@@ -480,7 +466,7 @@ export const BP_FORM: FormSchema<BpRow> = {
             { key: "dept", label: "แผนก", type: "text", muted: true },
             { key: "phone", label: "โทรศัพท์", type: "text", width: "130px" },
             { key: "method", label: "ช่องทางหลัก", type: "select", options: CONTACT_METHODS },
-            { key: "remark", label: "หมายเหตุ", type: "text", muted: true },
+            { key: "remark", label: "หมายเหตุ", type: "text", muted: true, span: true },
             { key: "primary", label: "หลัก", type: "radio", width: "56px" },
             { key: "active", label: "ใช้งาน", type: "check", width: "56px" },
           ],
@@ -503,10 +489,13 @@ export const BP_FORM: FormSchema<BpRow> = {
           addLabel: "เพิ่มที่อยู่",
           empty: "ยังไม่มีที่อยู่ — ต้องมีที่อยู่ออกบิลอย่างน้อย 1 แห่ง",
           hint: "ที่อยู่ออกบิลบังคับ · ที่อยู่จัดส่งไม่บังคับ · ประเภท Billing / Both / Head Office / Branch เท่านั้นที่ตั้งเป็นที่อยู่ออกบิลได้",
+          /* Seventeen columns; a street address needs room to be read back. */
+          layout: "stacked",
+          rowLabel: "ที่อยู่",
           cols: [
             { key: "name", label: "ชื่อเรียก", type: "text", required: true, placeholder: "สำนักงานใหญ่" },
             { key: "type", label: "ประเภท", type: "select", options: ADDRESS_TYPES, required: true },
-            { key: "l1", label: "ที่อยู่", type: "text", required: true, width: "220px" },
+            { key: "l1", label: "ที่อยู่", type: "text", required: true, width: "220px", span: true },
             { key: "sub", label: "แขวง/ตำบล", type: "text" },
             { key: "dist", label: "เขต/อำเภอ", type: "text" },
             { key: "prov", label: "จังหวัด", type: "select", options: opts(PROVINCES) },
@@ -517,10 +506,10 @@ export const BP_FORM: FormSchema<BpRow> = {
             { key: "email", label: "อีเมล", type: "text" },
             { key: "lat", label: "Latitude", type: "text", width: "110px", muted: true },
             { key: "lng", label: "Longitude", type: "text", width: "110px", muted: true },
-            { key: "maps", label: "Google Map URL", type: "text", width: "180px", muted: true },
+            { key: "maps", label: "Google Map URL", type: "text", width: "180px", muted: true, span: true },
             { key: "billingPrimary", label: "ออกบิล", type: "radio", width: "64px" },
             { key: "deliveryPrimary", label: "จัดส่ง", type: "radio", width: "64px" },
-            { key: "remark", label: "หมายเหตุ", type: "text", muted: true },
+            { key: "remark", label: "หมายเหตุ", type: "text", muted: true, span: true },
             { key: "active", label: "ใช้งาน", type: "check", width: "56px" },
           ],
         },
@@ -576,18 +565,6 @@ export const BP_FORM: FormSchema<BpRow> = {
               step: "0.5",
               when: (st) => st.customer?.benefit === "Custom",
               hint: "ส่วนลดที่ตกลงเป็นรายสัญญา",
-            },
-            {
-              type: "select",
-              path: "customer.risk",
-              label: "Risk Level",
-              options: opts(RISK_LEVELS),
-            },
-            {
-              type: "select",
-              path: "customer.payMethod",
-              label: "Payment Method",
-              options: opts(PAYMENT_METHODS),
             },
           ],
         },
@@ -646,12 +623,6 @@ export const BP_FORM: FormSchema<BpRow> = {
               path: "supplier.status",
               label: "Supplier Status",
               options: opts(SUPPLIER_STATUSES),
-            },
-            {
-              type: "select",
-              path: "supplier.payMethod",
-              label: "Payment Method",
-              options: opts(PAYMENT_METHODS),
             },
           ],
         },
@@ -714,7 +685,7 @@ export const BP_FORM: FormSchema<BpRow> = {
             { key: "expiry", label: "วันหมดอายุ", type: "date", width: "130px" },
             { key: "by", label: "ผู้อัปโหลด", type: "text" },
             { key: "date", label: "วันที่อัปโหลด", type: "date", width: "130px" },
-            { key: "remark", label: "หมายเหตุ", type: "text", muted: true },
+            { key: "remark", label: "หมายเหตุ", type: "text", muted: true, span: true },
             {
               key: "status",
               label: "สถานะ",
@@ -736,7 +707,7 @@ export const BP_FORM: FormSchema<BpRow> = {
             { key: "kind", label: "ประเภท", type: "select", options: [...IMAGE_KINDS] },
             { key: "by", label: "ผู้อัปโหลด", type: "text" },
             { key: "date", label: "วันที่", type: "date", width: "130px" },
-            { key: "remark", label: "หมายเหตุ", type: "text", muted: true },
+            { key: "remark", label: "หมายเหตุ", type: "text", muted: true, span: true },
             { key: "cover", label: "หน้าปก", type: "radio", width: "70px" },
           ],
         },

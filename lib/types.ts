@@ -500,6 +500,8 @@ export interface GridCol {
   segOptions?: { val: string; label: string; tone?: "ok" | "danger" | "neutral" }[];
   align?: "right";
   width?: string;
+  /** Stacked layout only — a long value that deserves two columns. */
+  span?: boolean;
   muted?: boolean;
   placeholder?: string;
   required?: boolean;
@@ -535,6 +537,14 @@ export interface FormField {
   cols?: GridCol[];
   addLabel?: string;
   empty?: string;
+  /**
+   * `table` (default) packs a row onto one scrolling line. `stacked` gives
+   * each row a card and lets its fields wrap, which is what a collection with
+   * a dozen typed columns actually needs.
+   */
+  layout?: "table" | "stacked";
+  /** Heading on a stacked row: "ผู้ติดต่อ 1", "ที่อยู่ 2". */
+  rowLabel?: string;
   /** cards (multi-select role picker) */
   cardOptions?: { key: string; label: string; desc?: string; tone?: BadgeTone }[];
   /** tree field levels */

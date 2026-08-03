@@ -648,7 +648,6 @@ describe("BP Master — list view", () => {
       "salesRep",
       "creditLimit",
       "creditUsed",
-      "riskLevel",
       "province",
     ]) {
       expect(keys, k).toContain(k);
@@ -656,7 +655,7 @@ describe("BP Master — list view", () => {
   });
 
   it("keeps the added columns hidden until Column Settings turns them on", () => {
-    for (const k of ["customerType", "supplierType", "creditLimit", "riskLevel"]) {
+    for (const k of ["customerType", "supplierType", "creditLimit", "businessType"]) {
       expect(list.columns.find((c) => c.key === k)!.defaultHidden, k).toBe(true);
     }
   });
@@ -774,11 +773,11 @@ describe("BP Master — list view", () => {
 
   it("filters on the new dimensions", () => {
     const ids = list.filters.map((f) => f.id);
-    for (const id of ["custType", "supType", "bizType", "risk", "size"]) {
+    for (const id of ["custType", "supType", "bizType", "size"]) {
       expect(ids, id).toContain(id);
     }
-    const risk = list.filters.find((f) => f.id === "risk")!;
-    expect(risk.test(bp(CUSTOMER), bp(CUSTOMER).riskLevel)).toBe(true);
+    const size = list.filters.find((f) => f.id === "size")!;
+    expect(size.test(bp(CUSTOMER), bp(CUSTOMER).customer!.size)).toBe(true);
   });
 });
 
@@ -787,14 +786,14 @@ describe("BP Master — list view", () => {
    ============================================================ */
 
 describe("BP Master — More Filters drawer", () => {
-  const ADVANCED = ["custType", "supType", "bizType", "size", "risk"];
+  const ADVANCED = ["custType", "supType", "bizType", "size"];
 
   it("keeps only the everyday filters on the toolbar", () => {
     const quick = list.filters.filter((f) => !f.advanced).map((f) => f.id);
     expect(quick).toEqual(["role", "type", "status", "province", "rep", "credit"]);
   });
 
-  it("moves the five new dimensions behind More Filters", () => {
+  it("moves the extra dimensions behind More Filters", () => {
     const advanced = list.filters.filter((f) => f.advanced).map((f) => f.id);
     expect(advanced).toEqual(ADVANCED);
   });
@@ -810,7 +809,6 @@ describe("BP Master — More Filters drawer", () => {
       "Supplier Type",
       "Business Type",
       "Customer Size",
-      "Risk Level",
     ]) {
       const el = screen.getByLabelText(label);
       expect(drawer.contains(el), `${label} is in the drawer`).toBe(true);
@@ -828,7 +826,7 @@ describe("BP Master — More Filters drawer", () => {
     await user.click(screen.getByRole("button", { name: /More Filters/ }));
 
     const fields = await screen.findByTestId("filter-drawer-fields");
-    for (const label of ["Customer Type", "Supplier Type", "Business Type", "Customer Size", "Risk Level"]) {
+    for (const label of ["Customer Type", "Supplier Type", "Business Type", "Customer Size"]) {
       expect(within(fields).getByLabelText(label), label).toBeInTheDocument();
     }
   });
@@ -838,10 +836,10 @@ describe("BP Master — More Filters drawer", () => {
     renderList();
     await user.click(screen.getByRole("button", { name: /More Filters/ }));
 
-    const risk = await screen.findByLabelText("Risk Level");
-    await user.selectOptions(risk, "High");
+    const size = await screen.findByLabelText("Customer Size");
+    await user.selectOptions(size, "M");
 
-    const expected = BUSINESS_PARTNERS.filter((b) => b.riskLevel === "High").length;
+    const expected = BUSINESS_PARTNERS.filter((b) => b.customer?.size === "M").length;
     expect(expected).toBeGreaterThan(0);
     expect(screen.getByText(new RegExp(`^${expected} Business Partners$`))).toBeInTheDocument();
   });
@@ -853,7 +851,7 @@ describe("BP Master — More Filters drawer", () => {
     expect(open.textContent).toBe("More Filters");
 
     await user.click(open);
-    await user.selectOptions(await screen.findByLabelText("Risk Level"), "High");
+    await user.selectOptions(await screen.findByLabelText("Customer Size"), "M");
     await user.selectOptions(screen.getByLabelText("Customer Type"), "Private");
 
     /* Without the badge a drawer filter narrows the table invisibly. */
@@ -868,11 +866,11 @@ describe("BP Master — More Filters drawer", () => {
 
     await user.selectOptions(screen.getByLabelText("Status"), "Active");
     await user.click(screen.getByRole("button", { name: /More Filters/ }));
-    await user.selectOptions(await screen.findByLabelText("Risk Level"), "High");
+    await user.selectOptions(await screen.findByLabelText("Customer Size"), "M");
 
     await user.click(screen.getByRole("button", { name: /^Clear/ }));
 
-    expect((screen.getByLabelText("Risk Level") as HTMLSelectElement).value).toBe("");
+    expect((screen.getByLabelText("Customer Size") as HTMLSelectElement).value).toBe("");
     expect((screen.getByLabelText("Status") as HTMLSelectElement).value).toBe("Active");
   });
 });
@@ -1285,7 +1283,6 @@ describe("BP Master — form revisions", () => {
       "roles",
       "cls.custGroup",
       "cls.supGroup",
-      "cls.custLevel",
       "cls.priceGroup",
       "cls.territory",
       "cls.channel",
@@ -1306,7 +1303,7 @@ describe("BP Master — form revisions", () => {
     const supplierOnly = fieldsOf("roles", { roles: { supplier: true } }).map((f) => f.path);
     expect(supplierOnly).toContain("cls.supGroup");
     expect(supplierOnly).not.toContain("cls.custGroup");
-    expect(supplierOnly).not.toContain("cls.custLevel");
+    expect(supplierOnly).not.toContain("cls.priceGroup");
   });
 
   it("requires the Tax ID only when the partner is VAT registered", () => {
@@ -1325,6 +1322,62 @@ describe("BP Master — form revisions", () => {
     expect(off).toHaveLength(1);
     expect(on[0].required).toBe(true);
     expect(off[0].required).toBeFalsy();
+  });
+
+  it("drops Customer Level, Risk Level and Payment Method from the form", () => {
+    const both = { roles: { customer: true, supplier: true } };
+    const paths = BP_FORM.steps.flatMap((s) => fieldsOf(s.key, both).map((f) => f.path));
+    for (const p of [
+      "cls.custLevel",
+      "customer.risk",
+      "customer.payMethod",
+      "supplier.payMethod",
+    ]) {
+      expect(paths, p).not.toContain(p);
+    }
+    /* And out of the draft, so a new partner never carries them. */
+    expect(BP_FORM.blank().cls).not.toHaveProperty("custLevel");
+    expect(BP_FORM.blank().customer).not.toHaveProperty("risk");
+    expect(BP_FORM.blank().customer).not.toHaveProperty("payMethod");
+    expect(BP_FORM.blank().supplier).not.toHaveProperty("payMethod");
+  });
+
+  it("keeps the supplier fields that were not asked to go", () => {
+    const blank = BP_FORM.blank();
+    expect(blank.supplier).toMatchObject({ supType: "Distributor", status: "Approved" });
+    const paths = fieldsOf("supplier", { roles: { supplier: true } }).map((f) => f.path);
+    expect(paths).toContain("supplier.supType");
+    expect(paths).toContain("supplier.status");
+  });
+
+  it("drops Risk Level and Payment Method from the list and the detail", () => {
+    expect(list.columns.map((c) => c.key)).not.toContain("riskLevel");
+    expect(list.filters.map((f) => f.id)).not.toContain("risk");
+
+    const labels = JSON.stringify(
+      detail.tabs.map((t) => t.blocks(bp(BOTH), makeCtx())),
+    );
+    expect(labels).not.toContain("Risk Level");
+    expect(labels).not.toContain("Payment Method");
+    expect(labels).not.toContain("Customer Level");
+  });
+
+  it("stacks the contact and address rows so every field gets width", () => {
+    for (const key of ["contacts", "addresses"]) {
+      const grid = fieldsOf(key, BP_FORM.blank()).find((f) => f.path === key)!;
+      expect(grid.type, key).toBe("grid");
+      expect(grid.layout, key).toBe("stacked");
+      expect(grid.rowLabel, key).toBeTruthy();
+      /* Every column still carries its label, which the stacked card shows. */
+      expect(grid.cols!.every((c) => Boolean(c.label)), key).toBe(true);
+    }
+  });
+
+  it("gives the long address fields two columns of the stacked card", () => {
+    const address = fieldsOf("addresses", BP_FORM.blank()).find((f) => f.path === "addresses")!;
+    const spanning = address.cols!.filter((c) => c.span).map((c) => c.key);
+    expect(spanning).toContain("l1");
+    expect(spanning).toContain("maps");
   });
 
   it("blocks a VAT-registered record with no Tax ID, and only then", () => {

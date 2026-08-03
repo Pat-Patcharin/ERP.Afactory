@@ -533,6 +533,10 @@ function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
   const cols = f.cols ?? [];
   const invalid = api.showErrors && api.blank.has(path);
 
+  if (f.layout === "stacked") {
+    return <StackedGrid field={f} api={api} />;
+  }
+
   return (
     <div className="col-span-full flex flex-col gap-3">
       <div className="overflow-x-auto rounded-btn border border-line">
@@ -621,6 +625,83 @@ function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
         {!invalid && f.hint && (
           <span className="text-cap text-ink-3">{f.hint}</span>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- stacked grid — one card per row, fields free to wrap --------- */
+
+/**
+ * A contact has eleven columns and an address seventeen. Squeezed onto one
+ * line every input ends up too narrow to read what was typed into it, so this
+ * layout gives the row a card and lets the fields wrap across it instead.
+ */
+function StackedGrid({ field: f, api }: { field: FormField; api: FormApi }) {
+  const path = f.path ?? "";
+  const rows = (getPath(api.state, path) ?? []) as GridRow[];
+  const cols = f.cols ?? [];
+  const invalid = api.showErrors && api.blank.has(path);
+  const rowLabel = f.rowLabel ?? "รายการ";
+
+  return (
+    <div className="col-span-full flex flex-col gap-3">
+      {rows.length === 0 ? (
+        <div className="rounded-btn border border-dashed border-line px-3 py-8 text-center text-ink-3">
+          {f.empty ?? "ยังไม่มีรายการ"}
+        </div>
+      ) : (
+        rows.map((row, i) => (
+          <div key={i} className="rounded-btn border border-line bg-card p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="text-cap font-semibold uppercase tracking-wide text-ink-3">
+                {rowLabel} {i + 1}
+              </span>
+              <button
+                type="button"
+                title="ลบรายการ"
+                onClick={() => api.gridRemove(path, i)}
+                className="grid h-[30px] w-[30px] place-items-center rounded-btn text-ink-3 transition-colors duration-fast hover:bg-danger-soft hover:text-danger"
+              >
+                <Icon name="trash" size={15} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-4 gap-x-4 gap-y-3 max-[1200px]:grid-cols-3 max-[900px]:grid-cols-2 max-md:grid-cols-1">
+              {cols.map((c) => (
+                <div
+                  key={c.key}
+                  className={cn(
+                    "flex min-w-0 flex-col gap-1.5",
+                    c.span && "col-span-2 max-md:col-span-1",
+                    c.cls?.(row),
+                  )}
+                >
+                  <span className="text-cap font-medium text-ink-2">
+                    {c.label}
+                    {c.required && <span className="font-semibold text-danger"> *</span>}
+                  </span>
+                  <GridCell col={c} row={row} index={i} gridPath={path} api={api} />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => api.gridAdd(path)}
+          className="inline-flex items-center gap-1.5 rounded-btn border border-dashed border-line-strong px-3 py-2 text-[13px] font-medium text-ink-2 transition-colors duration-fast hover:border-primary hover:bg-primary-soft hover:text-primary-active"
+        >
+          <Icon name="plus" size={15} strokeWidth={2.2} />
+          {f.addLabel ?? "เพิ่มรายการ"}
+        </button>
+        {invalid && (
+          <span className="text-cap font-medium text-danger">ต้องมีอย่างน้อย 1 รายการ</span>
+        )}
+        {!invalid && f.hint && <span className="text-cap text-ink-3">{f.hint}</span>}
       </div>
     </div>
   );

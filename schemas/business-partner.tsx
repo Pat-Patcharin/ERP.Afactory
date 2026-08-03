@@ -34,7 +34,6 @@ import {
   CUSTOMER_BIZ_TYPES,
   CUSTOMER_SIZES,
   CUSTOMER_TYPES,
-  RISK_LEVELS,
   SALES_REPS,
   SUPPLIER_TYPES,
 } from "@/data/partners";
@@ -74,13 +73,6 @@ function PartnerAvatar({ value, name }: { value: string; name: string }) {
     <Icon name="partner" size={34} className="text-ink-3" />
   );
 }
-
-/** Risk reads the same way everywhere it appears. */
-const RISK_TONE: Record<string, BadgeTone> = {
-  Low: "success",
-  Medium: "warning",
-  High: "danger",
-};
 
 const SUPPLIER_STATUS_TONE: Record<string, BadgeTone> = {
   Preferred: "success",
@@ -395,13 +387,6 @@ export const BP_LIST: ListSchema<BpRow> = {
       options: () => [...CUSTOMER_SIZES],
       test: (b, v) => b.customer?.size === v,
     },
-    {
-      id: "risk",
-      advanced: true,
-      label: "Risk Level",
-      options: () => [...RISK_LEVELS],
-      test: (b, v) => b.riskLevel === v,
-    },
   ],
 
   columns: [
@@ -520,17 +505,6 @@ export const BP_LIST: ListSchema<BpRow> = {
           </span>
         );
       },
-    },
-    {
-      key: "riskLevel",
-      label: "Risk Level",
-      defaultHidden: true,
-      cell: (b) =>
-        b.riskLevel === DASH ? (
-          <span className="text-ink-2">{DASH}</span>
-        ) : (
-          <Badge tone={tone(RISK_TONE, b.riskLevel)}>{b.riskLevel}</Badge>
-        ),
     },
     {
       key: "addressCount",
@@ -990,7 +964,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                           "ปกติ"
                         ),
                       },
-                      { label: "Risk Level", value: b.riskLevel },
                     ],
                   }
                 : /* Layer 2: a role without credit sight gets no card at all,
@@ -1057,8 +1030,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               { label: "Customer Size", value: <Badge tone="neutral">{c.size}</Badge> },
               { label: "Sales Representative", value: c.rep },
               { label: "Default Price List", value: c.priceList },
-              { label: "Risk Level", value: <Badge tone={tone(RISK_TONE, c.risk)}>{c.risk}</Badge> },
-              { label: "Payment Method", value: c.payMethod },
               credit && { label: "Credit Limit", value: `${money0(c.creditLimit)} THB` },
               credit && { label: "Credit Used", value: `${money0(c.creditUsed)} THB` },
               credit && { label: "Available Credit", value: `${money0(b.availableCredit)} THB` },
@@ -1087,7 +1058,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               },
               { label: "Lead Time", value: s.lead ? `${s.lead} วัน` : DASH },
               { label: "Currency", value: s.currency },
-              { label: "Payment Method", value: s.payMethod },
               { label: "Payment Term", value: p?.payTerm ?? DASH },
               { label: "Supplier Rating", value: p?.rating ?? DASH },
               { label: "Buyer", value: p?.buyer ?? DASH },
@@ -1175,8 +1145,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               { label: "Payment Term", value: b.payTerm },
               { label: "Credit Term", value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน` },
               { label: "Bill Type", value: b.billType },
-              { label: "Customer Payment Method", value: c?.payMethod ?? DASH },
-              { label: "Supplier Payment Method", value: s?.payMethod ?? DASH },
               { label: "Withholding Tax", value: b.tax.wht ? "มีการหัก ณ ที่จ่าย" : "ไม่มี" },
               { label: "VAT Registered", value: b.tax.vatReg ? "ใช่" : "ไม่ใช่" },
               { label: "VAT Registration Date", value: b.tax.vatDate || DASH },
@@ -1192,7 +1160,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               { label: "Roles", value: roleBadges(b) },
               { label: "Customer Group", value: b.cls.custGroup || DASH },
               { label: "Supplier Group", value: b.cls.supGroup || DASH },
-              { label: "Customer Level", value: b.cls.custLevel || DASH },
               { label: "Price Group", value: b.cls.priceGroup || DASH },
               { label: "Territory", value: b.cls.territory || DASH },
               { label: "Sales Channel", value: b.cls.channel || DASH },
