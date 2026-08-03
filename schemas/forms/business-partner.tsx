@@ -1,22 +1,41 @@
 import {
+  ATTACHMENT_TYPES,
+  BENEFIT_LEVELS,
+  BILL_TYPES,
+  BP_ADDRESS_TYPES,
   BP_ROLE_DEFS,
   BP_STATUS,
   BP_TYPES,
+  COUNTRIES,
+  CREDIT_TERMS,
+  CUSTOMER_BIZ_TYPES,
+  CUSTOMER_SIZES,
+  CUSTOMER_TYPES,
+  IMAGE_KINDS,
+  PAYMENT_METHODS,
   PAY_TERMS,
   PROVINCES,
+  RISK_LEVELS,
   SALES_REPS,
+  SUPPLIER_ITEM_STATUS,
+  SUPPLIER_STATUSES,
+  SUPPLIER_TYPES,
 } from "@/data/partners";
+import { PRODUCTS } from "@/lib/domain/product";
 import { PO_CURRENCIES, PO_INCOTERMS, PO_BUYERS } from "@/data/purchase-orders";
 import {
   BUSINESS_PARTNERS,
   decorateBPs,
   nextBPCode,
   validEmail,
+  validLat,
+  validLng,
   validPhone,
   validThaiTaxId,
   validZip,
   type BpRow,
 } from "@/lib/domain/partner";
+import { BILLING_ADDRESS_TYPES, DELIVERY_ADDRESS_TYPES } from "@/data/partners";
 import { money0, stamp, toDisplayDate, toInputDate } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
 import type { FormSchema, GridRow } from "@/lib/types";
@@ -48,7 +67,9 @@ const CUST_LEVELS = ["Platinum", "Gold", "Silver", "Bronze", "New"];
 const PRICE_GROUPS = ["Retail", "Dealer", "Government", "Chain Clinic", "Contract"];
 const TERRITORIES = ["กรุงเทพฯ-ปริมณฑล", "ภาคกลาง", "ภาคเหนือ", "ภาคอีสาน", "ภาคใต้", "ภาคตะวันออก"];
 const CHANNELS = ["Direct Sales", "Dealer", "Online", "Government", "Export"];
-const ADDRESS_TYPES = ["Registered Address", "Billing Address", "Shipping Address", "Other"];
+/* Address types now come from the master list so the form, the detail page
+   and the validator agree on which of them can carry a billing default. */
+const ADDRESS_TYPES = [...BP_ADDRESS_TYPES];
 const CONTACT_METHODS = ["โทรศัพท์", "อีเมล", "LINE", "แฟกซ์"];
 const CREDIT_CONTROL = ["ไม่ควบคุม", "เตือนเมื่อเกินวงเงิน", "ระงับเมื่อเกินวงเงิน"];
 const ACC_TYPES = ["ออมทรัพย์", "กระแสรายวัน", "ฝากประจำ"];
@@ -82,6 +103,9 @@ export const BP_FORM: FormSchema<BpRow> = {
     website: "",
     status: "Active",
     notes: "",
+    since: new Date().toISOString().slice(0, 10),
+    billType: "VAT",
+    creditTerm: "30",
     roles: { customer: false, supplier: false, dealer: false, prospect: false, other: false },
     cls: {
       custGroup: "",
@@ -140,6 +164,25 @@ export const BP_FORM: FormSchema<BpRow> = {
     },
     credit: { payTerm: "เครดิต 30 วัน", limit: 0, days: 30, status: "Normal" },
     banks: [],
+    customer: {
+      custType: "Private",
+      bizType: "Clinic",
+      benefit: "0%",
+      benefitPct: 0,
+      size: "S",
+      risk: "Medium",
+      payMethod: "Transfer",
+      creditHold: false,
+      holdReason: "",
+    },
+    supplier: {
+      supType: "Distributor",
+      status: "Approved",
+      payMethod: "Transfer",
+    },
+    supplierItems: [],
+    docs: [],
+    images: [],
   }),
 
   toState: (b) => ({
@@ -153,6 +196,9 @@ export const BP_FORM: FormSchema<BpRow> = {
     website: b.website,
     status: b.status,
     notes: b.notes,
+    since: toInputDate(b.since),
+    billType: b.billType ?? "VAT",
+    creditTerm: b.creditTerm ?? "30",
     roles: { ...b.roles },
     cls: { ...b.cls },
     tax: { ...b.tax, vatDate: toInputDate(b.tax?.vatDate) },
@@ -169,6 +215,31 @@ export const BP_FORM: FormSchema<BpRow> = {
         }
       : {},
     banks: (b.banks ?? []).map((k) => ({ ...k })),
+    /* The profiles are re-derived on save, so the draft only needs the
+       dimensions a user can actually edit here. */
+    customer: b.customer
+      ? {
+          custType: b.customer.custType,
+          bizType: b.customer.bizType,
+          benefit: b.customer.benefit,
+          benefitPct: b.customer.benefitPct,
+          size: b.customer.size,
+          risk: b.customer.risk,
+          payMethod: b.customer.payMethod,
+          creditHold: b.customer.creditHold,
+          holdReason: b.customer.holdReason,
+        }
+      : {},
+    supplier: b.supplier
+      ? {
+          supType: b.supplier.supType,
+          status: b.supplier.status,
+          payMethod: b.supplier.payMethod,
+        }
+      : {},
+    supplierItems: (b.supplierItems ?? []).map((i) => ({ ...i })),
+    docs: (b.docs ?? []).map((d) => ({ ...d })),
+    images: (b.images ?? []).map((i) => ({ ...i })),
   }),
 
   steps: [
@@ -224,7 +295,23 @@ export const BP_FORM: FormSchema<BpRow> = {
               options: opts(BP_TYPES),
             },
             { type: "text", path: "website", label: "Website", placeholder: "www.example.co.th" },
-            { type: "textarea", path: "notes", label: "Notes", span: true, rows: 2 },
+            { type: "date", path: "since", label: "Starting Date" },
+            {
+              type: "select",
+              path: "billType",
+              label: "Bill Type",
+              required: true,
+              options: opts(BILL_TYPES),
+            },
+            {
+              type: "select",
+              path: "creditTerm",
+              label: "Credit Term",
+              required: true,
+              options: opts(CREDIT_TERMS),
+              hint: "จำนวนวัน หรือ No Credit สำหรับเงินสด",
+            },
+            { type: "textarea", path: "notes", label: "Remarks", span: true, rows: 2 },
           ],
         },
       ],
@@ -392,7 +479,10 @@ export const BP_FORM: FormSchema<BpRow> = {
             { key: "pos", label: "ตำแหน่ง", type: "text", muted: true },
             { key: "mobile", label: "มือถือ", type: "text", placeholder: "081-234-5678" },
             { key: "email", label: "อีเมล", type: "text" },
+            { key: "dept", label: "แผนก", type: "text", muted: true },
+            { key: "phone", label: "โทรศัพท์", type: "text", width: "130px" },
             { key: "method", label: "ช่องทางหลัก", type: "select", options: CONTACT_METHODS },
+            { key: "remark", label: "หมายเหตุ", type: "text", muted: true },
             { key: "primary", label: "หลัก", type: "radio", width: "56px" },
             { key: "active", label: "ใช้งาน", type: "check", width: "56px" },
           ],
@@ -413,17 +503,243 @@ export const BP_FORM: FormSchema<BpRow> = {
           label: "Addresses",
           required: true,
           addLabel: "เพิ่มที่อยู่",
-          empty: "ยังไม่มีที่อยู่ — ต้องมีอย่างน้อย 1 แห่ง",
+          empty: "ยังไม่มีที่อยู่ — ต้องมีที่อยู่ออกบิลอย่างน้อย 1 แห่ง",
+          hint: "ที่อยู่ออกบิลบังคับ · ที่อยู่จัดส่งไม่บังคับ · ประเภท Billing / Both / Head Office / Branch เท่านั้นที่ตั้งเป็นที่อยู่ออกบิลได้",
           cols: [
             { key: "name", label: "ชื่อเรียก", type: "text", required: true, placeholder: "สำนักงานใหญ่" },
-            { key: "type", label: "ประเภท", type: "select", options: ADDRESS_TYPES },
+            { key: "type", label: "ประเภท", type: "select", options: ADDRESS_TYPES, required: true },
             { key: "l1", label: "ที่อยู่", type: "text", required: true, width: "220px" },
             { key: "sub", label: "แขวง/ตำบล", type: "text" },
             { key: "dist", label: "เขต/อำเภอ", type: "text" },
             { key: "prov", label: "จังหวัด", type: "select", options: opts(PROVINCES) },
             { key: "zip", label: "รหัสไปรษณีย์", type: "text", width: "110px" },
-            { key: "primary", label: "หลัก", type: "radio", width: "56px" },
+            { key: "country", label: "ประเทศ", type: "select", options: opts(COUNTRIES) },
+            { key: "contact", label: "ผู้ติดต่อ", type: "text" },
+            { key: "phone", label: "โทรศัพท์", type: "text", width: "130px" },
+            { key: "email", label: "อีเมล", type: "text" },
+            { key: "lat", label: "Latitude", type: "text", width: "110px", muted: true },
+            { key: "lng", label: "Longitude", type: "text", width: "110px", muted: true },
+            { key: "maps", label: "Google Map URL", type: "text", width: "180px", muted: true },
+            { key: "billingPrimary", label: "ออกบิล", type: "radio", width: "64px" },
+            { key: "deliveryPrimary", label: "จัดส่ง", type: "radio", width: "64px" },
+            { key: "remark", label: "หมายเหตุ", type: "text", muted: true },
             { key: "active", label: "ใช้งาน", type: "check", width: "56px" },
+          ],
+        },
+      ],
+    },
+
+    /* ---------- 6b. CUSTOMER INFORMATION (customers and dealers only) ---------- */
+    {
+      key: "customer",
+      label: "Customer Info",
+      railLabel: "ข้อมูลลูกค้า",
+      labelTh: "ประเภทลูกค้าและส่วนลด",
+      when: isCustomer,
+      blocks: (s) => [
+        {
+          type: "card",
+          title: "Customer Information",
+          cols: "3",
+          fields: [
+            {
+              type: "select",
+              path: "customer.custType",
+              label: "Customer Type",
+              required: true,
+              options: opts(CUSTOMER_TYPES),
+            },
+            {
+              type: "select",
+              path: "customer.bizType",
+              label: "Business Type",
+              required: true,
+              options: opts(CUSTOMER_BIZ_TYPES),
+            },
+            {
+              type: "select",
+              path: "customer.size",
+              label: "Customer Size",
+              options: opts(CUSTOMER_SIZES),
+            },
+            {
+              type: "select",
+              path: "customer.benefit",
+              label: "Benefit Level",
+              options: opts(BENEFIT_LEVELS),
+            },
+            /* Only asked for when the ladder cannot express it. */
+            {
+              type: "number",
+              path: "customer.benefitPct",
+              label: "Benefit %",
+              min: 0,
+              max: 100,
+              step: "0.5",
+              when: (st) => st.customer?.benefit === "Custom",
+              hint: "ส่วนลดที่ตกลงเป็นรายสัญญา",
+            },
+            {
+              type: "select",
+              path: "customer.risk",
+              label: "Risk Level",
+              options: opts(RISK_LEVELS),
+            },
+            {
+              type: "select",
+              path: "customer.payMethod",
+              label: "Payment Method",
+              options: opts(PAYMENT_METHODS),
+            },
+          ],
+        },
+        {
+          type: "card",
+          title: "Credit Control",
+          cols: "2",
+          fields: [
+            {
+              type: "toggle",
+              path: "customer.creditHold",
+              label: "Credit Hold",
+              onText: "ระงับการขายเชื่อ",
+              offText: "ปกติ",
+            },
+            {
+              type: "text",
+              path: "customer.holdReason",
+              label: "Credit Hold Reason",
+              when: (st) => Boolean(st.customer?.creditHold),
+              placeholder: "เหตุผลที่ระงับ",
+            },
+            {
+              type: "static",
+              label: "Available Credit",
+              value: (st) =>
+                `${money0(Math.max(0, num(st.credit?.limit) - num(st.credit?.outstanding)))} THB`,
+            },
+          ],
+        },
+      ],
+    },
+
+    /* ---------- 6c. SUPPLIER INFORMATION (suppliers only) ---------- */
+    {
+      key: "supplier",
+      label: "Supplier Info",
+      railLabel: "ข้อมูลผู้ขาย",
+      labelTh: "ประเภทผู้ขายและสินค้าที่เสนอ",
+      when: isSupplier,
+      blocks: () => [
+        {
+          type: "card",
+          title: "Supplier Information",
+          cols: "3",
+          fields: [
+            {
+              type: "select",
+              path: "supplier.supType",
+              label: "Supplier Type",
+              required: true,
+              options: opts(SUPPLIER_TYPES),
+            },
+            {
+              type: "select",
+              path: "supplier.status",
+              label: "Supplier Status",
+              options: opts(SUPPLIER_STATUSES),
+            },
+            {
+              type: "select",
+              path: "supplier.payMethod",
+              label: "Payment Method",
+              options: opts(PAYMENT_METHODS),
+            },
+          ],
+        },
+        {
+          type: "grid",
+          path: "supplierItems",
+          label: "Supplier Items",
+          addLabel: "เพิ่มสินค้าที่เสนอ",
+          empty: "ยังไม่มีรายการสินค้าที่ผู้ขายรายนี้เสนอ",
+          hint: "ราคาที่ผู้ขายเสนอต่อสินค้า ใช้เป็นราคาตั้งต้นตอนออกใบสั่งซื้อ",
+          cols: [
+            {
+              key: "product",
+              label: "สินค้า",
+              type: "lookup",
+              source: "product",
+              required: true,
+              width: "150px",
+            },
+            { key: "productName", label: "ชื่อสินค้า", type: "static", muted: true, width: "180px" },
+            { key: "sku", label: "Supplier SKU", type: "text", width: "140px" },
+            { key: "supName", label: "ชื่อของผู้ขาย", type: "text", width: "180px" },
+            { key: "moq", label: "MOQ", type: "number", align: "right", width: "80px" },
+            { key: "lead", label: "Lead (วัน)", type: "number", align: "right", width: "90px" },
+            { key: "currency", label: "สกุลเงิน", type: "select", options: [...PO_CURRENCIES] },
+            { key: "price", label: "ราคา", type: "number", align: "right", width: "110px" },
+            { key: "preferred", label: "แนะนำ", type: "check", width: "64px" },
+            { key: "status", label: "สถานะ", type: "select", options: [...SUPPLIER_ITEM_STATUS] },
+            { key: "effective", label: "เริ่มใช้", type: "date", width: "130px" },
+            { key: "expiry", label: "สิ้นสุด", type: "date", width: "130px" },
+          ],
+        },
+      ],
+    },
+
+    /* ---------- 6d. ATTACHMENTS & IMAGES ---------- */
+    {
+      key: "attachments",
+      label: "Attachments",
+      railLabel: "เอกสารและรูปภาพ",
+      labelTh: "เอกสารแนบและแกลเลอรี",
+      blocks: () => [
+        {
+          type: "grid",
+          path: "docs",
+          label: "Attachments",
+          addLabel: "เพิ่มเอกสาร",
+          empty: "ยังไม่มีเอกสารแนบ",
+          hint: "รองรับ PDF, Word, Excel และรูปภาพ — ชนิดไฟล์อ่านจากนามสกุลอัตโนมัติ",
+          cols: [
+            {
+              key: "type",
+              label: "ประเภทเอกสาร",
+              type: "select",
+              options: [...ATTACHMENT_TYPES],
+              required: true,
+            },
+            { key: "name", label: "ชื่อไฟล์", type: "text", required: true, width: "220px" },
+            { key: "issue", label: "วันที่ออก", type: "date", width: "130px" },
+            { key: "expiry", label: "วันหมดอายุ", type: "date", width: "130px" },
+            { key: "by", label: "ผู้อัปโหลด", type: "text" },
+            { key: "date", label: "วันที่อัปโหลด", type: "date", width: "130px" },
+            { key: "remark", label: "หมายเหตุ", type: "text", muted: true },
+            {
+              key: "status",
+              label: "สถานะ",
+              type: "select",
+              options: ["Active", "Expired", "Superseded"],
+            },
+          ],
+        },
+        {
+          type: "grid",
+          path: "images",
+          label: "Image Gallery",
+          addLabel: "เพิ่มรูปภาพ",
+          empty: "ยังไม่มีรูปภาพ",
+          hint: "ตั้งรูปหน้าปกได้ 1 รูป — จะใช้เป็นรูปประจำคู่ค้า",
+          cols: [
+            { key: "src", label: "รูป", type: "text", width: "80px", placeholder: "🏥" },
+            { key: "name", label: "ชื่อรูป", type: "text", required: true, width: "200px" },
+            { key: "kind", label: "ประเภท", type: "select", options: [...IMAGE_KINDS] },
+            { key: "by", label: "ผู้อัปโหลด", type: "text" },
+            { key: "date", label: "วันที่", type: "date", width: "130px" },
+            { key: "remark", label: "หมายเหตุ", type: "text", muted: true },
+            { key: "cover", label: "หน้าปก", type: "radio", width: "70px" },
           ],
         },
       ],
@@ -636,11 +952,20 @@ export const BP_FORM: FormSchema<BpRow> = {
       test: (s) => ((s.contacts ?? []) as GridRow[]).some((c) => String(c.first ?? "").trim()),
     },
     {
+      /* Billing must exist; delivery is explicitly optional per the spec. */
       path: "addresses",
-      label: "ที่อยู่อย่างน้อย 1 แห่ง",
+      label: "ที่อยู่ออกบิลอย่างน้อย 1 แห่ง",
       step: "addresses",
-      test: (s) => ((s.addresses ?? []) as GridRow[]).some((a) => String(a.l1 ?? "").trim()),
+      test: (s) =>
+        ((s.addresses ?? []) as GridRow[]).some(
+          (a) => String(a.l1 ?? "").trim() && BILLING_ADDRESS_TYPES.includes(String(a.type)),
+        ),
     },
+    { path: "billType", label: "Bill Type", step: "identity" },
+    { path: "creditTerm", label: "Credit Term", step: "identity" },
+    { path: "customer.custType", label: "Customer Type", step: "customer" },
+    { path: "customer.bizType", label: "Business Type", step: "customer" },
+    { path: "supplier.supType", label: "Supplier Type", step: "supplier" },
     { path: "sales.rep", label: "Sales Representative", step: "sales" },
     { path: "sales.payTerm", label: "Payment Term (ขาย)", step: "sales" },
     { path: "purchasing.buyer", label: "Buyer", step: "purchasing" },
@@ -680,12 +1005,28 @@ export const BP_FORM: FormSchema<BpRow> = {
       test: (s) => ((s.contacts ?? []) as GridRow[]).every((c) => validPhone(String(c.mobile ?? ""))),
     },
     {
-      label: "ต้องเลือกที่อยู่หลัก 1 แห่ง",
+      label: "ต้องเลือกที่อยู่ออกบิล 1 แห่ง",
       step: "addresses",
       test: (s) => {
         const rows = (s.addresses ?? []) as GridRow[];
-        return rows.length === 0 || rows.filter((a) => a.primary).length === 1;
+        return rows.length === 0 || rows.filter((a) => a.billingPrimary).length === 1;
       },
+    },
+    {
+      label: "ที่อยู่ออกบิลต้องเป็นประเภท Billing, Both, Head Office หรือ Branch",
+      step: "addresses",
+      test: (s) =>
+        ((s.addresses ?? []) as GridRow[])
+          .filter((a) => a.billingPrimary)
+          .every((a) => BILLING_ADDRESS_TYPES.includes(String(a.type))),
+    },
+    {
+      label: "ที่อยู่จัดส่งต้องเป็นประเภทที่รับสินค้าได้",
+      step: "addresses",
+      test: (s) =>
+        ((s.addresses ?? []) as GridRow[])
+          .filter((a) => a.deliveryPrimary)
+          .every((a) => DELIVERY_ADDRESS_TYPES.includes(String(a.type))),
     },
     {
       label: "รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก",
@@ -693,9 +1034,52 @@ export const BP_FORM: FormSchema<BpRow> = {
       test: (s) => ((s.addresses ?? []) as GridRow[]).every((a) => validZip(String(a.zip ?? ""))),
     },
     {
+      label: "พิกัดต้องอยู่ในช่วง latitude -90..90 และ longitude -180..180",
+      step: "addresses",
+      test: (s) =>
+        ((s.addresses ?? []) as GridRow[]).every(
+          (a) => validLat(String(a.lat ?? "")) && validLng(String(a.lng ?? "")),
+        ),
+    },
+    {
       label: "วงเงินเครดิตต้องไม่ติดลบ",
       step: "finance",
       test: (s) => num(s.credit?.limit) >= 0,
+    },
+    {
+      label: "ส่วนลดแบบ Custom ต้องอยู่ระหว่าง 0-100%",
+      step: "customer",
+      test: (s) =>
+        s.customer?.benefit !== "Custom" ||
+        (num(s.customer?.benefitPct) >= 0 && num(s.customer?.benefitPct) <= 100),
+    },
+    {
+      label: "เหตุผลจำเป็นเมื่อระงับเครดิต",
+      step: "customer",
+      test: (s) => !s.customer?.creditHold || Boolean(String(s.customer?.holdReason ?? "").trim()),
+    },
+    {
+      label: "Supplier SKU ต้องไม่ซ้ำกันในผู้ขายรายเดียว",
+      step: "supplier",
+      test: (s) => {
+        const skus = ((s.supplierItems ?? []) as GridRow[])
+          .map((i) => String(i.sku ?? "").trim())
+          .filter(Boolean);
+        return new Set(skus).size === skus.length;
+      },
+    },
+    {
+      label: "ราคาที่ผู้ขายเสนอต้องไม่ติดลบ",
+      step: "supplier",
+      test: (s) => ((s.supplierItems ?? []) as GridRow[]).every((i) => num(i.price) >= 0),
+    },
+    {
+      label: "รูปหน้าปกต้องมีได้ 1 รูป",
+      step: "attachments",
+      test: (s) => {
+        const rows = (s.images ?? []) as GridRow[];
+        return rows.length === 0 || rows.filter((i) => i.cover).length === 1;
+      },
     },
   ],
 
@@ -720,7 +1104,8 @@ export const BP_FORM: FormSchema<BpRow> = {
       case "addresses":
         return {
           name: "",
-          type: "Registered Address",
+          /* Both is the common case — one site that bills and receives. */
+          type: "Both",
           l1: "",
           l2: "",
           sub: "",
@@ -730,10 +1115,15 @@ export const BP_FORM: FormSchema<BpRow> = {
           country: "ประเทศไทย",
           phone: "",
           contact: "",
+          email: "",
           maps: "",
           lat: "",
           lng: "",
+          remark: "",
+          image: "",
           primary: false,
+          billingPrimary: false,
+          deliveryPrimary: false,
           active: true,
         };
       case "banks":
@@ -748,17 +1138,103 @@ export const BP_FORM: FormSchema<BpRow> = {
           def: false,
           active: true,
         };
+      case "supplierItems":
+        return {
+          product: "",
+          productName: "",
+          sku: "",
+          supName: "",
+          moq: 1,
+          lead: 7,
+          currency: "THB",
+          price: 0,
+          preferred: false,
+          status: "Active",
+          effective: "",
+          expiry: "",
+        };
+      case "docs":
+        return {
+          type: "Business License",
+          name: "",
+          issue: "",
+          expiry: "",
+          status: "Active",
+          by: FORM_USER,
+          date: new Date().toISOString().slice(0, 10),
+          remark: "",
+        };
+      case "images":
+        return {
+          id: "",
+          name: "",
+          src: "🖼️",
+          kind: "Other",
+          by: FORM_USER,
+          date: new Date().toISOString().slice(0, 10),
+          cover: false,
+          remark: "",
+        };
       default:
         return {};
     }
   },
 
-  /* The first contact and address added are the primary ones by default. */
+  /**
+   * Collections that carry a default keep exactly one. The first row added
+   * wins by default, so a user who never touches the radio still saves a
+   * record the validator accepts.
+   */
   onGridChange: (path, s) => {
-    if (path !== "contacts" && path !== "addresses" && path !== "banks") return;
-    const flag = path === "banks" ? "def" : "primary";
+    const first = (rows: GridRow[], flag: string, eligible?: (r: GridRow) => boolean) => {
+      if (!rows.length || rows.some((r) => r[flag])) return;
+      const row = eligible ? rows.find(eligible) : rows[0];
+      if (row) row[flag] = true;
+    };
     const rows = (s[path] ?? []) as GridRow[];
-    if (rows.length && !rows.some((r) => r[flag])) rows[0][flag] = true;
+
+    if (path === "contacts") first(rows, "primary");
+    if (path === "banks") first(rows, "def");
+    if (path === "images") first(rows, "cover");
+    if (path === "addresses") {
+      first(rows, "primary");
+      first(rows, "billingPrimary", (a) => BILLING_ADDRESS_TYPES.includes(String(a.type)));
+      if (rows.some((a) => DELIVERY_ADDRESS_TYPES.includes(String(a.type)))) {
+        first(rows, "deliveryPrimary", (a) => DELIVERY_ADDRESS_TYPES.includes(String(a.type)));
+      }
+      /* Changing a type can strip an address of the right to hold a default. */
+      for (const a of rows) {
+        if (a.billingPrimary && !BILLING_ADDRESS_TYPES.includes(String(a.type))) {
+          a.billingPrimary = false;
+        }
+        if (a.deliveryPrimary && !DELIVERY_ADDRESS_TYPES.includes(String(a.type))) {
+          a.deliveryPrimary = false;
+        }
+      }
+    }
+  },
+
+  lookup: {
+    product: (q) => {
+      const needle = q.trim().toLowerCase();
+      return PRODUCTS.filter(
+        (p) =>
+          !needle ||
+          p.code.toLowerCase().includes(needle) ||
+          p.name.toLowerCase().includes(needle),
+      )
+        .slice(0, 8)
+        .map((p) => ({ code: p.code, name: p.name, meta: p.unit }));
+    },
+  },
+
+  onLookupPick: (source, gridPath, index, rec, state) => {
+    if (source !== "product") return;
+    const row = ((state[gridPath] ?? []) as GridRow[])[index];
+    if (!row) return;
+    row.product = rec.code;
+    row.productName = rec.name;
+    row.supName ||= rec.name;
   },
 
   findDuplicates: (s) => {
@@ -827,6 +1303,9 @@ export const BP_FORM: FormSchema<BpRow> = {
       website: String(s.website ?? ""),
       status: String(s.status ?? "Active"),
       notes: String(s.notes ?? ""),
+      since: toDisplayDate(s.since),
+      billType: String(s.billType ?? "VAT"),
+      creditTerm: String(s.creditTerm ?? "30"),
       roles: { ...(s.roles ?? {}) },
       cls: { ...(s.cls ?? {}) },
       tax: { ...(s.tax ?? {}), vatDate: toDisplayDate(s.tax?.vatDate) },
@@ -834,10 +1313,37 @@ export const BP_FORM: FormSchema<BpRow> = {
         ...c,
         code: c.code || `CT${String(i + 1).padStart(3, "0")}`,
       })),
-      addresses: ((s.addresses ?? []) as GridRow[]).map((a) => ({ ...a })),
+      addresses: ((s.addresses ?? []) as GridRow[]).map((a) => ({
+        ...a,
+        /* The legacy single-primary flag follows the billing default, so
+           anything still reading `primary` keeps working. */
+        primary: Boolean(a.billingPrimary),
+      })),
       sales: isCustomer(s) ? { ...(s.sales ?? {}) } : null,
       purchasing: isSupplier(s) ? { ...(s.purchasing ?? {}) } : null,
       banks: ((s.banks ?? []) as GridRow[]).map((k) => ({ ...k })),
+      /* Profiles keep only the dimensions the form owns; decorateBPs() puts
+         the money and the ownership back from their real homes. */
+      customer: isCustomer(s) ? { ...(s.customer ?? {}) } : null,
+      supplier: isSupplier(s) ? { ...(s.supplier ?? {}) } : null,
+      supplierItems: isSupplier(s)
+        ? ((s.supplierItems ?? []) as GridRow[]).map((i) => ({
+            ...i,
+            effective: toDisplayDate(i.effective),
+            expiry: toDisplayDate(i.expiry),
+          }))
+        : [],
+      docs: ((s.docs ?? []) as GridRow[]).map((d) => ({
+        ...d,
+        issue: toDisplayDate(d.issue),
+        expiry: toDisplayDate(d.expiry),
+        date: toDisplayDate(d.date),
+      })),
+      images: ((s.images ?? []) as GridRow[]).map((i, idx) => ({
+        ...i,
+        id: i.id || `IMG${String(idx + 1).padStart(3, "0")}`,
+        date: toDisplayDate(i.date),
+      })),
       updated: now,
       updatedBy: FORM_USER,
     };
@@ -874,7 +1380,6 @@ export const BP_FORM: FormSchema<BpRow> = {
         code,
         ...patch,
         credit,
-        docs: [],
         txn: { so: [], po: [], inv: [] },
         created: now,
         createdBy: FORM_USER,

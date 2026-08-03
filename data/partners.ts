@@ -14,6 +14,85 @@ export interface BpRoleDef {
   desc: string;
 }
 
+/* ============================================================
+   BP MASTER SCHEMA — the A-Factory extension.
+
+   Everything added here is OPTIONAL on the record. The seven
+   seeded partners predate it, so lib/domain/partner.ts fills the
+   gaps on load instead: an address with no billing flag is still
+   a billing address if it is the only one, a customer with no
+   profile still has a credit limit under `sales`. Making these
+   required would have meant rewriting the dataset, and a schema
+   that cannot read yesterday's record is not an upgrade.
+   ============================================================ */
+
+/** One image in the partner gallery. The prototype stores an emoji where a
+ *  real deployment stores a URL — the shape is what matters here. */
+export interface BpImage {
+  id: string;
+  name: string;
+  /** Stand-in for the binary: emoji in the prototype, URL in production. */
+  src: string;
+  kind: string;
+  by: string;
+  date: string;
+  cover: boolean;
+  remark: string;
+}
+
+/** Customer-side profile. Present when the partner has the Customer role. */
+export interface BpCustomerProfile {
+  /** Government | Private */
+  custType: string;
+  /** Clinic | Hospital | University | Company | Factory | Dealer | Individual */
+  bizType: string;
+  /** 0% … 25% | Custom */
+  benefit: string;
+  /** The number behind `benefit`; carries the figure when benefit is Custom. */
+  benefitPct: number;
+  /** S | M | L */
+  size: string;
+  rep: string;
+  priceList: string;
+  creditLimit: number;
+  creditUsed: number;
+  creditHold: boolean;
+  holdReason: string;
+  /** Low | Medium | High */
+  risk: string;
+  /** Cash | Transfer | Cheque | Credit Card */
+  payMethod: string;
+}
+
+/** Supplier-side profile. Present when the partner has the Supplier role. */
+export interface BpSupplierProfile {
+  /** Manufacturer | Importer | Distributor */
+  supType: string;
+  /** Preferred | Approved | Watch | Suspended */
+  status: string;
+  preferred: boolean;
+  /** Quoted lead time in days. */
+  lead: number;
+  currency: string;
+  payMethod: string;
+}
+
+/** One product this supplier quotes — the Supplier Items child table. */
+export interface BpSupplierItem {
+  product: string;
+  productName: string;
+  sku: string;
+  supName: string;
+  moq: number;
+  lead: number;
+  currency: string;
+  price: number;
+  preferred: boolean;
+  status: string;
+  effective: string;
+  expiry: string;
+}
+
 export interface BusinessPartner {
   code: string;
   nameTh: string;
@@ -24,6 +103,18 @@ export interface BusinessPartner {
   website: string;
   status: string;
   notes: string;
+  /** Starting Date — when the relationship began. */
+  since?: string;
+  /** VAT | Non VAT. Derived from tax.vatReg when absent. */
+  billType?: string;
+  /** 30 | 60 | 90 | 120 | No Credit. Derived from the credit block when absent. */
+  creditTerm?: string;
+  /** Cover image for the record; falls back to the gallery cover, then `logo`. */
+  profileImage?: string;
+  images?: BpImage[];
+  customer?: BpCustomerProfile | null;
+  supplier?: BpSupplierProfile | null;
+  supplierItems?: BpSupplierItem[];
   roles: {
     customer: boolean;
     supplier: boolean;
@@ -67,6 +158,7 @@ export interface BusinessPartner {
     method: string;
     primary: boolean;
     active: boolean;
+    remark?: string;
   }[];
   addresses: {
     name: string;
@@ -83,8 +175,15 @@ export interface BusinessPartner {
     maps: string;
     lat: string;
     lng: string;
+    /** Legacy single-primary flag. Kept so old records still read; the two
+     *  flags below are what Sales and Logistics actually ask for. */
     primary: boolean;
     active: boolean;
+    email?: string;
+    remark?: string;
+    image?: string;
+    billingPrimary?: boolean;
+    deliveryPrimary?: boolean;
   }[];
   sales: {
     rep: string;
@@ -153,6 +252,9 @@ export interface BusinessPartner {
     status: string;
     by: string;
     date: string;
+    remark?: string;
+    /** pdf | word | excel | image — drives the icon, inferred from the name. */
+    kind?: string;
   }[];
   txn: {
     so: {
@@ -264,6 +366,102 @@ export const SALES_REPS = [
 export const CREDIT_STATUS = ["Normal", "Near Limit", "Over Limit", "Credit Hold", "Not Applicable"] as const;
 
 export const BP_STATUS = ["Active", "Inactive", "On Hold", "Blocked"] as const;
+
+/* ---------- BP Master schema option lists ---------- */
+
+/** How the business talks about a partner. Derived from the role flags —
+ *  a partner with both flags is "Both", never two records. */
+export const BP_TYPE_MODES = ["Customer", "Supplier", "Both"] as const;
+
+export const BILL_TYPES = ["VAT", "Non VAT"] as const;
+
+/** Credit term in days, plus the cash-only case. */
+export const CREDIT_TERMS = ["30", "60", "90", "120", "No Credit"] as const;
+
+export const PAYMENT_METHODS = ["Cash", "Transfer", "Cheque", "Credit Card"] as const;
+
+/* Customer side */
+export const CUSTOMER_TYPES = ["Government", "Private"] as const;
+
+export const CUSTOMER_BIZ_TYPES = [
+  "Clinic",
+  "Hospital",
+  "University",
+  "Company",
+  "Factory",
+  "Dealer",
+  "Individual",
+] as const;
+
+export const BENEFIT_LEVELS = ["0%", "5%", "10%", "15%", "20%", "25%", "Custom"] as const;
+
+export const CUSTOMER_SIZES = ["S", "M", "L"] as const;
+
+export const RISK_LEVELS = ["Low", "Medium", "High"] as const;
+
+/* Supplier side */
+export const SUPPLIER_TYPES = ["Manufacturer", "Importer", "Distributor"] as const;
+
+export const SUPPLIER_STATUSES = ["Preferred", "Approved", "Watch", "Suspended"] as const;
+
+export const SUPPLIER_ITEM_STATUS = ["Active", "Inactive", "Expired"] as const;
+
+/**
+ * Address purpose. The first three say what the address is FOR; the rest say
+ * what the site IS. A "Both" address serves billing and delivery at once,
+ * which is the common case for a single-site clinic.
+ */
+export const BP_ADDRESS_TYPES = [
+  "Billing",
+  "Delivery",
+  "Both",
+  "Head Office",
+  "Branch",
+  "Warehouse",
+  "Service Center",
+] as const;
+
+/**
+ * Address types written before the A-Factory schema, mapped onto it.
+ *
+ * This matters more than it looks: "Registered Address" is not in the new
+ * list, so without the mapping every seeded partner would resolve to no
+ * billing address and fail validation on load. A registered office is where
+ * an invoice goes, so it becomes Head Office rather than something inert.
+ */
+export const LEGACY_ADDRESS_TYPES: Record<string, string> = {
+  "Registered Address": "Head Office",
+  "Billing Address": "Billing",
+  "Shipping Address": "Delivery",
+  "Delivery Address": "Delivery",
+  Other: "Branch",
+};
+
+/** Address types that can carry a billing or delivery default. */
+export const BILLING_ADDRESS_TYPES = ["Billing", "Both", "Head Office", "Branch"];
+export const DELIVERY_ADDRESS_TYPES = [
+  "Delivery",
+  "Both",
+  "Head Office",
+  "Branch",
+  "Warehouse",
+  "Service Center",
+];
+
+export const ATTACHMENT_TYPES = [
+  "Business License",
+  "Tax Certificate",
+  "Company Profile",
+  "Quotation",
+  "Agreement",
+  "Contract",
+  "Image",
+  "Other",
+] as const;
+
+export const COUNTRIES = ["ประเทศไทย", "ลาว", "กัมพูชา", "เมียนมา", "เวียดนาม", "อื่น ๆ"] as const;
+
+export const IMAGE_KINDS = ["Profile", "Storefront", "Product", "Document", "Other"] as const;
 
 export const BUSINESS_PARTNERS: BusinessPartner[] = [
   {
