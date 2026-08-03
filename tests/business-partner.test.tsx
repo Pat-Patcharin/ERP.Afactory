@@ -964,9 +964,19 @@ describe("BP Master — detail tabs", () => {
     ) as { cols?: number; items: unknown[] }[];
 
     expect(grids.length).toBeGreaterThanOrEqual(2);
-    /* Identity / contact / address read side by side. */
-    expect(grids[0].cols).toBe(3);
-    expect(grids[0].items).toHaveLength(3);
+    /* Two cards per row, never three: beside the summary rail a third
+       column leaves no value room to sit on one line. */
+    for (const g of grids) {
+      expect(g.cols).toBe(2);
+      expect(g.items.length).toBeLessThanOrEqual(2);
+    }
+
+    /* The address is the longest value on the page, so it gets its own row. */
+    const address = blocks.find(
+      (x) => x && typeof x === "object" && x.type === "fields" && x.title === "Address Information",
+    ) as { cols?: number } | undefined;
+    expect(address, "Address Information is a full-width block").toBeDefined();
+    expect(address!.cols).toBe(2);
   });
 
   it("builds every visible tab for every partner shape without throwing", () => {

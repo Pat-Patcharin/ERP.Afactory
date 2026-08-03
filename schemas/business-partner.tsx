@@ -796,10 +796,13 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             message: blocking.map((i) => i.message).join(" · "),
           },
 
-          /* ---- Row 1: identity, contact, address ---- */
+          /* ---- Row 1: identity and contact.
+             Two cards, not three: beside the summary rail a third column
+             leaves every value too narrow to sit on one line, which is what
+             sent the addresses down eight rows each. ---- */
           {
             type: "grid",
-            cols: 3,
+            cols: 2,
             items: [
               {
                 type: "fields",
@@ -874,53 +877,57 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 ],
               },
 
+            ],
+          },
+
+          /* ---- Row 2: addresses, full width.
+             An address is the longest value on the page; given the whole row
+             it reads as one line instead of a column of single words. ---- */
+          {
+            type: "fields",
+            title: "Address Information",
+            cols: 2,
+            items: [
               {
-                type: "fields",
-                title: "Address Information",
-                cols: 1,
-                items: [
-                  {
-                    label: "ที่อยู่สำหรับออกบิล (Billing)",
-                    value: billing ? addressLine(billing) : DASH,
-                    span: true,
-                  },
-                  {
-                    label: "ที่อยู่สำหรับจัดส่ง (Delivery)",
-                    value: delivery ? addressLine(delivery) : "ใช้ที่อยู่ออกบิล",
-                    span: true,
-                  },
-                  { label: "Province", value: b.province },
-                  { label: "Postal Code", value: billing?.zip || DASH },
-                  { label: "Country", value: billing?.country || "ประเทศไทย" },
-                  {
-                    label: "Google Map",
-                    value:
-                      billing && hasCoordinates(billing) ? (
-                        <LinkAction
-                          label={`${billing.lat}, ${billing.lng}`}
-                          icon="mapPin"
-                          onClick={() => ctx.goto(mapUrl(billing))}
-                        />
-                      ) : (
-                        DASH
-                      ),
-                  },
-                  {
-                    label: "",
-                    value: (
-                      <LinkAction
-                        label={`View All Addresses (${b.addressCount})`}
-                        onClick={() => openAddressPanel(b, ctx)}
-                      />
-                    ),
-                    span: true,
-                  },
-                ],
+                label: "ที่อยู่สำหรับออกบิล (Billing)",
+                value: billing ? addressLine(billing) : DASH,
+                span: true,
+              },
+              {
+                label: "ที่อยู่สำหรับจัดส่ง (Delivery)",
+                value: delivery ? addressLine(delivery) : "ใช้ที่อยู่ออกบิล",
+                span: true,
+              },
+              { label: "Province", value: b.province },
+              { label: "Postal Code", value: billing?.zip || DASH },
+              { label: "Country", value: billing?.country || "ประเทศไทย" },
+              {
+                label: "Google Map",
+                value:
+                  billing && hasCoordinates(billing) ? (
+                    <LinkAction
+                      label={`${billing.lat}, ${billing.lng}`}
+                      icon="mapPin"
+                      onClick={() => ctx.goto(mapUrl(billing))}
+                    />
+                  ) : (
+                    DASH
+                  ),
+              },
+              {
+                label: "",
+                value: (
+                  <LinkAction
+                    label={`View All Addresses (${b.addressCount})`}
+                    onClick={() => openAddressPanel(b, ctx)}
+                  />
+                ),
+                span: true,
               },
             ],
           },
 
-          /* ---- Row 2: business + credit ---- */
+          /* ---- Row 3: business + credit ---- */
           {
             type: "grid",
             cols: 2,

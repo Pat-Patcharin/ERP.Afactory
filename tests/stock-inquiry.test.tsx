@@ -206,7 +206,10 @@ describe("Stock Inquiry — search", () => {
       expect(expected, `${term} should match something`).toBeGreaterThan(0);
       expect(screen.getByText(new RegExp(`^${expected} positions$`))).toBeInTheDocument();
     }
-  });
+    /* Four full type-and-assert rounds over 300 positions. The default five
+       seconds is enough alone and not enough with the suite running beside
+       it, which made this the one test that failed at random. */
+  }, 20_000);
 
   it("shows the empty state when nothing matches", async () => {
     const user = userEvent.setup();
