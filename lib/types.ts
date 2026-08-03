@@ -507,6 +507,13 @@ export interface GridCol {
   required?: boolean;
   /** Lookup source key, resolved through FormSchema.lookup. */
   source?: string;
+  /**
+   * Conditional column, decided per row — an international bank account needs
+   * a SWIFT code and a domestic one does not. In `stacked` layout the field
+   * simply disappears from that row's card; in `table` layout the column
+   * survives as long as any row still wants it.
+   */
+  when?: (row: GridRow) => boolean;
   /** Read-only derived cell. */
   get?: (row: GridRow) => ReactNode;
   cls?: (row: GridRow) => string;

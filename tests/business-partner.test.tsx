@@ -39,6 +39,7 @@ import {
   bpSetPrimaryBilling,
   bpSetPrimaryContact,
   bpSetPrimaryDelivery,
+  bankLabel,
   bpValidate,
   canBill,
   canDeliver,
@@ -48,8 +49,11 @@ import {
   getBP,
   mapUrl,
   nextBPCode,
+  isForeignBank,
+  validIban,
   validLat,
   validLng,
+  validSwift,
   validThaiTaxId,
 } from "@/lib/domain/partner";
 import {
@@ -1439,6 +1443,148 @@ describe("BP Master — form revisions", () => {
     const spanning = address.cols!.filter((c) => c.span).map((c) => c.key);
     expect(spanning).toContain("l1");
     expect(spanning).toContain("maps");
+  });
+
+  it("asks a domestic account for the Thai fields and nothing more", () => {
+    const grid = fieldsOf("finance", BP_FORM.blank()).find((f) => f.path === "banks")!;
+    const domestic = { scope: "ในประเทศ" };
+    const shown = grid
+      .cols!.filter((c) => !c.when || c.when(domestic))
+      .map((c) => c.key);
+    expect(shown).toEqual([
+      "scope",
+      "bank",
+      "branch",
+      "accType",
+      "accName",
+      "accNo",
+      "def",
+      "active",
+    ]);
+  });
+
+  it("opens the wire block when the account is international", () => {
+    const grid = fieldsOf("finance", BP_FORM.blank()).find((f) => f.path === "banks")!;
+    const foreign = { scope: "ต่างประเทศ" };
+    const shown = grid.cols!.filter((c) => !c.when || c.when(foreign)).map((c) => c.key);
+
+    for (const k of [
+      "bankName",
+      "swift",
+      "iban",
+      "bankCountry",
+      "bankAddress",
+      "beneName",
+      "beneAddress",
+      "currency",
+      "clearingSystem",
+      "interSwift",
+      "charges",
+      "purpose",
+    ]) {
+      expect(shown, k).toContain(k);
+    }
+    /* The Thai-only fields step aside. */
+    for (const k of ["bank", "branch", "accType"]) {
+      expect(shown, k).not.toContain(k);
+    }
+  });
+
+  it("reveals the follow-up fields only once their trigger is set", () => {
+    const grid = fieldsOf("finance", BP_FORM.blank()).find((f) => f.path === "banks")!;
+    const clearing = grid.cols!.find((c) => c.key === "clearingCode")!;
+    const interBank = grid.cols!.find((c) => c.key === "interBank")!;
+
+    expect(clearing.when!({ scope: "ต่างประเทศ", clearingSystem: "ไม่มี" })).toBe(false);
+    expect(clearing.when!({ scope: "ต่างประเทศ", clearingSystem: "Sort Code (UK)" })).toBe(true);
+    expect(interBank.when!({ scope: "ต่างประเทศ", interSwift: "" })).toBe(false);
+    expect(interBank.when!({ scope: "ต่างประเทศ", interSwift: "CHASUS33" })).toBe(true);
+  });
+
+  it("validates a SWIFT code by its real shape", () => {
+    expect(validSwift("KASITHBK")).toBe(true);
+    expect(validSwift("DBSSSGSGXXX")).toBe(true);
+    expect(validSwift("")).toBe(true);
+    /* Nine and ten characters are the mistakes that actually happen. */
+    expect(validSwift("KASITHBKX")).toBe(false);
+    expect(validSwift("KASITHB")).toBe(false);
+    expect(validSwift("1234THBK")).toBe(false);
+  });
+
+  it("validates an IBAN by its real shape", () => {
+    expect(validIban("DE89370400440532013000")).toBe(true);
+    expect(validIban("DE89 3704 0044 0532 0130 00")).toBe(true);
+    expect(validIban("")).toBe(true);
+    expect(validIban("DEXX370400440532013000")).toBe(false);
+    expect(validIban("DE89")).toBe(false);
+  });
+
+  it("requires the wire paperwork only from an international account", () => {
+    const rule = (needle: string) => BP_FORM.rules!.find((r) => r.label.includes(needle))!;
+    const domestic = { banks: [{ scope: "ในประเทศ", bank: "กสิกรไทย", accNo: "1" }] };
+
+    /* A Thai account answers none of the wire rules. */
+    for (const needle of ["SWIFT / BIC", "ชื่อธนาคาร ประเทศ", "IBAN", "Clearing"]) {
+      expect(rule(needle).test(domestic), needle).toBe(true);
+    }
+
+    const bare = { banks: [{ scope: "ต่างประเทศ", accNo: "1" }] };
+    expect(rule("ต้องระบุ SWIFT / BIC").test(bare)).toBe(false);
+    expect(rule("ชื่อธนาคาร ประเทศ").test(bare)).toBe(false);
+
+    const complete = {
+      banks: [
+        {
+          scope: "ต่างประเทศ",
+          accNo: "003-912345-8",
+          swift: "DBSSSGSGXXX",
+          bankName: "DBS Bank Ltd.",
+          bankCountry: "สิงคโปร์",
+          beneName: "Perfect Supply Pte. Ltd.",
+          currency: "USD",
+        },
+      ],
+    };
+    expect(rule("ต้องระบุ SWIFT / BIC").test(complete)).toBe(true);
+    expect(rule("ชื่อธนาคาร ประเทศ").test(complete)).toBe(true);
+    expect(rule("8 หรือ 11").test(complete)).toBe(true);
+  });
+
+  it("pairs a clearing system with its code", () => {
+    const rule = BP_FORM.rules!.find((r) => r.label.includes("Clearing"))!;
+    const base = { scope: "ต่างประเทศ", clearingSystem: "ABA / Routing Number (US)" };
+    expect(rule.test({ banks: [{ ...base, clearingCode: "" }] })).toBe(false);
+    expect(rule.test({ banks: [{ ...base, clearingCode: "021000021" }] })).toBe(true);
+  });
+
+  it("shows the wire block on the detail page only for a foreign default", () => {
+    const rows = (code: string) => {
+      const b = bp(code);
+      return JSON.stringify(detail.tabs.map((t) => t.blocks(b, makeCtx())));
+    };
+
+    /* BP000121's default is the Thai account, so no wire fields. */
+    expect(rows(SUPPLIER)).toContain("Transfer Type");
+    expect(rows(SUPPLIER)).not.toContain("Beneficiary Name");
+
+    /* Make the foreign account the default and the block appears. */
+    const b = bp(SUPPLIER);
+    b.banks.forEach((k) => (k.def = isForeignBank(k)));
+    expect(rows(SUPPLIER)).toContain("Beneficiary Name");
+    expect(rows(SUPPLIER)).toContain("SWIFT / BIC");
+  });
+
+  it("treats every account written before the split as domestic", () => {
+    for (const b of BUSINESS_PARTNERS) {
+      for (const k of b.banks) {
+        expect(k.scope, `${b.code} · ${k.accNo}`).toBeTruthy();
+      }
+    }
+    const seeded = BUSINESS_PARTNERS.flatMap((b) => b.banks).find((k) => isForeignBank(k))!;
+    expect(seeded.swift).toBeTruthy();
+    expect(seeded.beneName).toBeTruthy();
+    expect(validSwift(seeded.swift)).toBe(true);
+    expect(bankLabel(seeded)).toBe(seeded.bankName);
   });
 
   it("blocks a VAT-registered record with no Tax ID, and only then", () => {

@@ -4,6 +4,7 @@ import {
   BUSINESS_PARTNERS as RAW,
   DELIVERY_ADDRESS_TYPES,
   LEGACY_ADDRESS_TYPES,
+  type BpBank,
   type BpImage,
   type BpRoleDef,
   type BpSupplierItem,
@@ -213,6 +214,9 @@ function normalise(bp: BusinessPartner) {
   bp.addresses ??= [];
   bp.contacts ??= [];
   bp.banks ??= [];
+  /* Every account written before the international block existed is a
+     domestic one — the flag decides which fields the form asks for. */
+  for (const k of bp.banks) k.scope ||= "ในประเทศ";
   /* The seeded partners carry an empty docs array rather than none, so an
      emptiness check — not `??=` — is what actually adopts the seed. */
   if (!bp.docs?.length) bp.docs = ATTACHMENT_SEED[bp.code] ?? bp.docs ?? [];
@@ -696,6 +700,28 @@ export const validEmail = (v: string) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test
 export const validPhone = (v: string) => !v || /^[0-9()+\-\s]{6,20}$/.test(v);
 export const validZip = (v: string) => !v || /^\d{5}$/.test(v);
 /** WGS84 bounds. Empty passes — coordinates are optional everywhere. */
+/**
+ * SWIFT/BIC: four letters of bank, two of country, two of location, and an
+ * optional three-character branch. Eight or eleven characters, never nine or
+ * ten — which is the mistake worth catching before a wire leaves.
+ */
+export const validSwift = (v: string) =>
+  !v || /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v.trim().toUpperCase());
+
+/**
+ * IBAN: country, two check digits, then up to thirty alphanumerics. The
+ * mod-97 checksum is a Phase 2 job; this catches the shape.
+ */
+export const validIban = (v: string) =>
+  !v || /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(v.replace(/\s+/g, "").toUpperCase());
+
+/** True when the account is a foreign wire destination rather than a Thai one. */
+export const isForeignBank = (k: { scope?: string }) => k.scope === "ต่างประเทศ";
+
+/** The name shown for an account, wherever the bank happens to be. */
+export const bankLabel = (k: BpBank) =>
+  (isForeignBank(k) ? k.bankName : k.bank) || k.bank || k.bankName || DASH;
+
 export const validLat = (v: string) => !v || (Number(v) >= -90 && Number(v) <= 90);
 export const validLng = (v: string) => !v || (Number(v) >= -180 && Number(v) <= 180);
 

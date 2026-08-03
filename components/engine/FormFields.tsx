@@ -537,13 +537,16 @@ function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
     return <StackedGrid field={f} api={api} />;
   }
 
+  /* A conditional column earns its place if any row still asks for it. */
+  const visible = cols.filter((c) => !c.when || rows.length === 0 || rows.some((r) => c.when!(r)));
+
   return (
     <div className="col-span-full flex flex-col gap-3">
       <div className="overflow-x-auto rounded-btn border border-line">
         <table className="w-full min-w-[720px] text-[13px]">
           <thead>
             <tr className="bg-surface">
-              {cols.map((c) => (
+              {visible.map((c) => (
                 <th
                   key={c.key}
                   style={c.width ? { width: c.width } : undefined}
@@ -563,7 +566,7 @@ function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={cols.length + 1}
+                  colSpan={visible.length + 1}
                   className="px-3 py-8 text-center text-ink-3"
                 >
                   {f.empty ?? "ยังไม่มีรายการ"}
@@ -572,7 +575,7 @@ function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
             ) : (
               rows.map((row, i) => (
                 <tr key={i} className="border-b border-line last:border-b-0">
-                  {cols.map((c) => (
+                  {visible.map((c) => (
                     <td
                       key={c.key}
                       className={cn(
@@ -668,7 +671,9 @@ function StackedGrid({ field: f, api }: { field: FormField; api: FormApi }) {
             </div>
 
             <div className="grid grid-cols-4 gap-x-4 gap-y-3 max-[1200px]:grid-cols-3 max-[900px]:grid-cols-2 max-md:grid-cols-1">
-              {cols.map((c) => (
+              {cols
+                .filter((c) => !c.when || c.when(row))
+                .map((c) => (
                 <div
                   key={c.key}
                   className={cn(

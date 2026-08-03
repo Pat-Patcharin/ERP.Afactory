@@ -11,7 +11,9 @@ import {
   canBill,
   canDeliver,
   decorateBPs,
+  bankLabel,
   hasCoordinates,
+  isForeignBank,
   mapUrl,
   validThaiTaxId,
   type BpRow,
@@ -239,7 +241,12 @@ function openBankPanel(b: BpRow, ctx: ActionCtx) {
             cell: (k: BpRow["banks"][number]) => (
               <span className="flex flex-col gap-1">
                 <span className="font-medium">
-                  {k.bank}
+                  {bankLabel(k)}
+                  {isForeignBank(k) && (
+                    <span className="ml-1.5">
+                      <Badge tone="info">ต่างประเทศ</Badge>
+                    </span>
+                  )}
                   {k.def && (
                     <span className="ml-1.5">
                       <Badge tone="primary">Default</Badge>
@@ -253,10 +260,16 @@ function openBankPanel(b: BpRow, ctx: ActionCtx) {
                 </span>
                 <span className="text-cap text-ink-2">{k.accName}</span>
                 <span className="text-cap text-ink-3 tnum">
-                  {maskAccount(k.accNo)} · {k.accType} · {k.currency}
+                  {maskAccount(k.accNo)}
+                  {isForeignBank(k) ? "" : ` · ${k.accType}`} · {k.currency}
                   {k.swift ? ` · SWIFT ${k.swift}` : ""}
+                  {k.iban ? ` · IBAN ${k.iban}` : ""}
                 </span>
-                <span className="text-cap text-ink-3">{k.branch || DASH}</span>
+                <span className="text-cap text-ink-3">
+                  {isForeignBank(k)
+                    ? [k.beneName, k.bankCountry, k.charges].filter(Boolean).join(" · ") || DASH
+                    : k.branch || DASH}
+                </span>
               </span>
             ),
           },
@@ -1114,13 +1127,59 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             cols: 2,
             items: bank
               ? [
-                  { label: "Bank Name", value: bank.bank },
-                  { label: "Branch", value: bank.branch || DASH },
+                  {
+                    label: "Transfer Type",
+                    value: (
+                      <Badge tone={isForeignBank(bank) ? "info" : "neutral"}>
+                        {bank.scope || "ในประเทศ"}
+                      </Badge>
+                    ),
+                  },
+                  { label: "Bank Name", value: bankLabel(bank) },
+                  !isForeignBank(bank) && { label: "Branch", value: bank.branch || DASH },
+                  !isForeignBank(bank) && { label: "Account Type", value: bank.accType },
                   { label: "Account Name", value: bank.accName },
                   { label: "Account Number", value: <span className="tnum">{maskAccount(bank.accNo)}</span> },
-                  { label: "Account Type", value: bank.accType },
                   { label: "Currency", value: bank.currency },
-                  { label: "SWIFT Code", value: bank.swift || DASH },
+                  /* ---- The wire block, only where money actually crosses a border ---- */
+                  isForeignBank(bank) && {
+                    label: "SWIFT / BIC",
+                    value: <span className="tnum">{bank.swift || DASH}</span>,
+                  },
+                  isForeignBank(bank) && {
+                    label: "IBAN",
+                    value: <span className="tnum">{bank.iban || DASH}</span>,
+                  },
+                  isForeignBank(bank) && { label: "Bank Country", value: bank.bankCountry || DASH },
+                  isForeignBank(bank) && {
+                    label: "Bank Address",
+                    value: bank.bankAddress || DASH,
+                    span: true,
+                  },
+                  isForeignBank(bank) && {
+                    label: "Beneficiary Name",
+                    value: bank.beneName || DASH,
+                  },
+                  isForeignBank(bank) && {
+                    label: "Beneficiary Address",
+                    value: bank.beneAddress || DASH,
+                  },
+                  isForeignBank(bank) &&
+                    Boolean(bank.clearingCode) && {
+                      label: bank.clearingSystem || "Clearing Code",
+                      value: <span className="tnum">{bank.clearingCode}</span>,
+                    },
+                  isForeignBank(bank) &&
+                    Boolean(bank.interSwift) && {
+                      label: "Intermediary Bank",
+                      value: `${bank.interBank || DASH} · ${bank.interSwift}`,
+                      span: true,
+                    },
+                  isForeignBank(bank) && { label: "Charge Bearer", value: bank.charges || DASH },
+                  isForeignBank(bank) && {
+                    label: "Purpose of Payment",
+                    value: bank.purpose || DASH,
+                  },
                   {
                     label: "",
                     value: (

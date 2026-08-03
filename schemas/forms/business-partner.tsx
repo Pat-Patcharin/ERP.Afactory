@@ -5,7 +5,10 @@ import {
   BP_ADDRESS_TYPES,
   BP_ROLE_DEFS,
   BP_STATUS,
+  BANK_SCOPES,
   BP_TYPES,
+  CHARGE_BEARERS,
+  CLEARING_SYSTEMS,
   COUNTRIES,
   CREDIT_TERMS,
   CUSTOMER_BIZ_TYPES,
@@ -25,10 +28,13 @@ import {
   BUSINESS_PARTNERS,
   decorateBPs,
   nextBPCode,
+  isForeignBank,
   validEmail,
+  validIban,
   validLat,
   validLng,
   validPhone,
+  validSwift,
   validThaiTaxId,
   validZip,
   type BpRow,
@@ -74,6 +80,9 @@ const RATINGS = ["A - ดีเยี่ยม", "B - ดี", "C - พอใช
 const isCustomer = (s: { roles?: Record<string, boolean> }) =>
   Boolean(s.roles?.customer || s.roles?.dealer);
 const isSupplier = (s: { roles?: Record<string, boolean> }) => Boolean(s.roles?.supplier);
+
+/** A grid row is a foreign wire destination. */
+const isForeign = (k: GridRow) => isForeignBank(k as { scope?: string });
 
 export const BP_FORM: FormSchema<BpRow> = {
   key: "business-partner",
@@ -875,15 +884,146 @@ export const BP_FORM: FormSchema<BpRow> = {
           label: "Bank Accounts",
           addLabel: "เพิ่มบัญชีธนาคาร",
           empty: "ยังไม่มีบัญชีธนาคาร",
-          hint: "เลขบัญชีจะถูกปิดบังบางส่วนสำหรับผู้ที่ไม่มีสิทธิ์ดู",
+          hint: "บัญชีในประเทศกรอกเท่าที่เห็น · บัญชีต่างประเทศจะเปิดช่องสำหรับการโอนผ่าน SWIFT เพิ่มให้ · เลขบัญชีจะถูกปิดบังบางส่วนสำหรับผู้ที่ไม่มีสิทธิ์ดู",
+          /* Fifteen fields on a foreign wire; the card lets them breathe. */
+          layout: "stacked",
+          rowLabel: "บัญชี",
           cols: [
-            { key: "bank", label: "ธนาคาร", type: "select", options: BANKS, required: true },
-            { key: "branch", label: "สาขา", type: "text" },
-            { key: "accName", label: "ชื่อบัญชี", type: "text", width: "200px" },
+            {
+              key: "scope",
+              label: "ประเภทการโอน",
+              type: "select",
+              options: [...BANK_SCOPES],
+              required: true,
+              width: "140px",
+            },
+
+            /* ---- Domestic ---- */
+            {
+              key: "bank",
+              label: "ธนาคาร",
+              type: "select",
+              options: BANKS,
+              required: true,
+              when: (k) => !isForeign(k),
+            },
+            { key: "branch", label: "สาขา", type: "text", when: (k) => !isForeign(k) },
+            {
+              key: "accType",
+              label: "ประเภทบัญชี",
+              type: "select",
+              options: ACC_TYPES,
+              when: (k) => !isForeign(k),
+            },
+
+            /* ---- International: the receiving bank ---- */
+            {
+              key: "bankName",
+              label: "Bank Name (EN)",
+              type: "text",
+              required: true,
+              span: true,
+              when: isForeign,
+            },
+            {
+              key: "swift",
+              label: "SWIFT / BIC",
+              type: "text",
+              required: true,
+              placeholder: "KASITHBK หรือ KASITHBKXXX",
+              when: isForeign,
+            },
+            {
+              key: "iban",
+              label: "IBAN",
+              type: "text",
+              placeholder: "DE89 3704 0044 0532 0130 00",
+              when: isForeign,
+            },
+            {
+              key: "bankCountry",
+              label: "Bank Country",
+              type: "select",
+              options: opts(COUNTRIES),
+              required: true,
+              when: isForeign,
+            },
+            {
+              key: "bankAddress",
+              label: "Bank Address",
+              type: "text",
+              span: true,
+              when: isForeign,
+            },
+
+            /* ---- International: the beneficiary ---- */
+            {
+              key: "beneName",
+              label: "Beneficiary Name (EN)",
+              type: "text",
+              required: true,
+              span: true,
+              when: isForeign,
+            },
+            {
+              key: "beneAddress",
+              label: "Beneficiary Address",
+              type: "text",
+              span: true,
+              when: isForeign,
+            },
+
+            /* ---- Shared ---- */
+            { key: "accName", label: "ชื่อบัญชี", type: "text", span: true },
             { key: "accNo", label: "เลขที่บัญชี", type: "text", required: true },
-            { key: "accType", label: "ประเภท", type: "select", options: ACC_TYPES },
-            { key: "def", label: "หลัก", type: "radio", width: "56px" },
-            { key: "active", label: "ใช้งาน", type: "check", width: "56px" },
+            {
+              key: "currency",
+              label: "Currency",
+              type: "select",
+              options: [...PO_CURRENCIES],
+              required: true,
+              when: isForeign,
+            },
+
+            /* ---- International: routing extras ---- */
+            {
+              key: "clearingSystem",
+              label: "Clearing System",
+              type: "select",
+              options: [...CLEARING_SYSTEMS],
+              when: isForeign,
+            },
+            {
+              key: "clearingCode",
+              label: "Clearing Code",
+              type: "text",
+              when: (k) => isForeign(k) && Boolean(k.clearingSystem) && k.clearingSystem !== "ไม่มี",
+            },
+            { key: "interSwift", label: "Intermediary SWIFT", type: "text", when: isForeign },
+            {
+              key: "interBank",
+              label: "Intermediary Bank",
+              type: "text",
+              span: true,
+              when: (k) => isForeign(k) && Boolean(k.interSwift),
+            },
+            {
+              key: "charges",
+              label: "Charge Bearer",
+              type: "select",
+              options: [...CHARGE_BEARERS],
+              when: isForeign,
+            },
+            {
+              key: "purpose",
+              label: "Purpose of Payment",
+              type: "text",
+              span: true,
+              when: isForeign,
+            },
+
+            { key: "def", label: "บัญชีหลัก", type: "radio", width: "80px" },
+            { key: "active", label: "ใช้งาน", type: "check", width: "80px" },
           ],
         },
       ],
@@ -1045,6 +1185,46 @@ export const BP_FORM: FormSchema<BpRow> = {
       step: "supplier",
       test: (s) => ((s.supplierItems ?? []) as GridRow[]).every((i) => num(i.price) >= 0),
     },
+    /* ---- International wires. A domestic account answers none of these. ---- */
+    {
+      label: "บัญชีต่างประเทศต้องระบุ SWIFT / BIC",
+      step: "finance",
+      test: (s) =>
+        ((s.banks ?? []) as GridRow[])
+          .filter(isForeign)
+          .every((k) => Boolean(String(k.swift ?? "").trim())),
+    },
+    {
+      label: "SWIFT / BIC ต้องเป็น 8 หรือ 11 ตัวอักษรตามมาตรฐาน",
+      step: "finance",
+      test: (s) =>
+        ((s.banks ?? []) as GridRow[]).every((k) => validSwift(String(k.swift ?? ""))),
+    },
+    {
+      label: "IBAN ต้องอยู่ในรูปแบบที่ถูกต้อง",
+      step: "finance",
+      test: (s) => ((s.banks ?? []) as GridRow[]).every((k) => validIban(String(k.iban ?? ""))),
+    },
+    {
+      label: "บัญชีต่างประเทศต้องระบุชื่อธนาคาร ประเทศ ชื่อผู้รับเงิน และสกุลเงิน",
+      step: "finance",
+      test: (s) =>
+        ((s.banks ?? []) as GridRow[])
+          .filter(isForeign)
+          .every((k) =>
+            ["bankName", "bankCountry", "beneName", "currency"].every((f) =>
+              Boolean(String(k[f] ?? "").trim()),
+            ),
+          ),
+    },
+    {
+      label: "ถ้าเลือกระบบ Clearing ต้องระบุรหัส Clearing ด้วย",
+      step: "finance",
+      test: (s) =>
+        ((s.banks ?? []) as GridRow[])
+          .filter((k) => isForeign(k) && k.clearingSystem && k.clearingSystem !== "ไม่มี")
+          .every((k) => Boolean(String(k.clearingCode ?? "").trim())),
+    },
     {
       label: "รูปหน้าปกต้องมีได้ 1 รูป",
       step: "attachments",
@@ -1107,6 +1287,19 @@ export const BP_FORM: FormSchema<BpRow> = {
           accType: "ออมทรัพย์",
           currency: "THB",
           swift: "",
+          scope: "ในประเทศ",
+          bankName: "",
+          bankCountry: "",
+          bankAddress: "",
+          iban: "",
+          beneName: "",
+          beneAddress: "",
+          clearingSystem: "",
+          clearingCode: "",
+          interSwift: "",
+          interBank: "",
+          charges: "SHA — แบ่งกันจ่าย",
+          purpose: "",
           def: false,
           active: true,
         };

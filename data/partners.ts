@@ -78,6 +78,68 @@ export interface BpSupplierProfile {
 }
 
 /** One product this supplier quotes — the Supplier Items child table. */
+/**
+ * A bank account is either domestic or a wire destination, and the two need
+ * different paperwork. A Thai transfer needs the bank, the branch and the
+ * number; a foreign wire needs a SWIFT/BIC, the beneficiary exactly as the
+ * bank holds it, and — depending on the corridor — an IBAN, a local clearing
+ * code or an intermediary bank. The extra fields exist on every row but only
+ * the international ones are shown and required.
+ */
+export const BANK_SCOPES = ["ในประเทศ", "ต่างประเทศ"] as const;
+
+/** Who pays the wire fees. SHA is the usual commercial default. */
+export const CHARGE_BEARERS = [
+  "SHA — แบ่งกันจ่าย",
+  "OUR — ผู้โอนจ่ายทั้งหมด",
+  "BEN — ผู้รับจ่ายทั้งหมด",
+] as const;
+
+/** The local routing code a corridor asks for beside the SWIFT. */
+export const CLEARING_SYSTEMS = [
+  "ABA / Routing Number (US)",
+  "Sort Code (UK)",
+  "BSB (AU)",
+  "Transit Number (CA)",
+  "IFSC (IN)",
+  "CNAPS (CN)",
+  "Zengin (JP)",
+  "ไม่มี",
+] as const;
+
+export interface BpBank {
+  /** ในประเทศ | ต่างประเทศ — decides which fields below apply. */
+  scope?: string;
+  /** Thai bank, chosen from the list. */
+  bank: string;
+  branch: string;
+  accName: string;
+  accNo: string;
+  accType: string;
+  currency: string;
+  swift: string;
+  def: boolean;
+  active: boolean;
+
+  /* ---- International wire only ---- */
+  /** Foreign banks are not in the Thai list, so the name is typed. */
+  bankName?: string;
+  bankCountry?: string;
+  bankAddress?: string;
+  /** Europe and much of the Middle East route on this instead of an account number. */
+  iban?: string;
+  /** Beneficiary exactly as the receiving bank holds it, or the wire bounces. */
+  beneName?: string;
+  beneAddress?: string;
+  clearingSystem?: string;
+  clearingCode?: string;
+  /** Correspondent bank, usually only needed for USD routing. */
+  interSwift?: string;
+  interBank?: string;
+  charges?: string;
+  purpose?: string;
+}
+
 export interface BpSupplierItem {
   product: string;
   productName: string;
@@ -236,17 +298,7 @@ export interface BusinessPartner {
     approvedBy: string;
     approvalDate: string;
   };
-  banks: {
-    bank: string;
-    branch: string;
-    accName: string;
-    accNo: string;
-    accType: string;
-    currency: string;
-    swift: string;
-    def: boolean;
-    active: boolean;
-  }[];
+  banks: BpBank[];
   docs: {
     type: string;
     name: string;
@@ -1003,6 +1055,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
     },
     banks: [
       {
+        scope: "ในประเทศ",
         bank: "ธนาคารกรุงเทพ",
         branch: "สาขาบางพลี",
         accName: "บริษัท เพอร์เฟค ซัพพลาย จำกัด",
@@ -1011,6 +1064,32 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
         currency: "THB",
         swift: "BKKBTHBK",
         def: true,
+        active: true,
+      },
+      /* The same supplier bills its imported line in USD, so the second
+         account is a wire destination with the paperwork that needs. */
+      {
+        scope: "ต่างประเทศ",
+        bank: "",
+        branch: "",
+        accName: "Perfect Supply (Singapore) Pte. Ltd.",
+        accNo: "003-912345-8",
+        accType: "",
+        currency: "USD",
+        swift: "DBSSSGSGXXX",
+        bankName: "DBS Bank Ltd.",
+        bankCountry: "สิงคโปร์",
+        bankAddress: "12 Marina Boulevard, DBS Asia Central, Singapore 018982",
+        iban: "",
+        beneName: "Perfect Supply (Singapore) Pte. Ltd.",
+        beneAddress: "8 Jurong Town Hall Road, Singapore 609434",
+        clearingSystem: "ไม่มี",
+        clearingCode: "",
+        interSwift: "CHASUS33",
+        interBank: "JPMorgan Chase Bank, N.A., New York",
+        charges: "SHA — แบ่งกันจ่าย",
+        purpose: "Payment for dental supplies",
+        def: false,
         active: true,
       },
     ],
