@@ -1206,8 +1206,8 @@ describe("BP Master — create / edit form", () => {
     expect(state.addresses[0].deliveryPrimary).toBe(false);
   });
 
-  it("rejects duplicate supplier SKUs", () => {
-    const rule = BP_FORM.rules!.find((r) => r.label.includes("Supplier SKU"))!;
+  it("rejects duplicate vendor product codes", () => {
+    const rule = BP_FORM.rules!.find((r) => r.label.includes("Vendor Product Code"))!;
     expect(rule.test({ supplierItems: [{ sku: "A" }, { sku: "B" }] })).toBe(true);
     expect(rule.test({ supplierItems: [{ sku: "A" }, { sku: "A" }] })).toBe(false);
   });
@@ -1371,6 +1371,67 @@ describe("BP Master — form revisions", () => {
       /* Every column still carries its label, which the stacked card shows. */
       expect(grid.cols!.every((c) => Boolean(c.label)), key).toBe(true);
     }
+  });
+
+  it("shows exactly the nine supplier item columns, in order", () => {
+    const grid = fieldsOf("supplier", { roles: { supplier: true } }).find(
+      (f) => f.path === "supplierItems",
+    )!;
+    expect(grid.cols!.map((c) => c.key)).toEqual([
+      "product",
+      "sku",
+      "productName",
+      "punit",
+      "moq",
+      "lead",
+      "currency",
+      "price",
+      "status",
+    ]);
+    expect(grid.cols!.map((c) => c.label)).toEqual([
+      "Product Code",
+      "Vendor Product Code",
+      "Product Name",
+      "Purchase Unit",
+      "MOQ",
+      "Lead (วัน)",
+      "Currency",
+      "Cost",
+      "Status",
+    ]);
+    /* A new line carries only what the grid can edit. */
+    expect(Object.keys(BP_FORM.newRow!("supplierItems", true)!).sort()).toEqual(
+      ["currency", "lead", "moq", "price", "productName", "product", "punit", "sku", "status"].sort(),
+    );
+  });
+
+  it("fills the purchase unit from the product master", () => {
+    /* Seeded lines predate the column, so the master backfills them. */
+    const withItems = BUSINESS_PARTNERS.find((b) => (b.supplierItems ?? []).length > 0)!;
+    for (const i of withItems.supplierItems!) {
+      expect(i.punit, `${withItems.code} · ${i.product}`).toBeTruthy();
+    }
+  });
+
+  it("mirrors the same nine columns on the detail page", () => {
+    const supplierTab = detail.tabs.find((t) => t.key === "business")!;
+    const table = supplierTab
+      .blocks(bp(SUPPLIER), makeCtx())
+      .filter(Boolean)
+      .find((b) => b && b.type === "table" && String(b.title).startsWith("Supplier Items")) as {
+      cols: { key: string }[];
+    };
+    expect(table.cols.map((c) => c.key)).toEqual([
+      "product",
+      "sku",
+      "productName",
+      "punit",
+      "moq",
+      "lead",
+      "currency",
+      "price",
+      "status",
+    ]);
   });
 
   it("gives the long address fields two columns of the stacked card", () => {

@@ -1073,20 +1073,20 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             title: `Supplier Items (${items.length})`,
             rows: items,
             empty: "ยังไม่มีรายการสินค้าที่เสนอราคา",
+            /* The same nine columns the form edits, in the same order. */
             cols: [
-              { key: "product", label: "Product" },
+              { key: "product", label: "Product Code" },
+              {
+                key: "sku",
+                label: "Vendor Product Code",
+                cell: (i) => <span className="tnum">{i.sku || DASH}</span>,
+              },
               { key: "productName", label: "Product Name", muted: true },
-              { key: "sku", label: "Supplier SKU", cell: (i) => <span className="tnum">{i.sku}</span> },
+              { key: "punit", label: "Purchase Unit", muted: true, cell: (i) => i.punit || DASH },
               { key: "moq", label: "MOQ", align: "right", cell: (i) => fmt(i.moq) },
               { key: "lead", label: "Lead Time", align: "right", cell: (i) => `${i.lead} วัน` },
               { key: "currency", label: "Currency", muted: true },
-              { key: "price", label: "Price", align: "right", cell: (i) => money0(i.price) },
-              {
-                key: "preferred",
-                label: "Preferred",
-                cell: (i) =>
-                  i.preferred ? <Badge tone="success">Preferred</Badge> : <span className="text-ink-3">{DASH}</span>,
-              },
+              { key: "price", label: "Cost", align: "right", cell: (i) => money0(i.price) },
               {
                 key: "status",
                 label: "Status",
@@ -1098,8 +1098,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                   </Badge>
                 ),
               },
-              { key: "effective", label: "Effective", muted: true },
-              { key: "expiry", label: "Expiry", muted: true, cell: (i) => i.expiry || DASH },
             ],
           },
 

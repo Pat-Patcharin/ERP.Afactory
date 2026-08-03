@@ -81,8 +81,11 @@ export interface BpSupplierProfile {
 export interface BpSupplierItem {
   product: string;
   productName: string;
+  /** The vendor's own code for our product. */
   sku: string;
   supName: string;
+  /** Unit the vendor quotes and we buy in. */
+  punit?: string;
   moq: number;
   lead: number;
   currency: string;

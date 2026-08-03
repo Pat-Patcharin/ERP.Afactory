@@ -636,23 +636,20 @@ export const BP_FORM: FormSchema<BpRow> = {
           cols: [
             {
               key: "product",
-              label: "สินค้า",
+              label: "Product Code",
               type: "lookup",
               source: "product",
               required: true,
               width: "150px",
             },
-            { key: "productName", label: "ชื่อสินค้า", type: "static", muted: true, width: "180px" },
-            { key: "sku", label: "Supplier SKU", type: "text", width: "140px" },
-            { key: "supName", label: "ชื่อของผู้ขาย", type: "text", width: "180px" },
-            { key: "moq", label: "MOQ", type: "number", align: "right", width: "80px" },
-            { key: "lead", label: "Lead (วัน)", type: "number", align: "right", width: "90px" },
-            { key: "currency", label: "สกุลเงิน", type: "select", options: [...PO_CURRENCIES] },
-            { key: "price", label: "ราคา", type: "number", align: "right", width: "110px" },
-            { key: "preferred", label: "แนะนำ", type: "check", width: "64px" },
-            { key: "status", label: "สถานะ", type: "select", options: [...SUPPLIER_ITEM_STATUS] },
-            { key: "effective", label: "เริ่มใช้", type: "date", width: "130px" },
-            { key: "expiry", label: "สิ้นสุด", type: "date", width: "130px" },
+            { key: "sku", label: "Vendor Product Code", type: "text", width: "150px" },
+            { key: "productName", label: "Product Name", type: "static", muted: true, width: "200px" },
+            { key: "punit", label: "Purchase Unit", type: "text", width: "110px" },
+            { key: "moq", label: "MOQ", type: "number", align: "right", width: "90px" },
+            { key: "lead", label: "Lead (วัน)", type: "number", align: "right", width: "100px" },
+            { key: "currency", label: "Currency", type: "select", options: [...PO_CURRENCIES] },
+            { key: "price", label: "Cost", type: "number", align: "right", width: "120px" },
+            { key: "status", label: "Status", type: "select", options: [...SUPPLIER_ITEM_STATUS] },
           ],
         },
       ],
@@ -1034,7 +1031,7 @@ export const BP_FORM: FormSchema<BpRow> = {
       test: (s) => !s.customer?.creditHold || Boolean(String(s.customer?.holdReason ?? "").trim()),
     },
     {
-      label: "Supplier SKU ต้องไม่ซ้ำกันในผู้ขายรายเดียว",
+      label: "Vendor Product Code ต้องไม่ซ้ำกันในผู้ขายรายเดียว",
       step: "supplier",
       test: (s) => {
         const skus = ((s.supplierItems ?? []) as GridRow[])
@@ -1118,15 +1115,12 @@ export const BP_FORM: FormSchema<BpRow> = {
           product: "",
           productName: "",
           sku: "",
-          supName: "",
+          punit: "",
           moq: 1,
           lead: 7,
           currency: "THB",
           price: 0,
-          preferred: false,
           status: "Active",
-          effective: "",
-          expiry: "",
         };
       case "docs":
         return {
@@ -1209,7 +1203,7 @@ export const BP_FORM: FormSchema<BpRow> = {
     if (!row) return;
     row.product = rec.code;
     row.productName = rec.name;
-    row.supName ||= rec.name;
+    row.punit ||= rec.meta ?? "";
   },
 
   findDuplicates: (s) => {
@@ -1274,8 +1268,9 @@ export const BP_FORM: FormSchema<BpRow> = {
       supplierItems: isSupplier(s)
         ? ((s.supplierItems ?? []) as GridRow[]).map((i) => ({
             ...i,
-            effective: toDisplayDate(i.effective),
-            expiry: toDisplayDate(i.expiry),
+            /* Dates are carried, not edited — an older row keeps its own. */
+            effective: i.effective ? toDisplayDate(i.effective) : "",
+            expiry: i.expiry ? toDisplayDate(i.expiry) : "",
           }))
         : [],
       docs: ((s.docs ?? []) as GridRow[]).map((d) => ({

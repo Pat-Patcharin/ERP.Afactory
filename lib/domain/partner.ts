@@ -16,6 +16,7 @@ import {
   SUPPLIER_ITEMS,
   SUPPLIER_SEED,
 } from "@/data/partner-profiles";
+import { PRODUCTS } from "@/data/products";
 import { DASH, daysUntil } from "@/lib/format";
 
 /* ============================================================
@@ -216,6 +217,11 @@ function normalise(bp: BusinessPartner) {
      emptiness check — not `??=` — is what actually adopts the seed. */
   if (!bp.docs?.length) bp.docs = ATTACHMENT_SEED[bp.code] ?? bp.docs ?? [];
   bp.supplierItems ??= SUPPLIER_ITEMS[bp.code] ?? [];
+  /* Purchase unit joined the line after the seeds were written; the product
+     master already knows it, so an older row does not read blank. */
+  for (const i of bp.supplierItems) {
+    i.punit ||= PRODUCTS.find((p) => p.code === i.product)?.unit ?? "";
+  }
   bp.images ??= PARTNER_IMAGES[bp.code] ?? [];
 
   for (const a of bp.addresses) {
