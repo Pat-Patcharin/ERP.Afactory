@@ -238,8 +238,14 @@ describe("Detail layout — reusable by every master", () => {
     /* Business Partner is the first adopter, not a special case. */
     render(<FullDetail schema={bpSchemas.detail} record={getBP("BP000123")!} />);
     expect(screen.getByTestId("detail-sticky")).toBeInTheDocument();
-    expect(screen.getByTestId("detail-aside")).toBeInTheDocument();
-    expect(screen.getByTestId("detail-quick-links")).toBeInTheDocument();
+  });
+
+  it("gives a schema without an aside the full page width", () => {
+    /* The rail is optional. Business Partner dropped it so its cards could
+       run edge to edge, and the layout must not leave a gap where it was. */
+    render(<FullDetail schema={bpSchemas.detail} record={getBP("BP000123")!} />);
+    expect(screen.queryByTestId("detail-aside")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("detail-quick-links")).not.toBeInTheDocument();
   });
 
   it("keeps every tab key unique within a schema", () => {

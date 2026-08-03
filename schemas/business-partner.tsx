@@ -42,15 +42,8 @@ import {
 import { BP_TONE, CREDIT_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
 import { checkPermission, maskAccount } from "@/lib/permissions";
-import { can } from "@/lib/domain/admin";
 import { cn } from "@/lib/utils";
-import type {
-  ActionCtx,
-  BadgeTone,
-  DetailSchema,
-  EntitySchemas,
-  ListSchema,
-} from "@/lib/types";
+import type { ActionCtx, BadgeTone, DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
 import { Badge, CellSub, Thumb } from "@/components/ui";
 import { isPhoto } from "@/components/engine/FormFields";
 import { Icon, type IconName } from "@/lib/icons";
@@ -69,11 +62,7 @@ function PartnerAvatar({ value, name }: { value: string; name: string }) {
       <img src={value} alt={name} className="h-full w-full rounded-card object-cover" />
     );
   }
-  return value ? (
-    <>{value}</>
-  ) : (
-    <Icon name="partner" size={34} className="text-ink-3" />
-  );
+  return value ? <>{value}</> : <Icon name="partner" size={34} className="text-ink-3" />;
 }
 
 const SUPPLIER_STATUS_TONE: Record<string, BadgeTone> = {
@@ -303,8 +292,7 @@ export const BP_LIST: ListSchema<BpRow> = {
   entity: "Business Partner",
   entityPlural: "Business Partners",
   title: "Business Partner Master",
-  subtitle:
-    "จัดการลูกค้า ผู้ขายสินค้า ตัวแทนจำหน่าย และผู้ค้าอื่นในฐานข้อมูลเดียว",
+  subtitle: "จัดการลูกค้า ผู้ขายสินค้า ตัวแทนจำหน่าย และผู้ค้าอื่นในฐานข้อมูลเดียว",
   crumb: "Business Partner",
   primaryLabel: "Create Business Partner",
   searchPlaceholder: "ค้นหารหัส ชื่อ เลขผู้เสียภาษี ผู้ติดต่อ โทรศัพท์ หรืออีเมล...",
@@ -356,8 +344,18 @@ export const BP_LIST: ListSchema<BpRow> = {
         return Boolean(d && b.roles[d.key as keyof typeof b.roles]);
       },
     },
-    { id: "type", label: "BP Type", options: () => [...BP_TYPES], test: (b, v) => b.type === v },
-    { id: "status", label: "Status", options: () => [...BP_STATUS], test: (b, v) => b.status === v },
+    {
+      id: "type",
+      label: "BP Type",
+      options: () => [...BP_TYPES],
+      test: (b, v) => b.type === v,
+    },
+    {
+      id: "status",
+      label: "Status",
+      options: () => [...BP_STATUS],
+      test: (b, v) => b.status === v,
+    },
     {
       id: "province",
       label: "Province",
@@ -365,7 +363,12 @@ export const BP_LIST: ListSchema<BpRow> = {
         [...new Set(BUSINESS_PARTNERS.map((b) => b.province))].filter((p) => p !== DASH),
       test: (b, v) => b.province === v,
     },
-    { id: "rep", label: "Sales Rep", options: () => [...SALES_REPS], test: (b, v) => b.salesRep === v },
+    {
+      id: "rep",
+      label: "Sales Rep",
+      options: () => [...SALES_REPS],
+      test: (b, v) => b.salesRep === v,
+    },
     {
       id: "credit",
       label: "Credit Status",
@@ -428,7 +431,9 @@ export const BP_LIST: ListSchema<BpRow> = {
       key: "bpMode",
       label: "Customer / Supplier",
       cell: (b) => (
-        <Badge tone={b.bpMode === "Both" ? "primary" : b.bpMode === "Supplier" ? "info" : "success"}>
+        <Badge
+          tone={b.bpMode === "Both" ? "primary" : b.bpMode === "Supplier" ? "info" : "success"}
+        >
           {b.bpMode}
         </Badge>
       ),
@@ -437,8 +442,18 @@ export const BP_LIST: ListSchema<BpRow> = {
        table — the Customer / Supplier column already carries the role, and
        who to ring is a detail-page fact nobody scans a list for. All of them
        stay searchable. */
-    { key: "province", label: "Province", muted: true, cell: (b) => b.province },
-    { key: "salesArea", label: "Sale Area", muted: true, cell: (b) => b.salesArea },
+    {
+      key: "province",
+      label: "Province",
+      muted: true,
+      cell: (b) => b.province,
+    },
+    {
+      key: "salesArea",
+      label: "Sale Area",
+      muted: true,
+      cell: (b) => b.salesArea,
+    },
     {
       key: "creditStatus",
       label: "Credit Status",
@@ -559,8 +574,16 @@ export const BP_LIST: ListSchema<BpRow> = {
       ctx.toast(msg, `${r.code} — ${r.nameTh}`, t);
     };
     return [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("business-partner", r) },
-      { label: "Edit", icon: "edit", run: (r) => ctx.goto(`/m/business-partner/${r.code}/edit`) },
+      {
+        label: "View",
+        icon: "eye",
+        run: (r) => ctx.quickView("business-partner", r),
+      },
+      {
+        label: "Edit",
+        icon: "edit",
+        run: (r) => ctx.goto(`/m/business-partner/${r.code}/edit`),
+      },
       {
         label: "Duplicate",
         icon: "copy",
@@ -715,67 +738,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
     {
       key: "overview",
       label: "Overview",
-      aside: (b, ctx) => {
-        const last = bpLastPurchase(b);
-        const credit = checkPermission("canViewCredit");
-        const docs = [
-          ...bpSalesOrders(b).slice(0, 3).map((s) => ({
-            label: s.code,
-            sub: `${s.orderDate} · ${money0(s.total)}`,
-            icon: "salesOrder" as IconName,
-            run: () => ctx.openEntity("sales-order", s.code),
-          })),
-          ...(b.txn?.inv ?? []).slice(0, 2).map((i) => ({
-            label: i.no,
-            sub: `${i.date} · ${money0(i.amount)}`,
-            icon: "invoice" as IconName,
-            run: () => ctx.openEntity("sales-invoice", i.no),
-          })),
-        ];
-
-        return {
-          title: "Business Partner Summary",
-          rows: [
-            { icon: "calendar", label: "Customer Since", value: b.customer ? b.since || DASH : DASH },
-            { icon: "calendar", label: "Supplier Since", value: b.supplier ? b.since || DASH : DASH },
-            { icon: "salesRep", label: "Sales Rep", value: b.salesRep },
-            { icon: "tag", label: "Payment Terms", value: b.payTerm },
-            { icon: "priceList", label: "Price List", value: b.customer?.priceList ?? DASH },
-            { icon: "pricing", label: "Currency", value: b.supplier?.currency ?? "THB" },
-            {
-              icon: "cart",
-              label: "Outstanding",
-              value: credit ? money0(b.creditUsed) : "••••",
-            },
-            {
-              icon: "shield",
-              label: "Credit Status",
-              value: <Badge tone={tone(CREDIT_TONE, b.creditStatus)}>{b.creditStatus}</Badge>,
-            },
-          ],
-          links: [
-            {
-              label: "View All Addresses",
-              icon: "mapPin" as IconName,
-              sub: `${b.addressCount} ที่อยู่`,
-              run: () => openAddressPanel(b, ctx),
-            },
-            {
-              label: "View All Contacts",
-              icon: "users" as IconName,
-              sub: `${b.contactCount} คน`,
-              run: () => openContactPanel(b, ctx),
-            },
-            {
-              label: "View All Bank Accounts",
-              icon: "pricing" as IconName,
-              sub: `${b.bankCount} บัญชี`,
-              run: () => openBankPanel(b, ctx),
-            },
-            ...docs,
-          ],
-        };
-      },
       blocks: (b, ctx) => {
         const issues = bpValidate(b);
         const blocking = issues.filter((i) => i.blocking);
@@ -796,91 +758,93 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             message: blocking.map((i) => i.message).join(" · "),
           },
 
-          /* ---- Row 1: identity and contact.
-             Two cards, not three: beside the summary rail a third column
-             leaves every value too narrow to sit on one line, which is what
-             sent the addresses down eight rows each. ---- */
+          /* ---- Every card runs the full width of the page.
+             Side by side, each one was a quarter of the screen and every
+             value wrapped; given the whole row the fields lay out in two
+             horizontal columns and read left to right. ---- */
           {
-            type: "grid",
+            type: "fields",
+            title: "General Information",
             cols: 2,
             items: [
+              { label: "BP Code", value: b.code },
+              { label: "BP Name (TH)", value: b.nameTh },
+              { label: "BP Name (EN)", value: b.nameEn || DASH },
               {
-                type: "fields",
-                title: "General Information",
-                cols: 1,
-                items: [
-                  { label: "BP Code", value: b.code },
-                  { label: "BP Name (TH)", value: b.nameTh },
-                  { label: "BP Name (EN)", value: b.nameEn || DASH },
-                  { label: "Status", value: <Badge tone={tone(BP_TONE, b.status)}>{b.status}</Badge> },
-                  {
-                    label: "BP Type",
-                    value: (
-                      <Badge
-                        tone={
-                          b.bpMode === "Both" ? "primary" : b.bpMode === "Supplier" ? "info" : "success"
-                        }
-                      >
-                        {b.bpMode}
-                      </Badge>
-                    ),
-                  },
-                  { label: "Entity Type", value: b.type },
-                  {
-                    label: "Tax ID",
-                    value: t.taxId ? (
-                      <>
-                        <span className="tnum">{t.taxId}</span>
-                        {taxOk ? (
-                          <span className="ml-1 text-success-text">✓</span>
-                        ) : (
-                          <span className="ml-1 text-danger-text">✕</span>
-                        )}
-                      </>
+                label: "Status",
+                value: <Badge tone={tone(BP_TONE, b.status)}>{b.status}</Badge>,
+              },
+              {
+                label: "BP Type",
+                value: (
+                  <Badge
+                    tone={
+                      b.bpMode === "Both" ? "primary" : b.bpMode === "Supplier" ? "info" : "success"
+                    }
+                  >
+                    {b.bpMode}
+                  </Badge>
+                ),
+              },
+              { label: "Entity Type", value: b.type },
+              {
+                label: "Tax ID",
+                value: t.taxId ? (
+                  <>
+                    <span className="tnum">{t.taxId}</span>
+                    {taxOk ? (
+                      <span className="ml-1 text-success-text">✓</span>
                     ) : (
-                      DASH
-                    ),
-                  },
-                  {
-                    label: "Bill Type",
-                    value: <Badge tone={b.billType === "VAT" ? "info" : "neutral"}>{b.billType}</Badge>,
-                  },
-                  {
-                    label: "Credit Term",
-                    value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน`,
-                  },
-                  { label: "Starting Date", value: b.since || DASH },
-                ],
+                      <span className="ml-1 text-danger-text">✕</span>
+                    )}
+                  </>
+                ) : (
+                  DASH
+                ),
               },
-
               {
-                type: "fields",
-                title: "Primary Contact",
-                cols: 1,
-                items: [
-                  { label: "ชื่อผู้ติดต่อหลัก", value: b.contactName },
-                  { label: "ตำแหน่ง", value: contact?.pos || DASH },
-                  { label: "Telephone", value: <span className="tnum">{b.phone}</span> },
-                  { label: "Mobile Phone", value: <span className="tnum">{b.mobile}</span> },
-                  { label: "Email", value: b.email },
-                  { label: "Line ID", value: contact?.line || DASH, muted: true },
-                  {
-                    label: "",
-                    value: (
-                      <LinkAction
-                        label={`View All Contacts (${b.contactCount})`}
-                        onClick={() => openContactPanel(b, ctx)}
-                      />
-                    ),
-                    span: true,
-                  },
-                ],
+                label: "Bill Type",
+                value: <Badge tone={b.billType === "VAT" ? "info" : "neutral"}>{b.billType}</Badge>,
               },
-
+              {
+                label: "Credit Term",
+                value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน`,
+              },
+              { label: "Starting Date", value: b.since || DASH },
             ],
           },
 
-          /* ---- Row 2: addresses, full width.
+          {
+            type: "fields",
+            title: "Primary Contact",
+            cols: 2,
+            items: [
+              { label: "ชื่อผู้ติดต่อหลัก", value: b.contactName },
+              { label: "ตำแหน่ง", value: contact?.pos || DASH },
+              {
+                label: "Telephone",
+                value: <span className="tnum">{b.phone}</span>,
+              },
+              {
+                label: "Mobile Phone",
+                value: <span className="tnum">{b.mobile}</span>,
+              },
+              { label: "Email", value: b.email },
+              { label: "Line ID", value: contact?.line || DASH, muted: true },
+              {
+                label: "",
+                value: (
+                  <LinkAction
+                    label={`View All Contacts (${b.contactCount})`}
+                    onClick={() => openContactPanel(b, ctx)}
+                  />
+                ),
+                span: true,
+              },
+            ],
+          },
+
+          /* ---- Addresses.
              An address is the longest value on the page; given the whole row
              it reads as one line instead of a column of single words. ---- */
           {
@@ -927,79 +891,90 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             ],
           },
 
-          /* ---- Row 3: business + credit ---- */
+          /* ---- Business and credit ---- */
           {
-            type: "grid",
+            type: "fields",
+            title: "Business Summary",
             cols: 2,
             items: [
+              { label: "Sales Representative", value: b.salesRep },
+              { label: "Customer Type", value: b.customerType },
+              { label: "Supplier Type", value: b.supplierType },
+              { label: "Business Type", value: b.businessType },
+              { label: "Customer Size", value: b.customer?.size ?? DASH },
               {
-                type: "fields",
-                title: "Business Summary",
-                cols: 2,
-                items: [
-                  { label: "Sales Representative", value: b.salesRep },
-                  { label: "Customer Type", value: b.customerType },
-                  { label: "Supplier Type", value: b.supplierType },
-                  { label: "Business Type", value: b.businessType },
-                  { label: "Customer Size", value: b.customer?.size ?? DASH },
-                  {
-                    label: "Preferred Supplier",
-                    value: b.supplier ? (
-                      b.supplier.preferred ? (
-                        <Badge tone="success">Preferred</Badge>
-                      ) : (
-                        "ผู้ขายทั่วไป"
-                      )
-                    ) : (
-                      DASH
-                    ),
-                  },
-                  { label: "Payment Terms", value: b.payTerm },
-                  { label: "Price List", value: b.customer?.priceList ?? DASH },
-                  { label: "Currency", value: b.supplier?.currency ?? "THB" },
-                  { label: "Sale Area", value: b.salesArea },
-                ],
+                label: "Preferred Supplier",
+                value: b.supplier ? (
+                  b.supplier.preferred ? (
+                    <Badge tone="success">Preferred</Badge>
+                  ) : (
+                    "ผู้ขายทั่วไป"
+                  )
+                ) : (
+                  DASH
+                ),
               },
-
-              credit
-                ? {
-                    type: "fields",
-                    title: "Credit Summary",
-                    cols: 2,
-                    items: [
-                      { label: "Credit Limit", value: `${money0(b.creditLimit)} THB` },
-                      { label: "Credit Used", value: `${money0(b.creditUsed)} THB` },
-                      { label: "Available Credit", value: `${money0(b.availableCredit)} THB` },
-                      { label: "Outstanding", value: `${money0(b.credit.openInv)} THB` },
-                      {
-                        label: "Credit Status",
-                        value: <Badge tone={tone(CREDIT_TONE, b.creditStatus)}>{b.creditStatus}</Badge>,
-                      },
-                      { label: "Credit Days", value: `${b.credit.days} วัน` },
-                      {
-                        label: "Credit Hold",
-                        value: b.customer?.creditHold ? (
-                          <Badge tone="danger">ระงับ</Badge>
-                        ) : (
-                          "ปกติ"
-                        ),
-                      },
-                    ],
-                  }
-                : /* Layer 2: a role without credit sight gets no card at all,
-                     not a card full of dots. */
-                  null,
+              { label: "Payment Terms", value: b.payTerm },
+              { label: "Price List", value: b.customer?.priceList ?? DASH },
+              { label: "Currency", value: b.supplier?.currency ?? "THB" },
+              { label: "Sale Area", value: b.salesArea },
             ],
           },
 
-          /* ---- Row 3: business KPI ---- */
+          credit
+            ? {
+                type: "fields",
+                title: "Credit Summary",
+                cols: 2,
+                items: [
+                  {
+                    label: "Credit Limit",
+                    value: `${money0(b.creditLimit)} THB`,
+                  },
+                  {
+                    label: "Credit Used",
+                    value: `${money0(b.creditUsed)} THB`,
+                  },
+                  {
+                    label: "Available Credit",
+                    value: `${money0(b.availableCredit)} THB`,
+                  },
+                  {
+                    label: "Outstanding",
+                    value: `${money0(b.credit.openInv)} THB`,
+                  },
+                  {
+                    label: "Credit Status",
+                    value: <Badge tone={tone(CREDIT_TONE, b.creditStatus)}>{b.creditStatus}</Badge>,
+                  },
+                  { label: "Credit Days", value: `${b.credit.days} วัน` },
+                  {
+                    label: "Credit Hold",
+                    value: b.customer?.creditHold ? <Badge tone="danger">ระงับ</Badge> : "ปกติ",
+                  },
+                ],
+              }
+            : /* Layer 2: a role without credit sight gets no card at all,
+                     not a card full of dots. */
+              null,
+
+          /* ---- Business KPI ---- */
           {
             type: "cards",
             title: "Business KPI",
             cols: 3,
             items: [
-              salesKpi && { label: "Total Sales", value: money0(salesKpi.revenue), unit: "THB", tone: "accent" },
-              purchaseKpi && { label: "Total Purchase", value: money0(purchaseKpi.spend), unit: "THB" },
+              salesKpi && {
+                label: "Total Sales",
+                value: money0(salesKpi.revenue),
+                unit: "THB",
+                tone: "accent",
+              },
+              purchaseKpi && {
+                label: "Total Purchase",
+                value: money0(purchaseKpi.spend),
+                unit: "THB",
+              },
               salesKpi && {
                 label: "Last Sales Order",
                 value: salesKpi.lastOrderDate || DASH,
@@ -1010,12 +985,47 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 value: purchaseKpi.lastOrderDate || DASH,
                 sub: purchaseKpi.lastOrderAmount ? money0(purchaseKpi.lastOrderAmount) : "",
               },
-              salesKpi && { label: "Average Sales", value: money0(salesKpi.avgOrder), unit: "THB" },
-              purchaseKpi && { label: "Average Purchase", value: money0(purchaseKpi.avgOrder), unit: "THB" },
+              salesKpi && {
+                label: "Average Sales",
+                value: money0(salesKpi.avgOrder),
+                unit: "THB",
+              },
+              purchaseKpi && {
+                label: "Average Purchase",
+                value: money0(purchaseKpi.avgOrder),
+                unit: "THB",
+              },
             ],
           },
 
           b.notes ? { type: "note", title: "Remarks", text: b.notes } : null,
+
+          /* ---- Record history.
+             It used to live on the Audit tab. With that tab gone the history
+             still has to be reachable, and Overview is the tab every partner
+             opens on whatever roles it plays. ---- */
+          {
+            type: "fields",
+            title: "Record Lifecycle",
+            cols: 2,
+            items: [
+              { label: "Created", value: b.created, muted: true },
+              { label: "Created By", value: b.createdBy, muted: true },
+              { label: "Last Updated", value: b.updated, muted: true },
+              { label: "Updated By", value: b.updatedBy, muted: true },
+            ],
+          },
+          {
+            type: "timeline",
+            title: `Latest Activities (${b.history.length})`,
+            items: b.history.map((e) => ({
+              title: e.t,
+              detail: e.d,
+              user: e.u,
+              when: e.when,
+              kind: e.kind,
+            })),
+          },
         ];
       },
     },
@@ -1047,17 +1057,35 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 label: "Benefit Level",
                 value: c.benefit === "Custom" ? `Custom — ${c.benefitPct}%` : c.benefit,
               },
-              { label: "Customer Size", value: <Badge tone="neutral">{c.size}</Badge> },
+              {
+                label: "Customer Size",
+                value: <Badge tone="neutral">{c.size}</Badge>,
+              },
               { label: "Sales Representative", value: c.rep },
               { label: "Default Price List", value: c.priceList },
-              credit && { label: "Credit Limit", value: `${money0(c.creditLimit)} THB` },
-              credit && { label: "Credit Used", value: `${money0(c.creditUsed)} THB` },
-              credit && { label: "Available Credit", value: `${money0(b.availableCredit)} THB` },
+              credit && {
+                label: "Credit Limit",
+                value: `${money0(c.creditLimit)} THB`,
+              },
+              credit && {
+                label: "Credit Used",
+                value: `${money0(c.creditUsed)} THB`,
+              },
+              credit && {
+                label: "Available Credit",
+                value: `${money0(b.availableCredit)} THB`,
+              },
               {
                 label: "Credit Hold",
                 value: c.creditHold ? <Badge tone="danger">ระงับ</Badge> : "ปกติ",
               },
-              c.creditHold ? { label: "Hold Reason", value: c.holdReason || DASH, span: true } : null,
+              c.creditHold
+                ? {
+                    label: "Hold Reason",
+                    value: c.holdReason || DASH,
+                    span: true,
+                  }
+                : null,
             ],
           },
 
@@ -1082,7 +1110,10 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               { label: "Supplier Rating", value: p?.rating ?? DASH },
               { label: "Buyer", value: p?.buyer ?? DASH },
               { label: "Incoterm", value: p?.incoterm ?? DASH },
-              { label: "Minimum Order Value", value: p ? `${money0(p.minValue)} ${s.currency}` : DASH },
+              {
+                label: "Minimum Order Value",
+                value: p ? `${money0(p.minValue)} ${s.currency}` : DASH,
+              },
               { label: "Receiving Warehouse", value: p?.warehouse ?? DASH },
             ],
           },
@@ -1102,17 +1133,43 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 cell: (i) => <span className="tnum">{i.sku || DASH}</span>,
               },
               { key: "productName", label: "Product Name", muted: true },
-              { key: "punit", label: "Purchase Unit", muted: true, cell: (i) => i.punit || DASH },
-              { key: "moq", label: "MOQ", align: "right", cell: (i) => fmt(i.moq) },
-              { key: "lead", label: "Lead Time", align: "right", cell: (i) => `${i.lead} วัน` },
+              {
+                key: "punit",
+                label: "Purchase Unit",
+                muted: true,
+                cell: (i) => i.punit || DASH,
+              },
+              {
+                key: "moq",
+                label: "MOQ",
+                align: "right",
+                cell: (i) => fmt(i.moq),
+              },
+              {
+                key: "lead",
+                label: "Lead Time",
+                align: "right",
+                cell: (i) => `${i.lead} วัน`,
+              },
               { key: "currency", label: "Currency", muted: true },
-              { key: "price", label: "Cost", align: "right", cell: (i) => money0(i.price) },
+              {
+                key: "price",
+                label: "Cost",
+                align: "right",
+                cell: (i) => money0(i.price),
+              },
               {
                 key: "status",
                 label: "Status",
                 cell: (i) => (
                   <Badge
-                    tone={i.status === "Active" ? "success" : i.status === "Expired" ? "danger" : "neutral"}
+                    tone={
+                      i.status === "Active"
+                        ? "success"
+                        : i.status === "Expired"
+                          ? "danger"
+                          : "neutral"
+                    }
                   >
                     {i.status}
                   </Badge>
@@ -1143,10 +1200,19 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                     ),
                   },
                   { label: "Bank Name", value: bankLabel(bank) },
-                  !isForeignBank(bank) && { label: "Branch", value: bank.branch || DASH },
-                  !isForeignBank(bank) && { label: "Account Type", value: bank.accType },
+                  !isForeignBank(bank) && {
+                    label: "Branch",
+                    value: bank.branch || DASH,
+                  },
+                  !isForeignBank(bank) && {
+                    label: "Account Type",
+                    value: bank.accType,
+                  },
                   { label: "Account Name", value: bank.accName },
-                  { label: "Account Number", value: <span className="tnum">{maskAccount(bank.accNo)}</span> },
+                  {
+                    label: "Account Number",
+                    value: <span className="tnum">{maskAccount(bank.accNo)}</span>,
+                  },
                   { label: "Currency", value: bank.currency },
                   /* ---- The wire block, only where money actually crosses a border ---- */
                   isForeignBank(bank) && {
@@ -1157,7 +1223,10 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                     label: "IBAN",
                     value: <span className="tnum">{bank.iban || DASH}</span>,
                   },
-                  isForeignBank(bank) && { label: "Bank Country", value: bank.bankCountry || DASH },
+                  isForeignBank(bank) && {
+                    label: "Bank Country",
+                    value: bank.bankCountry || DASH,
+                  },
                   isForeignBank(bank) && {
                     label: "Bank Address",
                     value: bank.bankAddress || DASH,
@@ -1182,7 +1251,10 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                       value: `${bank.interBank || DASH} · ${bank.interSwift}`,
                       span: true,
                     },
-                  isForeignBank(bank) && { label: "Charge Bearer", value: bank.charges || DASH },
+                  isForeignBank(bank) && {
+                    label: "Charge Bearer",
+                    value: bank.charges || DASH,
+                  },
                   isForeignBank(bank) && {
                     label: "Purpose of Payment",
                     value: bank.purpose || DASH,
@@ -1197,7 +1269,14 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                     ),
                   },
                 ]
-              : [{ label: "", value: "ยังไม่มีบัญชีธนาคาร", span: true, muted: true }],
+              : [
+                  {
+                    label: "",
+                    value: "ยังไม่มีบัญชีธนาคาร",
+                    span: true,
+                    muted: true,
+                  },
+                ],
           },
 
           /* ---- Payment information ---- */
@@ -1207,10 +1286,19 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             cols: 2,
             items: [
               { label: "Payment Term", value: b.payTerm },
-              { label: "Credit Term", value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน` },
+              {
+                label: "Credit Term",
+                value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน`,
+              },
               { label: "Bill Type", value: b.billType },
-              { label: "Withholding Tax", value: b.tax.wht ? "มีการหัก ณ ที่จ่าย" : "ไม่มี" },
-              { label: "VAT Registered", value: b.tax.vatReg ? "ใช่" : "ไม่ใช่" },
+              {
+                label: "Withholding Tax",
+                value: b.tax.wht ? "มีการหัก ณ ที่จ่าย" : "ไม่มี",
+              },
+              {
+                label: "VAT Registered",
+                value: b.tax.vatReg ? "ใช่" : "ไม่ใช่",
+              },
               { label: "VAT Registration Date", value: b.tax.vatDate || DASH },
             ],
           },
@@ -1234,53 +1322,54 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
     },
 
     /* ============================================================
-       3. ACTIVITY — sales, purchase and the timeline in one place.
+       3. CUSTOMER PURCHASE HISTORY — what this partner bought from us.
+          Only exists for a partner that buys, so a pure supplier never
+          opens an empty sales tab.
        ============================================================ */
     {
-      key: "activity",
-      label: "Activity",
+      key: "sales-history",
+      label: "Customer Purchase History",
+      when: (b) => Boolean(b.customer),
       blocks: (b, ctx) => {
-        const salesKpi = b.customer ? bpCustomerKpi(b) : null;
-        const purchaseKpi = b.supplier ? bpPurchaseKpi(b) : null;
-        const orders = b.customer ? bpSalesOrders(b) : [];
-        const top = b.customer ? bpTopProducts(b) : [];
-        const pos = b.supplier ? bpPurchaseOrders(b) : [];
-        const grs = b.supplier ? bpGoodsReceipts(b) : [];
-        const topBuy = b.supplier ? bpTopPurchasedProducts(b) : [];
-        const recordedPo = b.txn?.po ?? [];
+        const kpi = bpCustomerKpi(b);
+        const orders = bpSalesOrders(b);
+        const top = bpTopProducts(b);
 
         return [
           {
             type: "cards",
-            title: "Document Statistics",
-            cols: 4,
+            title: "Customer Summary",
+            cols: 3,
             items: [
-              { label: "Sales Orders", value: fmt(b.txn.so.length), tone: "accent" },
-              { label: "Purchase Orders", value: fmt(b.txn.po.length) },
+              {
+                label: "Sales Orders",
+                value: fmt(b.txn.so.length),
+                tone: "accent",
+              },
               { label: "Invoices", value: fmt(b.txn.inv.length) },
-              { label: "Attachments", value: fmt(b.docCount) },
-            ],
-          },
-
-          salesKpi && {
-            type: "cards",
-            title: "Sales Summary",
-            cols: 4,
-            items: [
-              { label: "Total Sales", value: money0(salesKpi.revenue), unit: "THB", tone: "accent" },
-              { label: "Average Order", value: money0(salesKpi.avgOrder), unit: "THB" },
-              { label: "Open Orders", value: fmt(salesKpi.openOrders) },
+              { label: "Open Orders", value: fmt(kpi.openOrders) },
+              {
+                label: "Total Sales",
+                value: money0(kpi.revenue),
+                unit: "THB",
+                tone: "accent",
+              },
+              {
+                label: "Average Order",
+                value: money0(kpi.avgOrder),
+                unit: "THB",
+              },
               {
                 label: "Outstanding",
-                value: money0(salesKpi.outstanding),
+                value: money0(kpi.outstanding),
                 unit: "THB",
-                tone: salesKpi.overdue > 0 ? "warn" : undefined,
-                sub: salesKpi.overdue > 0 ? `เกินกำหนด ${salesKpi.overdue} ใบ` : "",
+                tone: kpi.overdue > 0 ? "warn" : undefined,
+                sub: kpi.overdue > 0 ? `เกินกำหนด ${kpi.overdue} ใบ` : "",
               },
             ],
           },
 
-          orders.length > 0 && {
+          {
             type: "table",
             title: `Recent Sales Orders (${orders.length})`,
             rows: orders.slice(0, 8),
@@ -1300,12 +1389,21 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               },
               { key: "orderDate", label: "Order Date", muted: true },
               { key: "itemCount", label: "Items", align: "right" },
-              { key: "total", label: "Amount", align: "right", cell: (s) => money0(s.total) },
-              { key: "status", label: "Status", cell: (s) => <Badge tone="neutral">{s.status}</Badge> },
+              {
+                key: "total",
+                label: "Amount",
+                align: "right",
+                cell: (s) => money0(s.total),
+              },
+              {
+                key: "status",
+                label: "Status",
+                cell: (s) => <Badge tone="neutral">{s.status}</Badge>,
+              },
             ],
           },
 
-          b.txn.inv.length > 0 && {
+          {
             type: "table",
             title: `Invoices (${b.txn.inv.length})`,
             rows: b.txn.inv,
@@ -1313,7 +1411,12 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             cols: [
               { key: "no", label: "Invoice No." },
               { key: "date", label: "Date", muted: true },
-              { key: "amount", label: "Amount", align: "right", cell: (r) => money0(r.amount) },
+              {
+                key: "amount",
+                label: "Amount",
+                align: "right",
+                cell: (r) => money0(r.amount),
+              },
               {
                 key: "status",
                 label: "Status",
@@ -1324,7 +1427,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             ],
           },
 
-          top.length > 0 && {
+          {
             type: "table",
             title: "Top Products Sold",
             rows: top,
@@ -1332,24 +1435,79 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             cols: [
               { key: "code", label: "Product" },
               { key: "name", label: "Product Name", muted: true },
-              { key: "qty", label: "Qty", align: "right", cell: (t) => fmt(t.qty) },
-              { key: "amount", label: "Amount", align: "right", cell: (t) => money0(t.amount) },
+              {
+                key: "qty",
+                label: "Qty",
+                align: "right",
+                cell: (t) => fmt(t.qty),
+              },
+              {
+                key: "amount",
+                label: "Amount",
+                align: "right",
+                cell: (t) => money0(t.amount),
+              },
             ],
           },
 
-          purchaseKpi && {
+          {
+            type: "planned",
+            title: "Returns & Credit Notes",
+            label: "Sales Return / Credit Note",
+            message:
+              "เอกสารคืนสินค้าและใบลดหนี้ของคู่ค้ารายนี้ยังไม่ผูกด้วยรหัสคู่ค้า — จะแสดงที่นี่เมื่อเชื่อมแล้ว",
+          },
+        ];
+      },
+    },
+
+    /* ============================================================
+       4. SUPPLIER PURCHASE HISTORY — what we bought from this partner.
+       ============================================================ */
+    {
+      key: "purchase-history",
+      label: "Supplier Purchase History",
+      when: (b) => Boolean(b.supplier),
+      blocks: (b, ctx) => {
+        const kpi = bpPurchaseKpi(b);
+        const pos = bpPurchaseOrders(b);
+        const grs = bpGoodsReceipts(b);
+        const topBuy = bpTopPurchasedProducts(b);
+        const recordedPo = b.txn?.po ?? [];
+
+        return [
+          {
             type: "cards",
-            title: "Purchase Summary",
-            cols: 4,
+            title: "Supplier Summary",
+            cols: 3,
             items: [
-              { label: "Total Purchase", value: money0(purchaseKpi.spend), unit: "THB", tone: "accent" },
-              { label: "Average Order", value: money0(purchaseKpi.avgOrder), unit: "THB" },
-              { label: "Average Lead Time", value: `${purchaseKpi.avgLeadTime}`, unit: "วัน" },
-              { label: "Goods Receipts", value: fmt(purchaseKpi.receipts) },
+              {
+                label: "Purchase Orders",
+                value: fmt(b.txn.po.length),
+                tone: "accent",
+              },
+              { label: "Goods Receipts", value: fmt(kpi.receipts) },
+              { label: "Supplier Status", value: b.supplier?.status ?? DASH },
+              {
+                label: "Total Purchase",
+                value: money0(kpi.spend),
+                unit: "THB",
+                tone: "accent",
+              },
+              {
+                label: "Average Order",
+                value: money0(kpi.avgOrder),
+                unit: "THB",
+              },
+              {
+                label: "Average Lead Time",
+                value: `${kpi.avgLeadTime}`,
+                unit: "วัน",
+              },
             ],
           },
 
-          purchaseKpi?.fromRecord && {
+          kpi.fromRecord && {
             type: "alert",
             tone: "info",
             title: "ยอดซื้อมาจากข้อมูลบนระเบียนคู่ค้า",
@@ -1357,7 +1515,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               "ใบสั่งซื้อและใบรับสินค้าในระบบยังอ้างอิงผู้ขายด้วยชื่อ ไม่ใช่รหัสคู่ค้า จึงจับคู่อัตโนมัติไม่ได้",
           },
 
-          b.supplier && {
+          {
             type: "table",
             title: `Recent Purchase Orders (${pos.length || recordedPo.length})`,
             rows: pos.length ? pos.slice(0, 8) : recordedPo,
@@ -1377,69 +1535,85 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                     ),
                   },
                   { key: "orderDate", label: "Order Date", muted: true },
-                  { key: "total", label: "Amount", align: "right", cell: (p) => money0(p.total) },
-                  { key: "status", label: "Status", cell: (p) => <Badge tone="neutral">{p.status}</Badge> },
+                  {
+                    key: "total",
+                    label: "Amount",
+                    align: "right",
+                    cell: (p) => money0(p.total),
+                  },
+                  {
+                    key: "status",
+                    label: "Status",
+                    cell: (p) => <Badge tone="neutral">{p.status}</Badge>,
+                  },
                 ]
               : [
                   { key: "no", label: "PO No." },
                   { key: "date", label: "Date", muted: true },
-                  { key: "amount", label: "Amount", align: "right", cell: (r) => money0(r.amount) },
-                  { key: "status", label: "Status", cell: (r) => <Badge tone="neutral">{r.status}</Badge> },
+                  {
+                    key: "amount",
+                    label: "Amount",
+                    align: "right",
+                    cell: (r) => money0(r.amount),
+                  },
+                  {
+                    key: "status",
+                    label: "Status",
+                    cell: (r) => <Badge tone="neutral">{r.status}</Badge>,
+                  },
                 ],
           },
 
-          grs.length > 0 && {
+          {
             type: "table",
             title: `Goods Receipts (${grs.length})`,
             rows: grs.slice(0, 8),
-            empty: "",
+            empty: "ยังไม่มีใบรับสินค้า",
             cols: [
               { key: "code", label: "GR No." },
               { key: "receiptDate", label: "Receipt Date", muted: true },
               { key: "warehouse", label: "Warehouse", muted: true },
-              { key: "totalReceiving", label: "Qty", align: "right", cell: (g) => fmt(g.totalReceiving) },
-              { key: "status", label: "Status", cell: (g) => <Badge tone="neutral">{g.status}</Badge> },
+              {
+                key: "totalReceiving",
+                label: "Qty",
+                align: "right",
+                cell: (g) => fmt(g.totalReceiving),
+              },
+              {
+                key: "status",
+                label: "Status",
+                cell: (g) => <Badge tone="neutral">{g.status}</Badge>,
+              },
             ],
           },
 
-          topBuy.length > 0 && {
+          {
             type: "table",
             title: "Top Products Purchased",
             rows: topBuy,
-            empty: "",
+            empty: "ยังไม่มีประวัติการสั่งซื้อสินค้า",
             cols: [
               { key: "code", label: "Product" },
               { key: "name", label: "Product Name", muted: true },
-              { key: "qty", label: "Qty", align: "right", cell: (t) => fmt(t.qty) },
-              { key: "amount", label: "Amount", align: "right", cell: (t) => money0(t.amount) },
+              {
+                key: "qty",
+                label: "Qty",
+                align: "right",
+                cell: (t) => fmt(t.qty),
+              },
+              {
+                key: "amount",
+                label: "Amount",
+                align: "right",
+                cell: (t) => money0(t.amount),
+              },
             ],
-          },
-
-          {
-            type: "planned",
-            title: "Returns & Credit Notes",
-            label: "Sales Return / Credit Note",
-            message:
-              "เอกสารคืนสินค้าและใบลดหนี้ของคู่ค้ารายนี้ยังไม่ผูกด้วยรหัสคู่ค้า — จะแสดงที่นี่เมื่อเชื่อมแล้ว",
-          },
-
-          {
-            type: "timeline",
-            title: `Latest Activities (${b.history.length})`,
-            items: b.history.map((e) => ({
-              title: e.t,
-              detail: e.d,
-              user: e.u,
-              when: e.when,
-              kind: e.kind,
-            })),
           },
         ];
       },
     },
-
     /* ============================================================
-       4. ATTACHMENTS — files and images.
+       5. ATTACHMENTS — files and images.
        ============================================================ */
     {
       key: "attachments",
@@ -1459,7 +1633,10 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             tone: "warn",
             title: "เอกสารใกล้หมดอายุหรือหมดอายุแล้ว",
             message: expiring
-              .map((x) => `${x.doc.name} (${x.days < 0 ? `เกิน ${-x.days} วัน` : `อีก ${x.days} วัน`})`)
+              .map(
+                (x) =>
+                  `${x.doc.name} (${x.days < 0 ? `เกิน ${-x.days} วัน` : `อีก ${x.days} วัน`})`,
+              )
               .join(" · "),
           },
 
@@ -1470,8 +1647,15 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             items: [
               { label: "Attachments", value: fmt(b.docCount), tone: "accent" },
               { label: "Images", value: fmt(b.imageCount) },
-              { label: "Expiring", value: fmt(expiring.length), tone: expiring.length ? "warn" : undefined },
-              { label: "Document Types", value: fmt(new Set(b.docs.map((d) => d.type)).size) },
+              {
+                label: "Expiring",
+                value: fmt(expiring.length),
+                tone: expiring.length ? "warn" : undefined,
+              },
+              {
+                label: "Document Types",
+                value: fmt(new Set(b.docs.map((d) => d.type)).size),
+              },
             ],
           },
 
@@ -1490,7 +1674,10 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                   title: i.name,
                   subtitle: `${i.kind} · อัปโหลดโดย ${i.by} · ${i.date}`,
                   blocks: [
-                    { type: "node", node: <ImagePreview src={i.src} name={i.name} /> },
+                    {
+                      type: "node",
+                      node: <ImagePreview src={i.src} name={i.name} />,
+                    },
                     {
                       type: "fields",
                       title: "Image",
@@ -1516,18 +1703,31 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             rows: b.docs,
             empty: "ยังไม่มีเอกสารแนบ",
             cols: [
-              { key: "type", label: "Document Type", cell: (d) => <Badge tone="neutral">{d.type}</Badge> },
+              {
+                key: "type",
+                label: "Document Type",
+                cell: (d) => <Badge tone="neutral">{d.type}</Badge>,
+              },
               {
                 key: "name",
                 label: "Filename",
                 cell: (d) => (
                   <span className="inline-flex items-center gap-2">
-                    <Icon name={DOC_ICON[d.kind ?? "other"] ?? "file"} size={15} className="text-ink-3" />
+                    <Icon
+                      name={DOC_ICON[d.kind ?? "other"] ?? "file"}
+                      size={15}
+                      className="text-ink-3"
+                    />
                     {d.name}
                   </span>
                 ),
               },
-              { key: "kind", label: "Format", muted: true, cell: (d) => (d.kind ?? "other").toUpperCase() },
+              {
+                key: "kind",
+                label: "Format",
+                muted: true,
+                cell: (d) => (d.kind ?? "other").toUpperCase(),
+              },
               { key: "by", label: "Uploaded By", muted: true },
               { key: "date", label: "Upload Date", muted: true },
               {
@@ -1546,7 +1746,9 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               {
                 key: "status",
                 label: "Status",
-                cell: (d) => <Badge tone={d.status === "Active" ? "success" : "warning"}>{d.status}</Badge>,
+                cell: (d) => (
+                  <Badge tone={d.status === "Active" ? "success" : "warning"}>{d.status}</Badge>
+                ),
               },
               {
                 key: "open",
@@ -1567,7 +1769,10 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                             items: [
                               { label: "Type", value: d.type },
                               { label: "Filename", value: d.name },
-                              { label: "Format", value: (d.kind ?? "other").toUpperCase() },
+                              {
+                                label: "Format",
+                                value: (d.kind ?? "other").toUpperCase(),
+                              },
                               { label: "Issue Date", value: d.issue || DASH },
                               { label: "Expiry Date", value: d.expiry || DASH },
                               { label: "Uploaded By", value: d.by },
@@ -1578,7 +1783,8 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                           {
                             type: "planned",
                             label: "File Preview",
-                            message: "ตัวอย่างไฟล์และการดาวน์โหลดจะพร้อมเมื่อเชื่อมต่อที่เก็บไฟล์จริง",
+                            message:
+                              "ตัวอย่างไฟล์และการดาวน์โหลดจะพร้อมเมื่อเชื่อมต่อที่เก็บไฟล์จริง",
                           },
                         ],
                       })
@@ -1590,59 +1796,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
           },
         ];
       },
-    },
-
-    /* ============================================================
-       5. AUDIT — permission-gated.
-       ============================================================ */
-    {
-      key: "audit",
-      label: "Audit",
-      /* Layer 1 of the Administration framework decides this: the tab is not
-         rendered at all for a role without audit access. */
-      when: () => can("admin-audit", "view"),
-      blocks: (b) => [
-        {
-          type: "fields",
-          title: "Record Lifecycle",
-          cols: 2,
-          items: [
-            { label: "Created", value: b.created, muted: true },
-            { label: "Created By", value: b.createdBy, muted: true },
-            { label: "Last Updated", value: b.updated, muted: true },
-            { label: "Updated By", value: b.updatedBy, muted: true },
-          ],
-        },
-        {
-          type: "audit",
-          title: "Field Changes",
-          items: b.history.map((e) => ({
-            event: e.t,
-            user: e.u,
-            when: e.when,
-            field: e.d,
-            kind: e.kind,
-          })),
-        },
-        {
-          type: "table",
-          title: "Approval History",
-          rows: b.history.filter((e) => /อนุมัติ|approve/i.test(`${e.t} ${e.d}`)),
-          empty: "ยังไม่มีประวัติการอนุมัติของคู่ค้ารายนี้",
-          cols: [
-            { key: "t", label: "Event" },
-            { key: "d", label: "Detail", muted: true },
-            { key: "u", label: "By" },
-            { key: "when", label: "When", muted: true },
-          ],
-        },
-        {
-          type: "planned",
-          title: "Login History",
-          label: "Login History",
-          message: "ประวัติการเข้าใช้งานผูกกับผู้ใช้ ไม่ใช่คู่ค้า — ดูได้ที่ Administration › Audit Log",
-        },
-      ],
     },
   ],
 };
