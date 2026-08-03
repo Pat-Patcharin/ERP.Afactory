@@ -171,21 +171,21 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    label: "Settings",
+    label: "Administration",
+    /* The system configuration centre. Company Profile, User & Role and
+       System Settings used to be `soon` placeholders under Settings — they
+       are these screens now, so the placeholder group is gone. */
     items: [
-      {
-        label: "Company Profile",
-        href: "/soon?m=Company%20Profile",
-        icon: "company",
-        soon: true,
-      },
-      { label: "User & Role", href: "/soon?m=User%20%26%20Role", icon: "users", soon: true },
-      {
-        label: "System Settings",
-        href: "/soon?m=System%20Settings",
-        icon: "settings",
-        soon: true,
-      },
+      { label: "Administration Workspace", href: "/admin", icon: "workspace" },
+      { label: "User Management", href: "/m/admin-user", icon: "users" },
+      { label: "Role Management", href: "/m/admin-role", icon: "shield" },
+      { label: "Permission Matrix", href: "/admin/permissions", icon: "grid" },
+      { label: "Data Scope", href: "/m/admin-scope", icon: "lock" },
+      { label: "Approval Workflow", href: "/m/admin-workflow", icon: "checkCircle" },
+      { label: "Number Series", href: "/m/admin-series", icon: "tag" },
+      { label: "Company Settings", href: "/admin/company", icon: "company" },
+      { label: "Notification Settings", href: "/admin/notifications", icon: "bell" },
+      { label: "Audit Log", href: "/m/admin-audit", icon: "file" },
     ],
   },
 ];

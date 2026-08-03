@@ -427,7 +427,7 @@ describe("Inventory Workspace — navigation", () => {
   });
 
   it("keeps Finance, Service, Reports and Settings as coming soon", () => {
-    for (const label of ["Finance", "Service", "Reports", "Settings"]) {
+    for (const label of ["Finance", "Service", "Reports"]) {
       const group = NAV.find((g) => g.label === label);
       expect(group, `${label} group`).toBeDefined();
       expect(group!.items.length).toBeGreaterThan(0);

@@ -11,6 +11,7 @@ const EXTRA: Record<string, string> = {
   "Purchase Workspace": "/purchase",
   "Outbound Workspace": "/outbound",
   "Inventory Workspace": "/inventory",
+  Administration: "/admin",
 };
 
 export function pageHref(page: string): string {

@@ -875,7 +875,7 @@ describe("Stock Adjustment — navigation", () => {
 
   it("leaves the phases after Inventory as coming soon", () => {
     /* Inventory is complete; Finance and the rest are the next phase. */
-    for (const label of ["Finance", "Service", "Reports", "Settings"]) {
+    for (const label of ["Finance", "Service", "Reports"]) {
       const group = NAV.find((g) => g.label === label);
       expect(group, label).toBeDefined();
       expect(group!.items.every((i) => i.soon), label).toBe(true);

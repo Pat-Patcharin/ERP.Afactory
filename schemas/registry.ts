@@ -32,6 +32,14 @@ import { cycleCountForm } from "./forms/cycle-count";
 import { lotTrackingSchemas } from "./lot-tracking";
 import { serialTrackingSchemas } from "./serial-tracking";
 import { scanHistorySchemas } from "./scan-history";
+import {
+  adminAuditSchemas,
+  adminRoleSchemas,
+  adminScopeSchemas,
+  adminSeriesSchemas,
+  adminUserSchemas,
+  adminWorkflowSchemas,
+} from "./administration";
 
 /**
  * Entity registry — the single place that maps a URL segment to its schemas.
@@ -77,6 +85,14 @@ export const REGISTRY: Record<string, EntitySchemas<any>> = {
   "lot-tracking": lotTrackingSchemas,
   "serial-tracking": serialTrackingSchemas,
   "scan-history": scanHistorySchemas,
+
+  /* Administration — same engine, no bespoke tables. */
+  "admin-user": adminUserSchemas,
+  "admin-role": adminRoleSchemas,
+  "admin-scope": adminScopeSchemas,
+  "admin-workflow": adminWorkflowSchemas,
+  "admin-series": adminSeriesSchemas,
+  "admin-audit": adminAuditSchemas,
 };
 
 export const ENTITY_KEYS = Object.keys(REGISTRY);
