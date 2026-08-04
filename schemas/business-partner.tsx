@@ -22,6 +22,7 @@ import {
   bpCustomerKpi,
   bpGoodsReceipts,
   bpLastPurchase,
+  bpLatestPurchaseYear,
   bpPurchaseKpi,
   bpPurchaseOrders,
   bpSalesOrders,
@@ -43,7 +44,14 @@ import { BP_TONE, CREDIT_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
 import { checkPermission, maskAccount } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import type { ActionCtx, BadgeTone, DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
+import type {
+  ActionCtx,
+  BadgeTone,
+  Block,
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+} from "@/lib/types";
 import { Badge, CellSub, Thumb } from "@/components/ui";
 import { isPhoto } from "@/components/engine/FormFields";
 import { Icon, type IconName } from "@/lib/icons";
@@ -109,6 +117,109 @@ function ImagePreview({ src, name }: { src: string; name: string }) {
       <span aria-label={name}>{src}</span>
     </div>
   );
+}
+
+/**
+ * Bank account and tax registration.
+ *
+ * These belong to the legal ENTITY, not to a role, so they must not be
+ * duplicated across the Customer and Supplier tabs. They render on the
+ * Supplier tab when there is one — a bank account is used when we pay a
+ * supplier — and fall back to the Customer tab otherwise, where it still
+ * matters for refunds and credit notes. Either way, exactly once.
+ */
+function financeBlocks(b: BpRow, ctx: ActionCtx): Block[] {
+  const bank = bpDefaultBank(b);
+
+  return [
+    !checkPermission("canViewBank") && {
+      type: "alert",
+      tone: "warn",
+      title: "ข้อมูลบัญชีธนาคารถูกปกปิดบางส่วน",
+      message: "เลขบัญชีถูกปกปิดตามสิทธิ์ — ต้องมีสิทธิ์ Finance จึงจะเห็นข้อมูลเต็ม",
+    },
+    {
+      type: "fields",
+      title: "Default Bank Account",
+      cols: 2,
+      items: bank
+        ? [
+            {
+              label: "Transfer Type",
+              value: (
+                <Badge tone={isForeignBank(bank) ? "info" : "neutral"}>
+                  {bank.scope || "ในประเทศ"}
+                </Badge>
+              ),
+            },
+            { label: "Bank Name", value: bankLabel(bank) },
+            !isForeignBank(bank) && { label: "Branch", value: bank.branch || DASH },
+            !isForeignBank(bank) && { label: "Account Type", value: bank.accType },
+            { label: "Account Name", value: bank.accName },
+            {
+              label: "Account Number",
+              value: <span className="tnum">{maskAccount(bank.accNo)}</span>,
+            },
+            { label: "Currency", value: bank.currency },
+            /* ---- The wire block, only where money crosses a border ---- */
+            isForeignBank(bank) && {
+              label: "SWIFT / BIC",
+              value: <span className="tnum">{bank.swift || DASH}</span>,
+            },
+            isForeignBank(bank) && {
+              label: "IBAN",
+              value: <span className="tnum">{bank.iban || DASH}</span>,
+            },
+            isForeignBank(bank) && { label: "Bank Country", value: bank.bankCountry || DASH },
+            isForeignBank(bank) && {
+              label: "Bank Address",
+              value: bank.bankAddress || DASH,
+              span: true,
+            },
+            isForeignBank(bank) && { label: "Beneficiary Name", value: bank.beneName || DASH },
+            isForeignBank(bank) && {
+              label: "Beneficiary Address",
+              value: bank.beneAddress || DASH,
+            },
+            isForeignBank(bank) &&
+              Boolean(bank.clearingCode) && {
+                label: bank.clearingSystem || "Clearing Code",
+                value: <span className="tnum">{bank.clearingCode}</span>,
+              },
+            isForeignBank(bank) &&
+              Boolean(bank.interSwift) && {
+                label: "Intermediary Bank",
+                value: `${bank.interBank || DASH} · ${bank.interSwift}`,
+                span: true,
+              },
+            isForeignBank(bank) && { label: "Charge Bearer", value: bank.charges || DASH },
+            isForeignBank(bank) && { label: "Purpose of Payment", value: bank.purpose || DASH },
+            {
+              label: "",
+              value: (
+                <LinkAction
+                  label={`View All Bank Accounts (${b.bankCount})`}
+                  onClick={() => openBankPanel(b, ctx)}
+                />
+              ),
+            },
+          ]
+        : [{ label: "", value: "ยังไม่มีบัญชีธนาคาร", span: true, muted: true }],
+    },
+    {
+      type: "fields",
+      title: "Tax & Billing",
+      cols: 2,
+      items: [
+        { label: "Tax ID", value: <span className="tnum">{b.taxId || DASH}</span> },
+        { label: "Bill Type", value: b.billType },
+        { label: "VAT Registered", value: b.tax.vatReg ? "ใช่" : "ไม่ใช่" },
+        { label: "VAT Registration Date", value: b.tax.vatDate || DASH },
+        { label: "Withholding Tax", value: b.tax.wht ? "มีการหัก ณ ที่จ่าย" : "ไม่มี" },
+        { label: "Branch", value: `${b.tax.branchType} ${b.tax.branchNo}`.trim() },
+      ],
+    },
+  ];
 }
 
 function openAddressPanel(b: BpRow, ctx: ActionCtx) {
@@ -958,63 +1069,9 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                      not a card full of dots. */
               null,
 
-          /* ---- Business KPI ---- */
-          {
-            type: "cards",
-            title: "Business KPI",
-            cols: 3,
-            items: [
-              salesKpi && {
-                label: "Total Sales",
-                value: money0(salesKpi.revenue),
-                unit: "THB",
-                tone: "accent",
-              },
-              purchaseKpi && {
-                label: "Total Purchase",
-                value: money0(purchaseKpi.spend),
-                unit: "THB",
-              },
-              salesKpi && {
-                label: "Last Sales Order",
-                value: salesKpi.lastOrderDate || DASH,
-                sub: salesKpi.lastOrderAmount ? money0(salesKpi.lastOrderAmount) : "",
-              },
-              purchaseKpi && {
-                label: "Last Purchase Order",
-                value: purchaseKpi.lastOrderDate || DASH,
-                sub: purchaseKpi.lastOrderAmount ? money0(purchaseKpi.lastOrderAmount) : "",
-              },
-              salesKpi && {
-                label: "Average Sales",
-                value: money0(salesKpi.avgOrder),
-                unit: "THB",
-              },
-              purchaseKpi && {
-                label: "Average Purchase",
-                value: money0(purchaseKpi.avgOrder),
-                unit: "THB",
-              },
-            ],
-          },
 
           b.notes ? { type: "note", title: "Remarks", text: b.notes } : null,
 
-          /* ---- Record history.
-             It used to live on the Audit tab. With that tab gone the history
-             still has to be reachable, and Overview is the tab every partner
-             opens on whatever roles it plays. ---- */
-          {
-            type: "fields",
-            title: "Record Lifecycle",
-            cols: 2,
-            items: [
-              { label: "Created", value: b.created, muted: true },
-              { label: "Created By", value: b.createdBy, muted: true },
-              { label: "Last Updated", value: b.updated, muted: true },
-              { label: "Updated By", value: b.updatedBy, muted: true },
-            ],
-          },
           {
             type: "timeline",
             title: `Latest Activities (${b.history.length})`,
@@ -1031,22 +1088,23 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
     },
 
     /* ============================================================
-       2. BUSINESS — configuration and the commercial relationship.
+       2. CUSTOMER — everything about buying FROM us.
+          Only exists for a partner that buys, so a pure supplier
+          never opens a tab full of customer fields.
        ============================================================ */
     {
-      key: "business",
-      label: "Business",
+      key: "customer",
+      label: "Customer Information",
+      when: (b) => Boolean(b.customer),
       blocks: (b, ctx) => {
+        /* `when` already guarantees this, but a schema that crashes when
+           called out of order is a bad neighbour to every future engine. */
         const c = b.customer;
-        const s = b.supplier;
-        const p = b.purchasing;
-        const items = b.supplierItems ?? [];
-        const bank = bpDefaultBank(b);
+        if (!c) return [];
         const credit = checkPermission("canViewCredit");
 
         return [
-          /* ---- Customer ---- */
-          c && {
+          {
             type: "fields",
             title: "Customer Information",
             cols: 2,
@@ -1057,40 +1115,75 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 label: "Benefit Level",
                 value: c.benefit === "Custom" ? `Custom — ${c.benefitPct}%` : c.benefit,
               },
-              {
-                label: "Customer Size",
-                value: <Badge tone="neutral">{c.size}</Badge>,
-              },
+              { label: "Customer Size", value: <Badge tone="neutral">{c.size}</Badge> },
               { label: "Sales Representative", value: c.rep },
               { label: "Default Price List", value: c.priceList },
-              credit && {
-                label: "Credit Limit",
-                value: `${money0(c.creditLimit)} THB`,
+              { label: "Sale Area", value: b.salesArea },
+            ],
+          },
+
+          credit && {
+            type: "fields",
+            title: "Credit Control",
+            cols: 2,
+            items: [
+              { label: "Credit Limit", value: `${money0(c.creditLimit)} THB` },
+              { label: "Credit Used", value: `${money0(c.creditUsed)} THB` },
+              { label: "Available Credit", value: `${money0(b.availableCredit)} THB` },
+              {
+                label: "Credit Status",
+                value: <Badge tone={tone(CREDIT_TONE, b.creditStatus)}>{b.creditStatus}</Badge>,
               },
-              credit && {
-                label: "Credit Used",
-                value: `${money0(c.creditUsed)} THB`,
+              {
+                label: "Credit Term",
+                value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน`,
               },
-              credit && {
-                label: "Available Credit",
-                value: `${money0(b.availableCredit)} THB`,
-              },
+              { label: "Payment Term", value: b.sales?.payTerm ?? b.payTerm },
               {
                 label: "Credit Hold",
                 value: c.creditHold ? <Badge tone="danger">ระงับ</Badge> : "ปกติ",
               },
               c.creditHold
-                ? {
-                    label: "Hold Reason",
-                    value: c.holdReason || DASH,
-                    span: true,
-                  }
+                ? { label: "Hold Reason", value: c.holdReason || DASH, span: true }
                 : null,
             ],
           },
 
-          /* ---- Supplier ---- */
-          s && {
+          {
+            type: "fields",
+            title: "Customer Classification",
+            cols: 2,
+            items: [
+              { label: "Customer Group", value: b.cls.custGroup || DASH },
+              { label: "Price Group", value: b.cls.priceGroup || DASH },
+              { label: "Territory", value: b.cls.territory || DASH },
+              { label: "Sales Channel", value: b.cls.channel || DASH },
+              { label: "Roles", value: roleBadges(b) },
+            ],
+          },
+
+          /* A customer-only partner still needs its bank on file — refunds
+             and credit notes pay out to it. See financeBlocks(). */
+          ...(b.supplier ? [] : financeBlocks(b, ctx)),
+        ];
+      },
+    },
+
+    /* ============================================================
+       3. SUPPLIER — everything about buying FROM them.
+       ============================================================ */
+    {
+      key: "supplier",
+      label: "Supplier Information",
+      when: (b) => Boolean(b.supplier),
+      blocks: (b, ctx) => {
+        const s = b.supplier;
+        if (!s) return [];
+        const p = b.purchasing;
+        const items = b.supplierItems ?? [];
+
+        return [
+          {
             type: "fields",
             title: "Supplier Information",
             cols: 2,
@@ -1118,8 +1211,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             ],
           },
 
-          /* ---- Supplier items ---- */
-          s && {
+          {
             type: "table",
             title: `Supplier Items (${items.length})`,
             rows: items,
@@ -1139,12 +1231,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 muted: true,
                 cell: (i) => i.punit || DASH,
               },
-              {
-                key: "moq",
-                label: "MOQ",
-                align: "right",
-                cell: (i) => fmt(i.moq),
-              },
+              { key: "moq", label: "MOQ", align: "right", cell: (i) => fmt(i.moq) },
               {
                 key: "lead",
                 label: "Lead Time",
@@ -1152,12 +1239,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 cell: (i) => `${i.lead} วัน`,
               },
               { key: "currency", label: "Currency", muted: true },
-              {
-                key: "price",
-                label: "Cost",
-                align: "right",
-                cell: (i) => money0(i.price),
-              },
+              { key: "price", label: "Cost", align: "right", cell: (i) => money0(i.price) },
               {
                 key: "status",
                 label: "Status",
@@ -1178,145 +1260,18 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             ],
           },
 
-          /* ---- Bank: default only, rest behind the panel ---- */
-          !checkPermission("canViewBank") && {
-            type: "alert",
-            tone: "warn",
-            title: "ข้อมูลบัญชีธนาคารถูกปกปิดบางส่วน",
-            message: "เลขบัญชีถูกปกปิดตามสิทธิ์ — ต้องมีสิทธิ์ Finance จึงจะเห็นข้อมูลเต็ม",
-          },
           {
             type: "fields",
-            title: "Default Bank Account",
-            cols: 2,
-            items: bank
-              ? [
-                  {
-                    label: "Transfer Type",
-                    value: (
-                      <Badge tone={isForeignBank(bank) ? "info" : "neutral"}>
-                        {bank.scope || "ในประเทศ"}
-                      </Badge>
-                    ),
-                  },
-                  { label: "Bank Name", value: bankLabel(bank) },
-                  !isForeignBank(bank) && {
-                    label: "Branch",
-                    value: bank.branch || DASH,
-                  },
-                  !isForeignBank(bank) && {
-                    label: "Account Type",
-                    value: bank.accType,
-                  },
-                  { label: "Account Name", value: bank.accName },
-                  {
-                    label: "Account Number",
-                    value: <span className="tnum">{maskAccount(bank.accNo)}</span>,
-                  },
-                  { label: "Currency", value: bank.currency },
-                  /* ---- The wire block, only where money actually crosses a border ---- */
-                  isForeignBank(bank) && {
-                    label: "SWIFT / BIC",
-                    value: <span className="tnum">{bank.swift || DASH}</span>,
-                  },
-                  isForeignBank(bank) && {
-                    label: "IBAN",
-                    value: <span className="tnum">{bank.iban || DASH}</span>,
-                  },
-                  isForeignBank(bank) && {
-                    label: "Bank Country",
-                    value: bank.bankCountry || DASH,
-                  },
-                  isForeignBank(bank) && {
-                    label: "Bank Address",
-                    value: bank.bankAddress || DASH,
-                    span: true,
-                  },
-                  isForeignBank(bank) && {
-                    label: "Beneficiary Name",
-                    value: bank.beneName || DASH,
-                  },
-                  isForeignBank(bank) && {
-                    label: "Beneficiary Address",
-                    value: bank.beneAddress || DASH,
-                  },
-                  isForeignBank(bank) &&
-                    Boolean(bank.clearingCode) && {
-                      label: bank.clearingSystem || "Clearing Code",
-                      value: <span className="tnum">{bank.clearingCode}</span>,
-                    },
-                  isForeignBank(bank) &&
-                    Boolean(bank.interSwift) && {
-                      label: "Intermediary Bank",
-                      value: `${bank.interBank || DASH} · ${bank.interSwift}`,
-                      span: true,
-                    },
-                  isForeignBank(bank) && {
-                    label: "Charge Bearer",
-                    value: bank.charges || DASH,
-                  },
-                  isForeignBank(bank) && {
-                    label: "Purpose of Payment",
-                    value: bank.purpose || DASH,
-                  },
-                  {
-                    label: "",
-                    value: (
-                      <LinkAction
-                        label={`View All Bank Accounts (${b.bankCount})`}
-                        onClick={() => openBankPanel(b, ctx)}
-                      />
-                    ),
-                  },
-                ]
-              : [
-                  {
-                    label: "",
-                    value: "ยังไม่มีบัญชีธนาคาร",
-                    span: true,
-                    muted: true,
-                  },
-                ],
-          },
-
-          /* ---- Payment information ---- */
-          {
-            type: "fields",
-            title: "Payment Information",
+            title: "Supplier Classification",
             cols: 2,
             items: [
-              { label: "Payment Term", value: b.payTerm },
-              {
-                label: "Credit Term",
-                value: b.creditTerm === "No Credit" ? "No Credit" : `${b.creditTerm} วัน`,
-              },
-              { label: "Bill Type", value: b.billType },
-              {
-                label: "Withholding Tax",
-                value: b.tax.wht ? "มีการหัก ณ ที่จ่าย" : "ไม่มี",
-              },
-              {
-                label: "VAT Registered",
-                value: b.tax.vatReg ? "ใช่" : "ไม่ใช่",
-              },
-              { label: "VAT Registration Date", value: b.tax.vatDate || DASH },
-            ],
-          },
-
-          /* ---- Classification, kept from the old Roles tab ---- */
-          {
-            type: "fields",
-            title: "Classification",
-            cols: 2,
-            items: [
-              { label: "Roles", value: roleBadges(b) },
-              { label: "Customer Group", value: b.cls.custGroup || DASH },
               { label: "Supplier Group", value: b.cls.supGroup || DASH },
-              { label: "Price Group", value: b.cls.priceGroup || DASH },
-              { label: "Territory", value: b.cls.territory || DASH },
-              { label: "Sales Channel", value: b.cls.channel || DASH },
+              { label: "Industry", value: b.cls.industry || DASH },
+              { label: "Roles", value: roleBadges(b) },
             ],
           },
+
+          ...financeBlocks(b, ctx),
         ];
       },
     },
@@ -1471,38 +1426,38 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
       blocks: (b, ctx) => {
         const kpi = bpPurchaseKpi(b);
         const pos = bpPurchaseOrders(b);
-        const grs = bpGoodsReceipts(b);
-        const topBuy = bpTopPurchasedProducts(b);
         const recordedPo = b.txn?.po ?? [];
+        const year = bpLatestPurchaseYear(b);
 
         return [
+          /* Three figures, not six. A buyer opening this tab is asking how
+             much we spend with this supplier a year, on how many orders —
+             lead time and receipt counts belong to the operational screens
+             that act on them. */
           {
             type: "cards",
             title: "Supplier Summary",
             cols: 3,
             items: [
               {
-                label: "Purchase Orders",
-                value: fmt(b.txn.po.length),
-                tone: "accent",
-              },
-              { label: "Goods Receipts", value: fmt(kpi.receipts) },
-              { label: "Supplier Status", value: b.supplier?.status ?? DASH },
-              {
                 label: "Total Purchase",
-                value: money0(kpi.spend),
+                value: money0(year?.spend ?? kpi.spend),
                 unit: "THB",
+                sub: year ? `ปี ${year.year}` : "ยังไม่มีใบสั่งซื้อ",
                 tone: "accent",
               },
               {
                 label: "Average Order",
-                value: money0(kpi.avgOrder),
+                value: money0(
+                  year && year.orders ? Math.round(year.spend / year.orders) : kpi.avgOrder,
+                ),
                 unit: "THB",
+                sub: year ? `ต่อใบ · ปี ${year.year}` : "",
               },
               {
-                label: "Average Lead Time",
-                value: `${kpi.avgLeadTime}`,
-                unit: "วัน",
+                label: "Purchase Orders",
+                value: fmt(year?.orders ?? kpi.orders),
+                sub: year ? `ปี ${year.year}` : "",
               },
             ],
           },
@@ -1534,7 +1489,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                       </button>
                     ),
                   },
-                  { key: "orderDate", label: "Order Date", muted: true },
+                  { key: "orderDate", label: "Date", muted: true },
                   {
                     key: "total",
                     label: "Amount",
@@ -1546,6 +1501,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                     label: "Status",
                     cell: (p) => <Badge tone="neutral">{p.status}</Badge>,
                   },
+                  { key: "buyer", label: "ผู้สั่งซื้อ", cell: (p) => p.buyer || DASH },
                 ]
               : [
                   { key: "no", label: "PO No." },
@@ -1561,53 +1517,15 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                     label: "Status",
                     cell: (r) => <Badge tone="neutral">{r.status}</Badge>,
                   },
+                  {
+                    /* These rows carry no buyer of their own, so this is the
+                       buyer assigned to the supplier, not a per-document fact. */
+                    key: "buyer",
+                    label: "ผู้สั่งซื้อ",
+                    muted: true,
+                    cell: () => b.purchasing?.buyer || DASH,
+                  },
                 ],
-          },
-
-          {
-            type: "table",
-            title: `Goods Receipts (${grs.length})`,
-            rows: grs.slice(0, 8),
-            empty: "ยังไม่มีใบรับสินค้า",
-            cols: [
-              { key: "code", label: "GR No." },
-              { key: "receiptDate", label: "Receipt Date", muted: true },
-              { key: "warehouse", label: "Warehouse", muted: true },
-              {
-                key: "totalReceiving",
-                label: "Qty",
-                align: "right",
-                cell: (g) => fmt(g.totalReceiving),
-              },
-              {
-                key: "status",
-                label: "Status",
-                cell: (g) => <Badge tone="neutral">{g.status}</Badge>,
-              },
-            ],
-          },
-
-          {
-            type: "table",
-            title: "Top Products Purchased",
-            rows: topBuy,
-            empty: "ยังไม่มีประวัติการสั่งซื้อสินค้า",
-            cols: [
-              { key: "code", label: "Product" },
-              { key: "name", label: "Product Name", muted: true },
-              {
-                key: "qty",
-                label: "Qty",
-                align: "right",
-                cell: (t) => fmt(t.qty),
-              },
-              {
-                key: "amount",
-                label: "Amount",
-                align: "right",
-                cell: (t) => money0(t.amount),
-              },
-            ],
           },
         ];
       },

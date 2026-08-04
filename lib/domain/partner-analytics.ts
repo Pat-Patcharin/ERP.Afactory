@@ -229,6 +229,54 @@ export function bpLastPurchase(bp: BusinessPartner): LastPurchase {
   return EMPTY_PURCHASE;
 }
 
+/* ---------- Purchase by year ---------- */
+
+export interface PurchaseYear {
+  /** Buddhist year, as every document in the app displays it. */
+  year: number;
+  orders: number;
+  spend: number;
+}
+
+/** The calendar year a dd/mm/yyyy date falls in, normalised to BE. */
+function yearOf(v: string): number {
+  const y = Number(String(v ?? "").split("/")[2]);
+  if (!y) return 0;
+  return y > 2400 ? y : y + 543;
+}
+
+/**
+ * Purchase totals grouped by year, newest first.
+ *
+ * A lifetime total flatters an old supplier and hides a lapsed one — "how
+ * much do we buy from them a year" is the figure a buyer negotiates on.
+ */
+export function bpPurchaseByYear(bp: BusinessPartner): PurchaseYear[] {
+  const matched = bpPurchaseOrders(bp);
+  const rows = matched.length
+    ? matched.map((p) => ({ date: p.orderDate, amount: p.total }))
+    : (bp.txn?.po ?? []).map((p) => ({ date: p.date, amount: p.amount }));
+
+  const byYear = new Map<number, PurchaseYear>();
+  for (const r of rows) {
+    const year = yearOf(r.date);
+    if (!year) continue;
+    const slot = byYear.get(year);
+    if (slot) {
+      slot.orders += 1;
+      slot.spend += r.amount || 0;
+    } else {
+      byYear.set(year, { year, orders: 1, spend: r.amount || 0 });
+    }
+  }
+
+  return [...byYear.values()].sort((a, b) => b.year - a.year);
+}
+
+/** The most recent year the partner was bought from. */
+export const bpLatestPurchaseYear = (bp: BusinessPartner): PurchaseYear | null =>
+  bpPurchaseByYear(bp)[0] ?? null;
+
 export interface PurchaseKpi {
   orders: number;
   spend: number;

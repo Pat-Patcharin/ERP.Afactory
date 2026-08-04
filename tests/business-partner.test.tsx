@@ -59,6 +59,8 @@ import {
 import {
   bpCustomerKpi,
   bpLastPurchase,
+  bpLatestPurchaseYear,
+  bpPurchaseByYear,
   bpPurchaseKpi,
   bpSalesOrders,
   bpTopProducts,
@@ -907,11 +909,12 @@ describe("BP Master — More Filters drawer", () => {
 
 describe("BP Master — detail tabs", () => {
   it("declares the tabs the Enterprise Detail Layout defines", () => {
-    /* Activity split in two, one per role; Audit is gone and its record
-       history moved onto Overview, the one tab every partner has. */
+    /* Business split in two so a partner never reads the other role's
+       fields; each half then has its own history tab. */
     expect(detail.tabs.map((t) => t.key)).toEqual([
       "overview",
-      "business",
+      "customer",
+      "supplier",
       "sales-history",
       "purchase-history",
       "attachments",
@@ -923,8 +926,7 @@ describe("BP Master — detail tabs", () => {
     for (const gone of [
       "addresses",
       "contacts",
-      "customer",
-      "supplier",
+      "business",
       "banks",
       "sales-report",
       "activity",
@@ -940,19 +942,20 @@ describe("BP Master — detail tabs", () => {
       return detail.tabs.filter((t) => !t.when || t.when(rec)).map((t) => t.key);
     };
 
-    /* Both roles — both histories. */
+    /* Both roles — both halves and both histories. */
     expect(visible(BOTH)).toEqual([
       "overview",
-      "business",
+      "customer",
+      "supplier",
       "sales-history",
       "purchase-history",
       "attachments",
     ]);
 
-    /* Customer only — no supplier history to show. */
+    /* Customer only — no supplier tab, no supplier history. */
     expect(visible(CUSTOMER)).toEqual([
       "overview",
-      "business",
+      "customer",
       "sales-history",
       "attachments",
     ]);
@@ -960,7 +963,7 @@ describe("BP Master — detail tabs", () => {
     /* Supplier only — likewise the other way. */
     expect(visible(SUPPLIER)).toEqual([
       "overview",
-      "business",
+      "supplier",
       "purchase-history",
       "attachments",
     ]);
@@ -984,9 +987,61 @@ describe("BP Master — detail tabs", () => {
 
     expect(purchase).toContain("Supplier Summary");
     expect(purchase.some((t) => t?.startsWith("Recent Purchase Orders"))).toBe(true);
-    expect(purchase).toContain("Top Products Purchased");
     expect(purchase).not.toContain("Customer Summary");
     expect(purchase).not.toContain("Top Products Sold");
+  });
+
+  it("keeps the supplier history to purchase orders and nothing else", () => {
+    /* Goods receipts and the product breakdown were cut: this tab answers
+       "what have we ordered from them", and the receiving screens own the
+       rest. */
+    const purchase = titlesOf(
+      detail.tabs.find((t) => t.key === "purchase-history")!.blocks(bp(BOTH), makeCtx()),
+    );
+
+    expect(purchase.some((t) => t?.startsWith("Goods Receipts"))).toBe(false);
+    expect(purchase).not.toContain("Top Products Purchased");
+  });
+
+  it("summarises the supplier on three yearly figures", () => {
+    const cards = detail.tabs
+      .find((t) => t.key === "purchase-history")!
+      .blocks(bp(BOTH), makeCtx())
+      .find((b) => b && (b as { title?: string }).title === "Supplier Summary") as {
+      items: { label: string }[];
+    };
+
+    expect(cards.items.map((i) => i.label)).toEqual([
+      "Total Purchase",
+      "Average Order",
+      "Purchase Orders",
+    ]);
+  });
+
+  it("reports purchase totals per year, not for all time", () => {
+    /* A lifetime total flatters an old supplier and hides a lapsed one. */
+    const b = bp(BOTH);
+    const years = bpPurchaseByYear(b);
+    expect(years.length).toBeGreaterThan(0);
+    expect(years.map((y) => y.year)).toEqual([...years.map((y) => y.year)].sort((a, c) => c - a));
+
+    const latest = bpLatestPurchaseYear(b)!;
+    expect(latest.year).toBe(years[0].year);
+    expect(latest.spend).toBeGreaterThan(0);
+    /* Buddhist years, as every document in the app displays them. */
+    expect(latest.year).toBeGreaterThan(2500);
+  });
+
+  it("names who placed each purchase order", () => {
+    const table = detail.tabs
+      .find((t) => t.key === "purchase-history")!
+      .blocks(bp(BOTH), makeCtx())
+      .find(
+        (b) => b && (b as { title?: string }).title?.startsWith("Recent Purchase Orders"),
+      ) as { cols: { key: string; label: string }[] };
+
+    expect(table.cols.map((c) => c.key)).toEqual(["no", "date", "amount", "status", "buyer"]);
+    expect(table.cols.at(-1)!.label).toBe("ผู้สั่งซื้อ");
   });
 
   it("renders the detail page with the Overview cards the spec lists", () => {
@@ -997,10 +1052,16 @@ describe("BP Master — detail tabs", () => {
       "Address Information",
       "Business Summary",
       "Credit Summary",
-      "Business KPI",
     ]) {
       expect(screen.getAllByText(title).length, title).toBeGreaterThan(0);
     }
+  });
+
+  it("keeps the sales and purchase figures off Overview", () => {
+    /* Business KPI duplicated what the Business tab already reports, and a
+       summary card that repeats a table earns none of its height. */
+    const titles = titlesOf(detail.tabs[0].blocks(bp(BOTH), makeCtx()));
+    expect(titles).not.toContain("Business KPI");
   });
 
   it("gives every Overview card the full width of the page", () => {
@@ -1057,37 +1118,71 @@ describe("BP Master — Overview first", () => {
 
     expect(open("overview", /^View All Addresses/).title).toBe("All Addresses");
     expect(open("overview", /^View All Contacts/).title).toBe("All Contacts");
-    expect(open("business", /^View All Bank Accounts/).title).toBe("All Bank Accounts");
+    expect(open("supplier", /^View All Bank Accounts/).title).toBe("All Bank Accounts");
   });
 
-  it("shows only the default bank account on the Business tab", () => {
+  it("shows only the default bank account, on whichever tab owns it", () => {
     const ctx = makeCtx();
-    const titles = titlesOf(detail.tabs.find((t) => t.key === "business")!.blocks(bp(BOTH), ctx));
+    const titles = titlesOf(detail.tabs.find((t) => t.key === "supplier")!.blocks(bp(BOTH), ctx));
 
     expect(titles).toContain("Default Bank Account");
     /* The full list is behind the panel, not inline. */
     expect(titles).not.toContain("Bank Accounts");
   });
 
-  it("merges Customer and Supplier into one Business tab", () => {
+  it("keeps each role's fields on its own tab", () => {
     const ctx = makeCtx();
-    const both = titlesOf(detail.tabs.find((t) => t.key === "business")!.blocks(bp(BOTH), ctx));
-    expect(both).toContain("Customer Information");
-    expect(both).toContain("Supplier Information");
-    expect(both.some((t) => t.startsWith("Supplier Items"))).toBe(true);
-    expect(both).toContain("Payment Information");
+    const on = (key: string, code: string) =>
+      titlesOf(detail.tabs.find((t) => t.key === key)!.blocks(bp(code), ctx));
 
-    /* A pure customer gets the customer card and no supplier card. */
-    const custOnly = titlesOf(detail.tabs.find((t) => t.key === "business")!.blocks(bp(CUSTOMER), ctx));
-    expect(custOnly).toContain("Customer Information");
-    expect(custOnly).not.toContain("Supplier Information");
+    /* Neither tab shows the other role's card — that mixing is what made
+       the old single Business tab confusing to read. */
+    const cust = on("customer", BOTH);
+    expect(cust).toContain("Customer Information");
+    expect(cust).toContain("Customer Classification");
+    expect(cust).not.toContain("Supplier Information");
+    expect(cust.some((t) => t.startsWith("Supplier Items"))).toBe(false);
+
+    const sup = on("supplier", BOTH);
+    expect(sup).toContain("Supplier Information");
+    expect(sup.some((t) => t.startsWith("Supplier Items"))).toBe(true);
+    expect(sup).not.toContain("Customer Information");
   });
 
-  it("keeps the record history reachable now that Audit is gone", () => {
-    const ctx = makeCtx();
-    const titles = titlesOf(detail.tabs[0].blocks(bp(BOTH), ctx));
+  it("shows only the relevant tab when a partner plays one role", () => {
+    const keys = (code: string) =>
+      detail.tabs.filter((t) => !t.when || t.when(bp(code))).map((t) => t.key);
 
-    expect(titles).toContain("Record Lifecycle");
+    expect(keys(CUSTOMER)).toContain("customer");
+    expect(keys(CUSTOMER)).not.toContain("supplier");
+
+    expect(keys(SUPPLIER)).toContain("supplier");
+    expect(keys(SUPPLIER)).not.toContain("customer");
+  });
+
+  it("renders bank and tax exactly once, never on both tabs", () => {
+    const ctx = makeCtx();
+    const on = (key: string, code: string) =>
+      titlesOf(detail.tabs.find((t) => t.key === key)!.blocks(bp(code), ctx));
+
+    /* Entity-level facts. Duplicating them across the two tabs would
+       recreate the confusion the split was meant to remove. */
+    expect(on("supplier", BOTH)).toContain("Default Bank Account");
+    expect(on("customer", BOTH)).not.toContain("Default Bank Account");
+    expect(on("supplier", BOTH)).toContain("Tax & Billing");
+    expect(on("customer", BOTH)).not.toContain("Tax & Billing");
+
+    /* A customer-only partner still gets them — nothing is lost. */
+    expect(on("customer", CUSTOMER)).toContain("Default Bank Account");
+    expect(on("customer", CUSTOMER)).toContain("Tax & Billing");
+  });
+
+  it("keeps the activity timeline but not the lifecycle stamps", () => {
+    /* Created / updated stamps were audit metadata on a summary page; the
+       timeline below already says who last touched the record. */
+    const titles = titlesOf(detail.tabs[0].blocks(bp(BOTH), makeCtx()));
+
+    expect(titles).not.toContain("Record Lifecycle");
     expect(titles.some((t) => t?.startsWith("Latest Activities"))).toBe(true);
   });
 
@@ -1437,7 +1532,7 @@ describe("BP Master — form revisions", () => {
   });
 
   it("mirrors the same nine columns on the detail page", () => {
-    const supplierTab = detail.tabs.find((t) => t.key === "business")!;
+    const supplierTab = detail.tabs.find((t) => t.key === "supplier")!;
     const table = supplierTab
       .blocks(bp(SUPPLIER), makeCtx())
       .filter(Boolean)
@@ -1579,7 +1674,10 @@ describe("BP Master — form revisions", () => {
   it("shows the wire block on the detail page only for a foreign default", () => {
     const rows = (code: string) => {
       const b = bp(code);
-      return JSON.stringify(detail.tabs.map((t) => t.blocks(b, makeCtx())));
+      /* Only the tabs the engine would actually render. */
+      return JSON.stringify(
+        detail.tabs.filter((t) => !t.when || t.when(b)).map((t) => t.blocks(b, makeCtx())),
+      );
     };
 
     /* BP000121's default is the Thai account, so no wire fields. */
