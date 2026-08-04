@@ -872,7 +872,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         docs: existing?.reg.docs ?? [],
       },
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -880,7 +880,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       existing.history.unshift({
         t: "Product updated",
         d: "แก้ไขข้อมูลสินค้าจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -892,12 +892,12 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         onOrder: 0,
         expiry: patch.reg.expiry,
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: "Product created",
             d: "สร้างสินค้าเข้าระบบจากฟอร์ม",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },

@@ -1,3 +1,4 @@
+import { actingUserName, can, currentRole } from "./domain/admin";
 import { fmt, money0, stamp } from "./format";
 import type { ActionCtx } from "./types";
 import {
@@ -36,7 +37,8 @@ import {
    Kept out of the schemas so the chain reads as one story.
    ============================================================ */
 
-const USER = "Pimpaka S.";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 
 /** Every document in this module records history the same way. */
 function log(
@@ -44,7 +46,7 @@ function log(
   t: string,
   d: string,
   kind = "primary",
-  u = USER,
+  u = USER(),
 ) {
   (doc.history ??= []).unshift({ t, d, u, when: stamp(), kind });
 }
@@ -56,27 +58,55 @@ function commit(ctx: ActionCtx, title: string, message: string, tone: "success" 
 }
 
 /* ============================================================
+   WHO MAY DO WHAT
+
+   The sales rep raises the paperwork; the approver signs it and
+   moves it down the line. Both halves are configuration — the
+   role matrix in Administration decides, not a name in this file.
+
+   The check sits on the mutation rather than only on the button.
+   A hidden button is a courtesy to the user; a guarded function
+   is what actually holds when the call arrives from a stale page,
+   a keyboard path, or the API this becomes later.
+   ============================================================ */
+
+type Right = "create" | "edit" | "approve" | "delete";
+
+function denied(ctx: ActionCtx, moduleKey: string, right: Right, what: string): boolean {
+  if (can(moduleKey, right)) return false;
+  ctx.toast(
+    "สิทธิ์ไม่พอ",
+    `บทบาท ${currentRole()?.name ?? "—"} ${what} — ต้องให้ผู้มีสิทธิ์อนุมัติดำเนินการ`,
+    "danger",
+  );
+  return true;
+}
+
+/* ============================================================
    QUOTATION — optional price offer. Nothing here touches stock
    or commits the company to anything.
    ============================================================ */
 
 export function qtSend(qt: QtRow, ctx: ActionCtx) {
+  if (denied(ctx, "quotation", "edit", "ส่งใบเสนอราคาไม่ได้")) return;
   qt.status = "Sent";
   qt.updated = stamp();
-  qt.updatedBy = USER;
+  qt.updatedBy = USER();
   log(qt, "Sent to customer", "ส่งใบเสนอราคาให้ลูกค้าแล้ว", "info");
   commit(ctx, "ส่งใบเสนอราคาแล้ว", `${qt.code} — รอลูกค้าตอบกลับ`);
 }
 
 export function qtAccept(qt: QtRow, ctx: ActionCtx) {
+  if (denied(ctx, "quotation", "edit", "บันทึกผลใบเสนอราคาไม่ได้")) return;
   qt.status = "Accepted";
   qt.updated = stamp();
-  qt.updatedBy = USER;
+  qt.updatedBy = USER();
   log(qt, "Accepted by customer", "ลูกค้ายืนยันราคาแล้ว พร้อมเปิดคำขอขาย");
   commit(ctx, "ลูกค้ายอมรับแล้ว", `${qt.code} — พร้อมแปลงเป็นคำขอขาย`);
 }
 
 export function qtReject(qt: QtRow, ctx: ActionCtx) {
+  if (denied(ctx, "quotation", "edit", "บันทึกผลใบเสนอราคาไม่ได้")) return;
   ctx.confirm({
     title: "Reject this quotation?",
     message: `${qt.code} จะถูกปิดเป็น Rejected — เหตุผลที่บันทึกไว้จะใช้ทำรายงาน win/loss ต่อไป`,
@@ -85,7 +115,7 @@ export function qtReject(qt: QtRow, ctx: ActionCtx) {
       qt.status = "Rejected";
       if (!qt.rejectReason) qt.rejectReason = "อื่น ๆ";
       qt.updated = stamp();
-      qt.updatedBy = USER;
+      qt.updatedBy = USER();
       log(qt, "Rejected by customer", `เหตุผล: ${qt.rejectReason}`, "warn");
       commit(ctx, "ปิดใบเสนอราคาแล้ว", `${qt.code} — ${qt.rejectReason}`, "danger");
     },
@@ -97,6 +127,8 @@ export function qtReject(qt: QtRow, ctx: ActionCtx) {
  * request is what goes through internal approval.
  */
 export function qtConvert(qt: QtRow, ctx: ActionCtx) {
+  /* Raising the request is the rep's job — approving it is not. */
+  if (denied(ctx, "sales-request", "create", "เปิดคำขอขายไม่ได้")) return;
   ctx.confirm({
     title: "Convert to Sales Request?",
     message: (
@@ -138,21 +170,21 @@ export function qtConvert(qt: QtRow, ctx: ActionCtx) {
           {
             t: `Created from ${qt.code}`,
             d: "สร้างคำขอขายจากใบเสนอราคาที่ลูกค้าตอบรับ",
-            u: USER,
+            u: USER(),
             when: now,
             kind: "primary",
           },
         ],
         created: now,
-        createdBy: USER,
+        createdBy: USER(),
         updated: now,
-        updatedBy: USER,
+        updatedBy: USER(),
       } as unknown as SrRow);
 
       qt.status = "Converted";
       qt.srRef = srCode;
       qt.updated = now;
-      qt.updatedBy = USER;
+      qt.updatedBy = USER();
       log(qt, "Converted to Sales Request", `สร้าง ${srCode} จากใบเสนอราคานี้`);
 
       commit(ctx, "แปลงเป็นคำขอขายแล้ว", `${qt.code} → ${srCode}`);
@@ -194,19 +226,21 @@ export function qtDelete(qt: QtRow, ctx: ActionCtx) {
    ============================================================ */
 
 export function srSubmit(sr: SrRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-request", "edit", "ส่งขออนุมัติไม่ได้")) return;
   if (!(sr.items ?? []).length) {
     ctx.toast("ยังไม่มีรายการสินค้า", "เพิ่มรายการอย่างน้อย 1 บรรทัดก่อนส่งขออนุมัติ", "warning");
     return;
   }
   sr.status = "Submitted";
   sr.updated = stamp();
-  sr.updatedBy = USER;
+  sr.updatedBy = USER();
   log(sr, "Submitted for approval", "ส่งขออนุมัติภายใน", "info");
   commit(ctx, "ส่งขออนุมัติแล้ว", `${sr.code} — รอผู้จัดการฝ่ายขายอนุมัติ`);
 }
 
 /** Internal approval. Credit is checked here so the order does not stall later. */
 export function srApprove(sr: SrRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-request", "approve", "อนุมัติคำขอขายไม่ได้")) return;
   const credit = creditCheck(`${sr.customerCode} - ${sr.customer}`, sr.amount);
 
   ctx.confirm({
@@ -234,17 +268,17 @@ export function srApprove(sr: SrRow, ctx: ActionCtx) {
     onConfirm: () => {
       const now = stamp();
       sr.status = "Approved";
-      sr.approvedBy = USER;
+      sr.approvedBy = USER();
       sr.approvedDate = now;
       sr.rejectReason = "";
       sr.updated = now;
-      sr.updatedBy = USER;
+      sr.updatedBy = USER();
       log(
         sr,
         "Approved",
         credit.withinLimit
-          ? `อนุมัติภายในโดย ${USER} — เครดิตอยู่ในวงเงิน`
-          : `อนุมัติภายในโดย ${USER} — เกินวงเงิน ${money0(credit.overBy)} บาท`,
+          ? `อนุมัติภายในโดย ${USER()} — เครดิตอยู่ในวงเงิน`
+          : `อนุมัติภายในโดย ${USER()} — เกินวงเงิน ${money0(credit.overBy)} บาท`,
       );
       commit(ctx, "อนุมัติคำขอขายแล้ว", `${sr.code} — พร้อมแปลงเป็นใบสั่งขาย`);
     },
@@ -252,6 +286,7 @@ export function srApprove(sr: SrRow, ctx: ActionCtx) {
 }
 
 export function srReject(sr: SrRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-request", "approve", "ไม่อนุมัติคำขอขายไม่ได้")) return;
   ctx.confirm({
     title: "Reject this sales request?",
     message: `${sr.code} จะถูกปิดเป็น Rejected — บันทึกเหตุผลไว้ให้พนักงานขายติดตามกับลูกค้า`,
@@ -259,10 +294,10 @@ export function srReject(sr: SrRow, ctx: ActionCtx) {
     onConfirm: () => {
       sr.status = "Rejected";
       if (!sr.rejectReason) sr.rejectReason = "อื่น ๆ";
-      sr.approvedBy = USER;
+      sr.approvedBy = USER();
       sr.approvedDate = "";
       sr.updated = stamp();
-      sr.updatedBy = USER;
+      sr.updatedBy = USER();
       log(sr, "Rejected", `ไม่อนุมัติ: ${sr.rejectReason}`, "warn");
       commit(ctx, "ไม่อนุมัติคำขอขาย", `${sr.code} — ${sr.rejectReason}`, "danger");
     },
@@ -271,18 +306,23 @@ export function srReject(sr: SrRow, ctx: ActionCtx) {
 
 /** Send an approved request back for edits. */
 export function srReopen(sr: SrRow, ctx: ActionCtx) {
+  /* Undoing an approval is an approver's act too. */
+  if (denied(ctx, "sales-request", "approve", "ส่งคำขอขายกลับเป็นร่างไม่ได้")) return;
   sr.status = "Draft";
   sr.approvedBy = "";
   sr.approvedDate = "";
   sr.rejectReason = "";
   sr.updated = stamp();
-  sr.updatedBy = USER;
+  sr.updatedBy = USER();
   log(sr, "Reopened", "ส่งกลับเป็นร่างเพื่อแก้ไข", "info");
   commit(ctx, "ส่งกลับเป็นร่างแล้ว", `${sr.code} — แก้ไขได้อีกครั้ง`, "info");
 }
 
 /** Approved request → a real Sales Order carrying the same priced lines. */
 export function srConvert(sr: SrRow, ctx: ActionCtx) {
+  /* Turning an approved request into a real order is the step that binds
+     the company, so it sits with the approver, not the author. */
+  if (denied(ctx, "sales-request", "approve", "แปลงคำขอขายเป็นใบสั่งขายไม่ได้")) return;
   if (sr.status !== "Approved") {
     ctx.toast(
       "ต้องอนุมัติก่อน",
@@ -360,21 +400,21 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
           {
             t: `Created from ${sr.code}`,
             d: "แปลงจากใบเสนอราคา",
-            u: USER,
+            u: USER(),
             when: now,
             kind: "primary",
           },
         ],
         created: now,
-        createdBy: USER,
+        createdBy: USER(),
         updated: now,
-        updatedBy: USER,
+        updatedBy: USER(),
       } as unknown as SoRow);
 
       sr.status = "Converted";
       sr.soRef = soCode;
       sr.updated = now;
-      sr.updatedBy = USER;
+      sr.updatedBy = USER();
       log(sr, "Converted to Sales Order", `สร้าง ${soCode} จากใบเสนอราคานี้`);
 
       commit(
@@ -422,6 +462,7 @@ export function srDelete(sr: SrRow, ctx: ActionCtx) {
    ============================================================ */
 
 export function soConfirm(so: SoRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-order", "approve", "ยืนยันใบสั่งขายไม่ได้")) return;
   const credit = creditCheck(`${so.customerCode} - ${so.customer}`, so.total);
 
   if (!credit.withinLimit && !so.creditApproved) {
@@ -452,13 +493,14 @@ export function soConfirm(so: SoRow, ctx: ActionCtx) {
 
   so.status = "Confirmed";
   so.updated = stamp();
-  so.updatedBy = USER;
+  so.updatedBy = USER();
   log(so, "Confirmed", "ยืนยันคำสั่งขาย พร้อมจัดของ");
   commit(ctx, "ยืนยันใบสั่งขายแล้ว", `${so.code} — พร้อมสร้างใบหยิบสินค้า`);
 }
 
 /** Sales admin overriding a credit hold. */
 export function soApproveCredit(so: SoRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-order", "approve", "ปลดล็อกเครดิตไม่ได้")) return;
   ctx.confirm({
     title: "Approve credit for this order?",
     message: (
@@ -472,11 +514,11 @@ export function soApproveCredit(so: SoRow, ctx: ActionCtx) {
     tone: "primary",
     onConfirm: () => {
       so.creditApproved = true;
-      so.creditNote = `อนุมัติพิเศษโดย ${USER}`;
+      so.creditNote = `อนุมัติพิเศษโดย ${USER()}`;
       so.status = "Confirmed";
       so.updated = stamp();
-      so.updatedBy = USER;
-      log(so, "Credit approved", `อนุมัติเครดิตพิเศษโดย ${USER}`);
+      so.updatedBy = USER();
+      log(so, "Credit approved", `อนุมัติเครดิตพิเศษโดย ${USER()}`);
       commit(ctx, "อนุมัติเครดิตแล้ว", `${so.code} — พร้อมจัดของ`);
     },
   });
@@ -484,6 +526,7 @@ export function soApproveCredit(so: SoRow, ctx: ActionCtx) {
 
 /** Confirmed order → a picking task the warehouse can act on. */
 export function soCreatePick(so: SoRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-order", "approve", "เปิดใบจัดสินค้าไม่ได้")) return;
   const existing = PICKING_TASKS.find(
     (t) => t.soRef === so.code && !["Completed", "Cancelled"].includes(t.status),
   );
@@ -532,15 +575,15 @@ export function soCreatePick(so: SoRow, ctx: ActionCtx) {
           {
             t: `Created from ${so.code}`,
             d: "สร้างใบหยิบสินค้าจากใบสั่งขาย",
-            u: USER,
+            u: USER(),
             when: now,
             kind: "primary",
           },
         ],
         created: now,
-        createdBy: USER,
+        createdBy: USER(),
         updated: now,
-        updatedBy: USER,
+        updatedBy: USER(),
       } as unknown as PickRow);
 
       so.status = "Picking";
@@ -729,15 +772,15 @@ export function pickCreatePack(task: PickRow, ctx: ActionCtx) {
           {
             t: `Created from ${task.code}`,
             d: "สร้างงานแพ็คจากใบหยิบสินค้า",
-            u: USER,
+            u: USER(),
             when: now,
             kind: "primary",
           },
         ],
         created: now,
-        createdBy: USER,
+        createdBy: USER(),
         updated: now,
-        updatedBy: USER,
+        updatedBy: USER(),
       } as unknown as PackRow);
 
       task.packRef = code;
@@ -853,15 +896,15 @@ export function packCreateDelivery(task: PackRow, ctx: ActionCtx) {
           {
             t: `Created from ${task.code}`,
             d: "สร้างใบส่งของจากงานแพ็ค",
-            u: USER,
+            u: USER(),
             when: now,
             kind: "primary",
           },
         ],
         created: now,
-        createdBy: USER,
+        createdBy: USER(),
         updated: now,
-        updatedBy: USER,
+        updatedBy: USER(),
       } as unknown as DoRow);
 
       task.doRef = code;

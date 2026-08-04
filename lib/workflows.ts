@@ -1,3 +1,4 @@
+import { actingUserName } from "./domain/admin";
 import { stamp } from "./format";
 import type { ActionCtx } from "./types";
 import {
@@ -36,7 +37,7 @@ export function prSubmit(pr: PrRow, ctx: ActionCtx) {
   pr.status = "Pending Approval";
   (pr.approvals ??= []).push({
     step: "ผู้จัดการจัดซื้อ",
-    by: "Pimpaka S.",
+    by: actingUserName(),
     role: "Purchasing Manager",
     when: "",
     status: "pending",
@@ -58,7 +59,7 @@ export function prApprove(pr: PrRow, ctx: ActionCtx) {
   }
   pr.status = "Approved";
   pr.updated = stamp();
-  pr.updatedBy = "Pimpaka S.";
+  pr.updatedBy = actingUserName();
   decoratePRs();
   ctx.refresh();
   ctx.toast("อนุมัติแล้ว", `${pr.code} — พร้อมแปลงเป็นใบสั่งซื้อ`, "success");
@@ -78,7 +79,7 @@ export function prReject(pr: PrRow, ctx: ActionCtx) {
       }
       pr.status = "Rejected";
       pr.updated = stamp();
-      pr.updatedBy = "Pimpaka S.";
+      pr.updatedBy = actingUserName();
       decoratePRs();
       ctx.refresh();
       ctx.toast("ปฏิเสธใบขอซื้อแล้ว", pr.code, "danger");
@@ -102,7 +103,7 @@ export function prConvert(pr: PrRow, ctx: ActionCtx) {
         warehouse: WAREHOUSES[0] ? `${WAREHOUSES[0].code} ${WAREHOUSES[0].name}` : "",
         currency: "THB",
         fx: 1,
-        buyer: "Pimpaka S.",
+        buyer: actingUserName(),
         payTerm: "30 Days",
         incoterm: "FOB",
         orderDate: now.split(" ")[0],
@@ -122,16 +123,16 @@ export function prConvert(pr: PrRow, ctx: ActionCtx) {
         })),
         receipts: [],
         created: now,
-        createdBy: "Pimpaka S.",
+        createdBy: actingUserName(),
         updated: now,
-        updatedBy: "Pimpaka S.",
+        updatedBy: actingUserName(),
       } as unknown as PoRow);
       decoratePOs();
 
       pr.status = "Converted";
       pr.poRef = poCode;
       pr.updated = now;
-      pr.updatedBy = "Pimpaka S.";
+      pr.updatedBy = actingUserName();
       decoratePRs();
 
       ctx.refresh();

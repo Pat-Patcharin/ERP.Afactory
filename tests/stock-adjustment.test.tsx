@@ -1,3 +1,4 @@
+import { actingUserName } from "@/lib/domain/admin";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -340,7 +341,9 @@ describe("Stock Adjustment — approval", () => {
     const rec = adjustmentRows().find((r) => r.status === "Pending Approval")!;
     detail.actions!(rec, ctx).find((a) => a.label === "อนุมัติ")!.run!(rec);
     expect(row(rec.code).status).toBe("Approved");
-    expect(row(rec.code).approvedBy).toBe("Admin");
+    /* The stamp names whoever is acting, not a constant — switch account
+       and the next approval is signed by the other person. */
+    expect(row(rec.code).approvedBy).toBe(actingUserName());
   });
 
   it("refuses to reject without a reason", () => {

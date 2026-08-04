@@ -613,7 +613,7 @@ export const SO_FORM: FormSchema<SoRow> = {
         : `เกินวงเงิน ${money0(credit.overBy)} บาท`,
       items,
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -621,7 +621,7 @@ export const SO_FORM: FormSchema<SoRow> = {
       (existing.history ??= []).unshift({
         t: "Sales order updated",
         d: "แก้ไขใบสั่งขายจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -633,12 +633,12 @@ export const SO_FORM: FormSchema<SoRow> = {
            deliberate step that runs the credit check. */
         status: "Draft",
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: patch.srRef ? `Created from ${patch.srRef}` : "Created",
             d: patch.srRef ? "แปลงจากใบเสนอราคา" : "สร้างใบสั่งขายจากฟอร์ม",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },

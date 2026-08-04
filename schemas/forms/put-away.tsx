@@ -369,7 +369,7 @@ export const PA_FORM: FormSchema<PaRow> = {
       status: assignedTo ? "Assigned" : "Waiting",
       items,
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -377,7 +377,7 @@ export const PA_FORM: FormSchema<PaRow> = {
       existing.history.unshift({
         t: "Put away task updated",
         d: "แก้ไขงานจัดเก็บจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -386,12 +386,12 @@ export const PA_FORM: FormSchema<PaRow> = {
         code,
         ...patch,
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: "Put away task created",
             d: `สร้างงานจัดเก็บ ${fmt(paTotalQty({ items }))} หน่วย จาก ${patch.grRef}`,
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },

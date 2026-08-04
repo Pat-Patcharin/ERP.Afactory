@@ -870,7 +870,7 @@ export const CN_FORM: FormSchema<CnRow> = {
       note: String(s.note ?? ""),
       items,
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     const triggers = approvalTriggers(patch);
@@ -880,13 +880,13 @@ export const CN_FORM: FormSchema<CnRow> = {
       (existing.history ??= []).unshift({
         t: "Credit note updated",
         d: "แก้ไขใบลดหนี้จากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
       (existing.audit ??= []).unshift({
         event: "Credit note edited",
-        user: FORM_USER,
+        user: FORM_USER(),
         when: now,
         field: "items",
         from: `${existing.itemCount} lines`,
@@ -910,20 +910,20 @@ export const CN_FORM: FormSchema<CnRow> = {
         approvals: [],
         attachments: [],
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: patch.sourceDoc ? `Created from ${patch.sourceDoc}` : "Credit note created",
             d: patch.sourceDoc
               ? `สร้างจาก${patch.sourceType} ${patch.sourceDoc}`
               : "สร้างใบลดหนี้เอง (Manual)",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },
         ],
         audit: [
-          { event: "Credit note created", user: FORM_USER, when: now, field: "—", from: "—", to: "Draft", kind: "" },
+          { event: "Credit note created", user: FORM_USER(), when: now, field: "—", from: "—", to: "Draft", kind: "" },
         ],
       } as unknown as CnRow);
     }

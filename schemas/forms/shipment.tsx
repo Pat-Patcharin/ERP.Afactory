@@ -980,7 +980,7 @@ export const SHP_FORM: FormSchema<ShpRow> = {
       items,
       packages,
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -988,13 +988,13 @@ export const SHP_FORM: FormSchema<ShpRow> = {
       (existing.history ??= []).unshift({
         t: "Shipment updated",
         d: "แก้ไขใบขนส่งจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
       (existing.audit ??= []).unshift({
         event: "Shipment edited",
-        user: FORM_USER,
+        user: FORM_USER(),
         when: now,
         field: "items",
         from: `${existing.itemCount} lines`,
@@ -1019,19 +1019,19 @@ export const SHP_FORM: FormSchema<ShpRow> = {
             status: "Shipment Created",
             when: now,
             location: patch.warehouse,
-            by: FORM_USER,
+            by: FORM_USER(),
             remark: patch.doRef ? `From ${patch.doRef}` : "",
           },
         ],
         exceptions: [],
         pod: null,
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: patch.doRef ? `Created from ${patch.doRef}` : "Shipment created",
             d: "สร้างใบขนส่งจากฟอร์ม",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },
@@ -1039,7 +1039,7 @@ export const SHP_FORM: FormSchema<ShpRow> = {
         audit: [
           {
             event: "Shipment created",
-            user: FORM_USER,
+            user: FORM_USER(),
             when: now,
             field: "—",
             from: "—",

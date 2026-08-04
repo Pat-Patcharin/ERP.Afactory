@@ -493,7 +493,7 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
       whAccess: String(s.whAccess ?? ""),
       prodCat: String(s.prodCat ?? ""),
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -501,7 +501,7 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
       existing.history.unshift({
         t: "Sales rep updated",
         d: "แก้ไขข้อมูลพนักงานขายจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -522,12 +522,12 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
         customers: [],
         visits: [],
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: "Sales rep created",
             d: "เพิ่มพนักงานขายเข้าระบบจากฟอร์ม",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },

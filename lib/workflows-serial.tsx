@@ -1,5 +1,6 @@
 "use client";
 
+import { actingUserName } from "./domain/admin";
 import { useState } from "react";
 import { fmt, stamp, today } from "./format";
 import { cn } from "./utils";
@@ -36,7 +37,8 @@ import { invalidateMovements } from "./domain/movement";
    approved and posted in its own module.
    ============================================================ */
 
-const USER = "Admin";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 
 function commit(
   ctx: ActionCtx,
@@ -50,7 +52,7 @@ function commit(
 }
 
 const note = (e: SerialException, text: string) =>
-  e.notes.unshift({ note: text, by: USER, when: stamp() });
+  e.notes.unshift({ note: text, by: USER(), when: stamp() });
 
 /* ---------- Modal fields ---------- */
 
@@ -224,10 +226,10 @@ export function serialStartInvestigation(rec: SerialRow, ctx: ActionCtx) {
         resolution: "",
         followUp: "",
         status: "Open",
-        raisedBy: USER,
+        raisedBy: USER(),
         raisedDate: today(),
         adjustmentRef: "",
-        notes: [{ note: "เปิดเรื่องจากหน้า Serial Tracking", by: USER, when: stamp() }],
+        notes: [{ note: "เปิดเรื่องจากหน้า Serial Tracking", by: USER(), when: stamp() }],
       };
 
       SERIAL_EXCEPTIONS.unshift(exception);
@@ -315,7 +317,7 @@ export function serialCreateAdjustment(rec: SerialRow, ctx: ActionCtx) {
         status: "Draft",
         approvalStatus: "Not Submitted",
 
-        requestedBy: USER,
+        requestedBy: USER(),
         reviewer: "Patcharin T.",
         approvedBy: "",
         approvedDate: "",
@@ -369,7 +371,7 @@ export function serialCreateAdjustment(rec: SerialRow, ctx: ActionCtx) {
           {
             t: "Created from Serial Exception",
             d: `สร้างจากการสอบสวน ${exception.code} ของหมายเลข ${rec.serial}`,
-            u: USER,
+            u: USER(),
             when: stamp(),
             kind: "danger",
           },
@@ -377,7 +379,7 @@ export function serialCreateAdjustment(rec: SerialRow, ctx: ActionCtx) {
         audit: [
           {
             event: "Created from Serial Exception",
-            user: USER,
+            user: USER(),
             when: stamp(),
             field: "Source Document",
             from: "—",
@@ -387,9 +389,9 @@ export function serialCreateAdjustment(rec: SerialRow, ctx: ActionCtx) {
         ],
 
         created: stamp(),
-        createdBy: USER,
+        createdBy: USER(),
         updated: stamp(),
-        updatedBy: USER,
+        updatedBy: USER(),
       };
 
       ADJUSTMENTS.unshift(adjustment);
@@ -559,10 +561,10 @@ export function serialBulk(rows: SerialRow[], ctx: ActionCtx) {
                 resolution: "",
                 followUp: "",
                 status: "Open",
-                raisedBy: USER,
+                raisedBy: USER(),
                 raisedDate: today(),
                 adjustmentRef: "",
-                notes: [{ note: "เพิ่มเข้าการสอบสวนแบบกลุ่ม", by: USER, when: stamp() }],
+                notes: [{ note: "เพิ่มเข้าการสอบสวนแบบกลุ่ม", by: USER(), when: stamp() }],
               });
             }
             commit(ctx, "เปิดเรื่องสอบสวนแล้ว", `${investigable.length} หมายเลข`, "warning");

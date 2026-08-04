@@ -5,6 +5,7 @@ import { cn, getPath } from "@/lib/utils";
 import { fmt } from "@/lib/format";
 import { Icon } from "@/lib/icons";
 import { useUI } from "@/lib/store";
+import { can } from "@/lib/domain/admin";
 import type { ListSchema, RecordBase } from "@/lib/types";
 import {
   ActionMenuItems,
@@ -234,7 +235,10 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
               {a.label}
             </Button>
           ))}
-          {!schema.hideCreate && (
+          {/* A role with read-only access to this module gets no Create
+              button. The schema says the module has one; the acting role
+              decides whether this person sees it. */}
+          {!schema.hideCreate && can(schema.key, "create") && (
             <Button
               variant="primary"
               onClick={() =>

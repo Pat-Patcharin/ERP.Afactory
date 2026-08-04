@@ -655,7 +655,7 @@ export const GR_FORM: FormSchema<GrRow> = {
       qcStatus: anyQc ? "Pending" : "Not Required",
       status: anyQc ? "Pending QC" : fullyReceived ? "Ready for Put Away" : "Partial",
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -663,7 +663,7 @@ export const GR_FORM: FormSchema<GrRow> = {
       existing.history.unshift({
         t: "Goods receipt updated",
         d: "แก้ไขใบรับของจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -672,12 +672,12 @@ export const GR_FORM: FormSchema<GrRow> = {
         code,
         ...patch,
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: "Goods received",
             d: `รับเข้า ${fmt(grTotalReceiving({ items }))} หน่วย จาก ${items.length} รายการ`,
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },
@@ -695,7 +695,7 @@ export const GR_FORM: FormSchema<GrRow> = {
       const done = (po.items ?? []).every((x) => num(x.recv) >= num(x.qty));
       po.status = done ? "Completed" : "Partial Received";
       po.updated = now;
-      po.updatedBy = FORM_USER;
+      po.updatedBy = FORM_USER();
     }
 
     decorateGRs();

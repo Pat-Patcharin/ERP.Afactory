@@ -4,8 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/lib/icons";
-import { NAV } from "@/lib/nav";
+import { NAV, type NavItem } from "@/lib/nav";
 import { useUI } from "@/lib/store";
+import { MODULES, canAny } from "@/lib/domain/admin";
+
+/**
+ * Nav entry → the module that governs it, matched on the route both already
+ * carry. A destination with no module behind it — the placeholder pages —
+ * is nobody's to forbid, so it stays.
+ */
+const MODULE_BY_HREF = new Map(
+  MODULES.filter((m) => m.href).map((m) => [m.href as string, m.key]),
+);
+
+const mayOpen = (item: NavItem) => {
+  const key = MODULE_BY_HREF.get(item.href.split("?")[0]);
+  return !key || canAny(key);
+};
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -13,6 +28,9 @@ export function Sidebar() {
   const toggle = useUI((s) => s.toggleSidebar);
   const mobileOpen = useUI((s) => s.mobileNavOpen);
   const setMobileNav = useUI((s) => s.setMobileNav);
+  /* Repaint when the acting account changes — the menu is different for a
+     sales rep than for an administrator. */
+  useUI((s) => s.revision);
 
   const isActive = (href: string) => {
     const base = href.split("?")[0];
@@ -52,7 +70,9 @@ export function Sidebar() {
         </div>
 
         <nav className="scrollbar-sidebar flex-1 overflow-y-auto px-3 pb-4 pt-2">
-          {NAV.map((group, gi) => (
+          {NAV.map((group, gi) => ({ ...group, items: group.items.filter(mayOpen) }))
+            .filter((group) => group.items.length > 0)
+            .map((group, gi) => (
             <div key={group.label ?? gi}>
               {group.label && !collapsed && (
                 <div className="whitespace-nowrap px-3 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-[0.08em] text-sidebar-label">

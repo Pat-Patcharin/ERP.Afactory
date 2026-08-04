@@ -1,5 +1,6 @@
 "use client";
 
+import { actingUserName } from "./domain/admin";
 import { useState, type ReactNode } from "react";
 import { fmt, money, stamp } from "./format";
 import { cn } from "./utils";
@@ -30,9 +31,10 @@ import {
    the Finance module will own them for real.
    ============================================================ */
 
-const USER = "Admin";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 
-function log(inv: InvRow, t: string, d: string, kind = "primary", u = USER) {
+function log(inv: InvRow, t: string, d: string, kind = "primary", u = USER()) {
   (inv.history ??= []).unshift({ t, d, u, when: stamp(), kind });
 }
 
@@ -44,7 +46,7 @@ function audit(
   to: string,
   kind = "primary",
 ) {
-  (inv.audit ??= []).unshift({ event, user: USER, when: stamp(), field, from, to, kind });
+  (inv.audit ??= []).unshift({ event, user: USER(), when: stamp(), field, from, to, kind });
 }
 
 function commit(
@@ -162,7 +164,7 @@ export function invSubmit(inv: InvRow, ctx: ActionCtx) {
   inv.status = "Pending Review";
   inv.approvalStatus = "Pending";
   inv.updated = stamp();
-  inv.updatedBy = USER;
+  inv.updatedBy = USER();
   log(inv, "Submitted for review", "ส่งตรวจสอบข้อมูลบิลและภาษี", "info");
   audit(inv, "Status changed", "status", from, "Pending Review", "info");
 
@@ -211,7 +213,7 @@ export function invApprove(inv: InvRow, ctx: ActionCtx) {
       inv.status = "Approved";
       inv.approvalStatus = "Approved";
       inv.updated = stamp();
-      inv.updatedBy = USER;
+      inv.updatedBy = USER();
       log(inv, "Approved", "อนุมัติแล้ว พร้อมออกใบแจ้งหนี้");
       audit(inv, "Status changed", "status", from, "Approved");
       commit(ctx, "อนุมัติใบแจ้งหนี้แล้ว", `${inv.code} — พร้อม Issue`);
@@ -229,7 +231,7 @@ export function invReject(inv: InvRow, ctx: ActionCtx) {
       inv.status = "Draft";
       inv.approvalStatus = "Revision Requested";
       inv.updated = stamp();
-      inv.updatedBy = USER;
+      inv.updatedBy = USER();
       log(inv, "Revision requested", "ส่งกลับให้แก้ไข", "warn");
       audit(inv, "Status changed", "status", from, "Draft", "warn");
       commit(ctx, "ส่งกลับให้แก้ไขแล้ว", inv.code, "warning");
@@ -340,7 +342,7 @@ export function invIssue(inv: InvRow, ctx: ActionCtx) {
       const from = inv.status;
       inv.status = "Issued";
       inv.updated = stamp();
-      inv.updatedBy = USER;
+      inv.updatedBy = USER();
       log(inv, "Issued", "ออกใบแจ้งหนี้ให้ลูกค้า ล็อกยอดและรายการแล้ว");
       audit(inv, "Status changed", "status", from, "Issued");
       commit(ctx, "ออกใบแจ้งหนี้แล้ว", `${inv.code} — ล็อกเอกสารเรียบร้อย`);
@@ -385,7 +387,7 @@ export function invCancel(inv: InvRow, ctx: ActionCtx) {
       inv.status = "Cancelled";
       inv.cancelReason = picked.note ? `${picked.reason} — ${picked.note}` : picked.reason;
       inv.updated = stamp();
-      inv.updatedBy = USER;
+      inv.updatedBy = USER();
       log(inv, "Cancelled", `เหตุผล: ${inv.cancelReason}`, "warn");
       audit(inv, "Status changed", "status", from, "Cancelled", "warn");
       commit(ctx, "ยกเลิกใบแจ้งหนี้แล้ว", `${inv.code} — ${picked.reason}`, "danger");
@@ -435,10 +437,10 @@ export function invVoid(inv: InvRow, ctx: ActionCtx) {
       const from = inv.status;
       inv.status = "Void";
       inv.voidReason = picked.note ? `${picked.reason} — ${picked.note}` : picked.reason;
-      inv.voidBy = USER;
+      inv.voidBy = USER();
       inv.updated = stamp();
-      inv.updatedBy = USER;
-      log(inv, "Void", `เหตุผล: ${inv.voidReason} — อนุมัติโดย ${USER}`, "warn");
+      inv.updatedBy = USER();
+      log(inv, "Void", `เหตุผล: ${inv.voidReason} — อนุมัติโดย ${USER()}`, "warn");
       audit(inv, "Status changed", "status", from, "Void", "warn");
       commit(ctx, "Void ใบแจ้งหนี้แล้ว", `${inv.code} — ${picked.reason}`, "danger");
     },
@@ -520,7 +522,7 @@ export function invCreditNote(inv: InvRow, ctx: ActionCtx) {
       inv.creditNoteRef = cnCode;
       inv.status = "Credited";
       inv.updated = stamp();
-      inv.updatedBy = USER;
+      inv.updatedBy = USER();
       log(inv, "Credit note created", `ออกใบลดหนี้ ${cnCode} — ${picked.reason}`, "info");
       audit(inv, "Credit note linked", "creditNoteRef", "—", cnCode, "info");
       commit(
@@ -765,8 +767,8 @@ export function invBulk(
           inv.cancelReason = "ยกเลิกแบบกลุ่ม";
         }
         inv.updated = now;
-        inv.updatedBy = USER;
-        log(inv, `${verb} (bulk)`, `ดำเนินการแบบกลุ่มโดย ${USER}`, action === "cancel" ? "warn" : "primary");
+        inv.updatedBy = USER();
+        log(inv, `${verb} (bulk)`, `ดำเนินการแบบกลุ่มโดย ${USER()}`, action === "cancel" ? "warn" : "primary");
         audit(inv, "Status changed", "status", from, inv.status, action === "cancel" ? "warn" : "primary");
       }
       commit(ctx, `${verb}แล้ว`, `${eligible.length} ใบ`, action === "cancel" ? "danger" : "success");

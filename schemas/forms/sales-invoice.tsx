@@ -1079,7 +1079,7 @@ export const INV_FORM: FormSchema<InvRow> = {
       note: String(s.note ?? ""),
       items,
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     const hasOverride = items.some((it) => it.priceOverride);
@@ -1089,13 +1089,13 @@ export const INV_FORM: FormSchema<InvRow> = {
       (existing.history ??= []).unshift({
         t: "Invoice updated",
         d: "แก้ไขใบแจ้งหนี้จากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
       (existing.audit ??= []).unshift({
         event: "Invoice edited",
-        user: FORM_USER,
+        user: FORM_USER(),
         when: now,
         field: "items",
         from: `${existing.itemCount} lines`,
@@ -1120,14 +1120,14 @@ export const INV_FORM: FormSchema<InvRow> = {
         voidBy: "",
         creditNoteRef: "",
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: patch.sourceDoc ? `Created from ${patch.sourceDoc}` : "Created",
             d: patch.sourceDoc
               ? `สร้างจาก${patch.sourceType} ${patch.sourceDoc}`
               : "สร้างใบแจ้งหนี้เอง (Manual)",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },
@@ -1135,7 +1135,7 @@ export const INV_FORM: FormSchema<InvRow> = {
         audit: [
           {
             event: "Invoice created",
-            user: FORM_USER,
+            user: FORM_USER(),
             when: now,
             field: "—",
             from: "—",

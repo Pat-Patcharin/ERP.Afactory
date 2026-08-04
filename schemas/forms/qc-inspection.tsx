@@ -597,7 +597,7 @@ export const QC_FORM: FormSchema<QcRow> = {
         (failing ? `NCR2506-${String(QC_INSPECTIONS.length + 1).padStart(3, "0")}` : ""),
       round: num(s.round) || 1,
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -616,12 +616,12 @@ export const QC_FORM: FormSchema<QcRow> = {
         claimRef: "",
         prevResult: "",
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: "Inspection created",
             d: `สร้างใบตรวจจาก ${patch.grRef}`,
-            u: patch.inspector || FORM_USER,
+            u: patch.inspector || FORM_USER(),
             when: now,
             kind: "primary",
           },

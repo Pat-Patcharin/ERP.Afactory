@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { actingUserName } from "@/lib/domain/admin";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "@/lib/icons";
 import type { ActionCtx } from "@/lib/types";
@@ -9,8 +10,9 @@ import type { ActionCtx } from "@/lib/types";
    business logic, which stays in lib/domain and lib/workflows.
    ============================================================ */
 
-/** Stand-in for the signed-in user until auth lands. */
-export const FORM_USER = "Pimpaka S.";
+/** Whoever is filling the form in. Read per call so switching account
+ *  changes who the next document says created it. */
+export const FORM_USER = () => actingUserName();
 
 /** Spread an `as const` option list into the mutable array a field wants. */
 export const opts = (list: readonly string[]) => [...list];

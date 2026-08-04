@@ -1,5 +1,6 @@
 "use client";
 
+import { actingUserName } from "./domain/admin";
 import { useState } from "react";
 import { fmt, money, stamp, today } from "./format";
 import { cn } from "./utils";
@@ -37,9 +38,10 @@ import { invalidateMovements } from "./domain/movement";
    reversal document, never an edit.
    ============================================================ */
 
-const USER = "Admin";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 
-function log(a: Adjustment, title: string, detail: string, kind = "primary", u = USER) {
+function log(a: Adjustment, title: string, detail: string, kind = "primary", u = USER()) {
   (a.history ??= []).unshift({ t: title, d: detail, u, when: stamp(), kind });
 }
 
@@ -51,7 +53,7 @@ function audit(
   to: string,
   kind = "primary",
 ) {
-  (a.audit ??= []).unshift({ event, user: USER, when: stamp(), field, from, to, kind });
+  (a.audit ??= []).unshift({ event, user: USER(), when: stamp(), field, from, to, kind });
 }
 
 function commit(
@@ -71,7 +73,7 @@ const setStatus = (a: Adjustment, to: string, event: string, kind = "primary") =
   audit(a, event, "Status", a.status, to, kind);
   a.status = to;
   a.updated = stamp();
-  a.updatedBy = USER;
+  a.updatedBy = USER();
 };
 
 /* ---------- Modal fields ---------- */
@@ -253,7 +255,7 @@ export function adjApprove(rec: AdjRow, ctx: ActionCtx) {
     confirmText: "อนุมัติ",
     onConfirm: () => {
       a.approvalStatus = "Approved";
-      a.approvedBy = USER;
+      a.approvedBy = USER();
       a.approvedDate = stamp();
       setStatus(a, "Approved", "Approved");
       log(a, "Approved", "อนุมัติใบปรับปรุงสต๊อก", "primary");
@@ -382,7 +384,7 @@ export function adjAddEvidence(rec: AdjRow, ctx: ActionCtx) {
       (a.evidence ??= []).unshift({
         name: name.trim(),
         type,
-        by: USER,
+        by: USER(),
         when: stamp(),
         size: "1.0 MB",
       });
@@ -514,7 +516,7 @@ export function adjPost(rec: AdjRow, ctx: ActionCtx) {
         ctx.toast("ยังตรวจสอบไม่ครบ", "ต้องยืนยันรายการตรวจสอบให้ครบทุกข้อก่อนบันทึก", "danger");
         return false;
       }
-      a.postedBy = USER;
+      a.postedBy = USER();
       a.postedDate = stamp();
       setStatus(a, "Posted", "Posted");
       log(
@@ -682,9 +684,9 @@ export function adjReverse(rec: AdjRow, ctx: ActionCtx) {
         adjDate: today(),
         status: "Posted",
         approvalStatus: "Approved",
-        approvedBy: USER,
+        approvedBy: USER(),
         approvedDate: stamp(),
-        postedBy: USER,
+        postedBy: USER(),
         postedDate: stamp(),
         description: `กลับรายการของ ${a.code}: ${reason}`,
         refType: "Manual Request",
@@ -700,7 +702,7 @@ export function adjReverse(rec: AdjRow, ctx: ActionCtx) {
           {
             t: "Reversal posted",
             d: `กลับรายการของ ${a.code} — ${reason}`,
-            u: USER,
+            u: USER(),
             when: stamp(),
             kind: "danger",
           },
@@ -708,7 +710,7 @@ export function adjReverse(rec: AdjRow, ctx: ActionCtx) {
         audit: [
           {
             event: "Reversal posted",
-            user: USER,
+            user: USER(),
             when: stamp(),
             field: "Reversal Of",
             from: "—",
@@ -717,9 +719,9 @@ export function adjReverse(rec: AdjRow, ctx: ActionCtx) {
           },
         ],
         created: stamp(),
-        createdBy: USER,
+        createdBy: USER(),
         updated: stamp(),
-        updatedBy: USER,
+        updatedBy: USER(),
       };
 
       ADJUSTMENTS.unshift(reversal);

@@ -859,7 +859,7 @@ export const RTN_FORM: FormSchema<RtnRow> = {
       note: String(s.note ?? ""),
       items,
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -867,13 +867,13 @@ export const RTN_FORM: FormSchema<RtnRow> = {
       (existing.history ??= []).unshift({
         t: "Return request updated",
         d: "แก้ไขคำขอคืนจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
       (existing.audit ??= []).unshift({
         event: "Return edited",
-        user: FORM_USER,
+        user: FORM_USER(),
         when: now,
         field: "items",
         from: `${existing.itemCount} lines`,
@@ -910,20 +910,20 @@ export const RTN_FORM: FormSchema<RtnRow> = {
         exceptions: [],
         evidence: [],
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: patch.sourceDoc ? `Created from ${patch.sourceDoc}` : "Return request created",
             d: patch.sourceDoc
               ? `สร้างคำขอคืนจาก${patch.sourceType} ${patch.sourceDoc}`
               : "สร้างคำขอคืนแบบ Manual",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },
         ],
         audit: [
-          { event: "Return created", user: FORM_USER, when: now, field: "—", from: "—", to: "Draft", kind: "" },
+          { event: "Return created", user: FORM_USER(), when: now, field: "—", from: "—", to: "Draft", kind: "" },
         ],
       } as unknown as RtnRow);
     }

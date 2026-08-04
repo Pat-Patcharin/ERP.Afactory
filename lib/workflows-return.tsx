@@ -1,5 +1,6 @@
 "use client";
 
+import { actingUserName } from "./domain/admin";
 import { useState, type ReactNode } from "react";
 import { fmt, money, money0, stamp, toDisplayDate, toInputDate, today } from "./format";
 import { cn } from "./utils";
@@ -43,15 +44,16 @@ import {
    plus a confirmed disposition. No accounting is posted here.
    ============================================================ */
 
-const USER = "Admin";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 const num = (v: unknown) => Number(v) || 0;
 
-function log(r: RtnRow, t: string, d: string, kind = "primary", u = USER) {
+function log(r: RtnRow, t: string, d: string, kind = "primary", u = USER()) {
   (r.history ??= []).unshift({ t, d, u, when: stamp(), kind });
 }
 
 function audit(r: RtnRow, event: string, field: string, from: string, to: string, kind = "primary") {
-  (r.audit ??= []).unshift({ event, user: USER, when: stamp(), field, from, to, kind });
+  (r.audit ??= []).unshift({ event, user: USER(), when: stamp(), field, from, to, kind });
 }
 
 function commit(
@@ -208,12 +210,12 @@ export function rtnSubmit(r: RtnRow, ctx: ActionCtx) {
   r.rejectReason = "";
   if (!(r.approvals ?? []).length) {
     r.approvals = [
-      { step: "Sales Review", role: "Sales Admin", approver: USER, status: "done", requestedAt: now, respondedAt: now, comment: "" },
+      { step: "Sales Review", role: "Sales Admin", approver: USER(), status: "done", requestedAt: now, respondedAt: now, comment: "" },
       { step: "Sales Manager Approval", role: "Sales Manager", approver: "Sales Manager", status: "pending", requestedAt: now, respondedAt: "", comment: "" },
     ];
   }
   r.updated = now;
-  r.updatedBy = USER;
+  r.updatedBy = USER();
   log(r, "Submitted for approval", "ส่งขออนุมัติคำขอคืน", "info");
   audit(r, "Status changed", "status", from, "Pending Approval", "info");
   commit(ctx, "ส่งขออนุมัติแล้ว", `${r.code} — รอผู้จัดการฝ่ายขายอนุมัติ`);
@@ -323,7 +325,7 @@ export function rtnApprove(r: RtnRow, ctx: ActionCtx) {
         pending.comment = partial ? "อนุมัติบางส่วน" : "อนุมัติเต็มจำนวน";
       }
       r.updated = now;
-      r.updatedBy = USER;
+      r.updatedBy = USER();
       log(r, "Approved", partial ? `อนุมัติบางส่วน รวม ${fmt(total)} หน่วย` : `อนุมัติเต็มจำนวน ${fmt(total)} หน่วย`);
       audit(r, "Status changed", "status", from, r.status);
       commit(ctx, "อนุมัติคำขอคืนแล้ว", `${r.code} — พร้อมออก Return Authorization`);
@@ -369,7 +371,7 @@ export function rtnReject(r: RtnRow, ctx: ActionCtx) {
         pending.comment = reason;
       }
       r.updated = now;
-      r.updatedBy = USER;
+      r.updatedBy = USER();
       log(r, "Rejected", `ไม่อนุมัติ: ${reason}`, "warn");
       audit(r, "Status changed", "status", from, "Rejected", "warn");
       commit(ctx, "ไม่อนุมัติคำขอคืน", `${r.code} — ${reason}`, "danger");
@@ -498,12 +500,12 @@ export function rtnAuthorize(r: RtnRow, ctx: ActionCtx) {
       r.authExpiryDate = toDisplayDate(a.expiry);
       r.returnInstructions = a.instructions;
       r.packingInstructions = a.packing;
-      r.authorizedBy = USER;
+      r.authorizedBy = USER();
       r.authorizedAt = now;
       r.status = "Waiting Return";
       r.receivingStatus = "Waiting Return";
       r.updated = now;
-      r.updatedBy = USER;
+      r.updatedBy = USER();
 
       log(r, "Return authorized", `ออก ${r.rmaNo} — รอรับของคืนภายใน ${r.expectedReturnDate}`);
       audit(r, "Status changed", "status", from, "Waiting Return");
@@ -730,7 +732,7 @@ export function rtnReceive(r: RtnRow, ctx: ActionCtx) {
       r.qcStatus = "Pending QC";
       r.returnWarehouse = d.warehouse;
       r.updated = now;
-      r.updatedBy = USER;
+      r.updatedBy = USER();
 
       log(
         r,
@@ -1151,7 +1153,7 @@ export function rtnDisposition(r: RtnRow, ctx: ActionCtx) {
       if (r.creditNoteStatus === "Not Applicable" && r.requestedResolution === "Credit Note")
         r.creditNoteStatus = "Pending";
       r.updated = now;
-      r.updatedBy = USER;
+      r.updatedBy = USER();
 
       log(
         r,
@@ -1302,7 +1304,7 @@ export function rtnCreditNote(r: RtnRow, ctx: ActionCtx) {
       r.creditNoteStatus = "Pending";
       r.status = "Credit Note Pending";
       r.updated = now;
-      r.updatedBy = USER;
+      r.updatedBy = USER();
       log(r, "Credit note created", `ออกใบลดหนี้ ${cnCode} (${v.mode})`, "info");
       audit(r, "Credit note linked", "creditNoteRef", "—", cnCode, "info");
       commit(
@@ -1411,7 +1413,7 @@ export function rtnException(r: RtnRow, ctx: ActionCtx) {
         status: e.resolution.trim() ? "Resolved" : "Open",
       });
       r.updated = now;
-      r.updatedBy = USER;
+      r.updatedBy = USER();
       log(r, "Exception recorded", `${e.type} — ระดับ ${e.severity}`, "warn");
       audit(r, "Exception recorded", "exceptions", String((r.exceptions?.length ?? 1) - 1), String(r.exceptions?.length ?? 1), "warn");
       commit(ctx, "บันทึกเหตุผิดปกติแล้ว", `${r.code} — ${e.type}`, "warning");
@@ -1443,7 +1445,7 @@ export function rtnReplacement(r: RtnRow, ctx: ActionCtx) {
       const code = `SO-2026-${String(SALES_RETURNS.length + 50).padStart(6, "0")}`;
       r.replacementRef = code;
       r.updated = stamp();
-      r.updatedBy = USER;
+      r.updatedBy = USER();
       log(r, "Replacement created", `สร้างใบสั่งขายทดแทน ${code}`, "info");
       audit(r, "Replacement linked", "replacementRef", "—", code, "info");
       commit(ctx, "สร้างใบสั่งขายทดแทนแล้ว (จำลอง)", `${code}`, "info");
@@ -1465,7 +1467,7 @@ export function rtnClose(r: RtnRow, ctx: ActionCtx) {
       const from = r.status;
       r.status = "Closed";
       r.updated = stamp();
-      r.updatedBy = USER;
+      r.updatedBy = USER();
       log(r, "Closed", "ปิดคำขอคืนสินค้า");
       audit(r, "Status changed", "status", from, "Closed");
       commit(ctx, "ปิดคำขอคืนแล้ว", r.code);
@@ -1503,7 +1505,7 @@ export function rtnCancel(r: RtnRow, ctx: ActionCtx) {
       r.status = "Cancelled";
       r.cancelReason = reason;
       r.updated = stamp();
-      r.updatedBy = USER;
+      r.updatedBy = USER();
       log(r, "Cancelled", `เหตุผล: ${reason}`, "warn");
       audit(r, "Status changed", "status", from, "Cancelled", "warn");
       commit(ctx, "ยกเลิกคำขอคืนแล้ว", `${r.code} — ${reason}`, "danger");
@@ -1569,8 +1571,8 @@ export function rtnBulk(
           r.cancelReason = "ยกเลิกแบบกลุ่ม";
         }
         r.updated = now;
-        r.updatedBy = USER;
-        log(r, `${verb} (bulk)`, `ดำเนินการแบบกลุ่มโดย ${USER}`, action === "cancel" ? "warn" : "primary");
+        r.updatedBy = USER();
+        log(r, `${verb} (bulk)`, `ดำเนินการแบบกลุ่มโดย ${USER()}`, action === "cancel" ? "warn" : "primary");
         audit(r, "Status changed", "status", from, r.status, action === "cancel" ? "warn" : "primary");
       }
       commit(

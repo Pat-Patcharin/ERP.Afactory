@@ -422,7 +422,7 @@ export const PO_FORM: FormSchema<PoRow> = {
       prRef: String(s.prRef ?? ""),
       items,
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -434,7 +434,7 @@ export const PO_FORM: FormSchema<PoRow> = {
         status: "Draft",
         receipts: [],
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
       } as unknown as PoRow);
     }
 

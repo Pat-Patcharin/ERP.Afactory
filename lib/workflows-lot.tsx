@@ -1,5 +1,6 @@
 "use client";
 
+import { actingUserName } from "./domain/admin";
 import { useState } from "react";
 import { fmt, stamp, today } from "./format";
 import { cn } from "./utils";
@@ -31,7 +32,8 @@ import { invalidateMovements } from "./domain/movement";
    approved and posted in its own module.
    ============================================================ */
 
-const USER = "Admin";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 
 function commit(
   ctx: ActionCtx,
@@ -45,7 +47,7 @@ function commit(
 }
 
 const note = (r: RecallReview, text: string) =>
-  r.notes.unshift({ note: text, by: USER, when: stamp() });
+  r.notes.unshift({ note: text, by: USER(), when: stamp() });
 
 /* ---------- Modal fields ---------- */
 
@@ -181,7 +183,7 @@ export function lotStartRecall(rec: LotRow, ctx: ActionCtx) {
         type,
         severity,
         reason,
-        initiatedBy: USER,
+        initiatedBy: USER(),
         initiatedDate: today(),
         status: "Under Investigation",
         holdStatus: "ยังไม่กัน",
@@ -190,7 +192,7 @@ export function lotStartRecall(rec: LotRow, ctx: ActionCtx) {
         shippedQty: rec.shippedQty,
         customerCount: customers.length,
         adjustmentRef: "",
-        notes: [{ note: reason, by: USER, when: stamp() }],
+        notes: [{ note: reason, by: USER(), when: stamp() }],
       };
 
       RECALL_REVIEWS.unshift(review);
@@ -275,7 +277,7 @@ export function lotPlaceRecallHold(rec: LotRow, ctx: ActionCtx) {
         status: "Draft",
         approvalStatus: "Not Submitted",
 
-        requestedBy: USER,
+        requestedBy: USER(),
         reviewer: "Patcharin T.",
         approvedBy: "",
         approvedDate: "",
@@ -329,7 +331,7 @@ export function lotPlaceRecallHold(rec: LotRow, ctx: ActionCtx) {
           {
             t: "Created from Recall Review",
             d: `สร้างจากการตรวจสอบเรียกคืน ${review.code} ของล็อต ${rec.lot}`,
-            u: USER,
+            u: USER(),
             when: stamp(),
             kind: "danger",
           },
@@ -337,7 +339,7 @@ export function lotPlaceRecallHold(rec: LotRow, ctx: ActionCtx) {
         audit: [
           {
             event: "Created from Recall Review",
-            user: USER,
+            user: USER(),
             when: stamp(),
             field: "Source Document",
             from: "—",
@@ -347,9 +349,9 @@ export function lotPlaceRecallHold(rec: LotRow, ctx: ActionCtx) {
         ],
 
         created: stamp(),
-        createdBy: USER,
+        createdBy: USER(),
         updated: stamp(),
-        updatedBy: USER,
+        updatedBy: USER(),
       };
 
       ADJUSTMENTS.unshift(adjustment);
@@ -483,7 +485,7 @@ export function lotBulk(rows: LotRow[], ctx: ActionCtx) {
                 type: "Internal Investigation",
                 severity: "Medium",
                 reason: "เพิ่มเข้าการตรวจสอบแบบกลุ่ม",
-                initiatedBy: USER,
+                initiatedBy: USER(),
                 initiatedDate: today(),
                 status: "Draft Review",
                 holdStatus: "ยังไม่กัน",
@@ -493,7 +495,7 @@ export function lotBulk(rows: LotRow[], ctx: ActionCtx) {
                 customerCount: lotCustomers(r).length,
                 adjustmentRef: "",
                 notes: [
-                  { note: "เพิ่มเข้าการตรวจสอบแบบกลุ่ม", by: USER, when: stamp() },
+                  { note: "เพิ่มเข้าการตรวจสอบแบบกลุ่ม", by: USER(), when: stamp() },
                 ],
               });
             }

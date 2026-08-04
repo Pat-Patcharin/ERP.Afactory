@@ -510,7 +510,7 @@ export const DO_FORM: FormSchema<DoRow> = {
       remark: String(s.remark ?? ""),
       items,
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -518,7 +518,7 @@ export const DO_FORM: FormSchema<DoRow> = {
       (existing.history ??= []).unshift({
         t: "Delivery order updated",
         d: "แก้ไขใบส่งของจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -531,12 +531,12 @@ export const DO_FORM: FormSchema<DoRow> = {
         receivedBy: "",
         receivedDate: "",
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: patch.packRef ? `Created from ${patch.packRef}` : "Created",
             d: "สร้างใบส่งของจากฟอร์ม",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },

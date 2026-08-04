@@ -452,7 +452,7 @@ export const PRICE_LIST_FORM: FormSchema<PriceListRow> = {
         rulePriority: num(s.priority),
       },
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -460,7 +460,7 @@ export const PRICE_LIST_FORM: FormSchema<PriceListRow> = {
       existing.history.unshift({
         t: "Price list updated",
         d: "แก้ไขนโยบายราคาจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -470,12 +470,12 @@ export const PRICE_LIST_FORM: FormSchema<PriceListRow> = {
         ...patch,
         productsCount: 0,
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: "Price list created",
             d: "สร้างรายการราคาจากฟอร์ม",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },

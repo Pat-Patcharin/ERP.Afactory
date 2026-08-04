@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PRODUCTS } from "@/lib/domain/product";
-import { can } from "@/lib/domain/admin";
+import { actingUserName, can } from "@/lib/domain/admin";
 import {
   applyCustomer,
   applyProduct,
@@ -73,7 +73,8 @@ import { toDisplayDate } from "@/lib/format";
 
 const AUTOSAVE_DEBOUNCE = 1500;
 const CLOCK_TICK = 20_000;
-const FORM_USER = "Pimpaka S.";
+/** Whoever is filling this in — the draft records them, not a constant. */
+const FORM_USER = () => actingUserName();
 
 type SaveState = "idle" | "saving" | "saved" | "failed";
 
@@ -270,7 +271,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
   }, []);
 
   const saveDraftNow = useCallback(() => {
-    const res = saveQuotationDraft(draft, { issue: false, user: FORM_USER });
+    const res = saveQuotationDraft(draft, { issue: false, user: FORM_USER() });
     clearDraft(storeKey);
     dirty.current = false;
     setSavedAt(Date.now());
@@ -290,7 +291,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
       jumpTo(blocking[0].field);
       return;
     }
-    const res = saveQuotationDraft(draft, { issue: true, user: FORM_USER });
+    const res = saveQuotationDraft(draft, { issue: true, user: FORM_USER() });
     clearDraft(storeKey);
     dirty.current = false;
     ctx.toast(
@@ -661,7 +662,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
           </div>
 
           <div className="mt-6">
-            <DocFooter createdBy={FORM_USER} savedLabel={savedLabel} />
+            <DocFooter createdBy={FORM_USER()} savedLabel={savedLabel} />
           </div>
         </article>
       </div>

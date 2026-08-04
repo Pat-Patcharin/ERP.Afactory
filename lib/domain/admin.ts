@@ -63,7 +63,88 @@ export function setCurrentUser(code: string): boolean {
 
 export const resetCurrentUser = () => {
   currentUserCode = "EMP001";
+  clearStoredAccount();
 };
+
+/**
+ * Whoever is acting right now, by name.
+ *
+ * Every document stamp — created by, approved by, updated by — goes through
+ * here rather than through a constant. A prototype that stamps one name on
+ * work two different people did is not showing you an approval flow, it is
+ * showing you a screenshot of one.
+ */
+export const actingUserName = (): string => currentUser().name;
+
+/* ---------- Demo accounts ---------- */
+
+export interface DemoAccount {
+  code: string;
+  /** What this account is for, in the words of the person using the demo. */
+  purpose: string;
+  initials: string;
+}
+
+/**
+ * The two accounts the sales flow is demonstrated with. The seed carries
+ * twelve users; these are the two ends of one story — the rep who raises
+ * the paperwork and the administrator who approves it and moves it on.
+ */
+export const DEMO_ACCOUNTS: DemoAccount[] = [
+  {
+    code: "EMP004",
+    purpose: "ออกใบเสนอราคาและคำขอขาย — อนุมัติเองไม่ได้",
+    initials: "SY",
+  },
+  {
+    code: "EMP001",
+    purpose: "อนุมัติคำขอขายและเดินเอกสารต่อจนจบสาย",
+    initials: "PS",
+  },
+];
+
+export const demoAccounts = () =>
+  DEMO_ACCOUNTS.map((a) => ({ ...a, user: getUser(a.code)! })).filter((a) => a.user);
+
+/* ---------- Session persistence ---------- */
+
+/* A reload that silently puts you back in the administrator's chair would
+   undo the thing being demonstrated, so the choice outlives the page. It is
+   read on mount rather than at module load: the server has no localStorage,
+   and reading it during render would make the first client paint disagree
+   with the server's. */
+const STORE_KEY = "afactory.session.user";
+
+const store = (): Storage | null => {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    /* Storage can be denied outright (private mode, blocked cookies). The
+       session still works, it just does not survive a reload. */
+    return null;
+  }
+};
+
+function clearStoredAccount() {
+  store()?.removeItem(STORE_KEY);
+}
+
+/** Switch account and remember it. Returns false for an unknown user. */
+export function switchAccount(code: string): boolean {
+  if (!setCurrentUser(code)) return false;
+  store()?.setItem(STORE_KEY, code);
+  return true;
+}
+
+/**
+ * Re-apply the remembered account. Call once from a mount effect; returns the
+ * code actually in force so the caller knows whether anything changed.
+ */
+export function restoreAccount(): string {
+  const saved = store()?.getItem(STORE_KEY);
+  if (saved && saved !== currentUserCode) setCurrentUser(saved);
+  return currentUser().code;
+}
 
 export const getRoles = () => ROLES;
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { actingUserName } from "./domain/admin";
 import { useState } from "react";
 import { fmt, money, stamp, today } from "./format";
 import { cn } from "./utils";
@@ -49,10 +50,11 @@ import { invalidateMovements } from "./domain/movement";
    quantity moves.
    ============================================================ */
 
-const USER = "Admin";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 const num = (v: unknown) => Number(v) || 0;
 
-function log(c: Count, title: string, detail: string, kind = "primary", u = USER) {
+function log(c: Count, title: string, detail: string, kind = "primary", u = USER()) {
   (c.history ??= []).unshift({ t: title, d: detail, u, when: stamp(), kind });
 }
 
@@ -64,7 +66,7 @@ function audit(
   to: string,
   kind = "primary",
 ) {
-  (c.audit ??= []).unshift({ event, user: USER, when: stamp(), field, from, to, kind });
+  (c.audit ??= []).unshift({ event, user: USER(), when: stamp(), field, from, to, kind });
 }
 
 function commit(
@@ -82,7 +84,7 @@ const setStatus = (c: Count, to: string, event: string, kind = "primary") => {
   audit(c, event, "Status", c.status, to, kind);
   c.status = to;
   c.updated = stamp();
-  c.updatedBy = USER;
+  c.updatedBy = USER();
 };
 
 /* ---------- Modal fields ---------- */
@@ -449,7 +451,7 @@ export function cntEnter(rec: CntRow, ctx: ActionCtx) {
           l.firstCount = v;
           l.finalCount = v;
         }
-        l.counter = c.counter || USER;
+        l.counter = c.counter || USER();
         l.countTime = stamp();
       }
 
@@ -483,7 +485,7 @@ export function cntMarkEmpty(rec: CntRow, ctx: ActionCtx) {
       for (const l of open) {
         l.firstCount = 0;
         l.finalCount = 0;
-        l.counter = c.counter || USER;
+        l.counter = c.counter || USER();
         l.countTime = stamp();
         l.note = l.note || "ไม่พบสินค้าที่ตำแหน่งนี้";
       }
@@ -680,7 +682,7 @@ export function cntApprove(rec: CntRow, ctx: ActionCtx) {
     ctx.toast("ยังอนุมัติไม่ได้", issues[0].message, "danger");
     return;
   }
-  if (c.counter === USER) {
+  if (c.counter === USER()) {
     ctx.toast(
       "แบ่งแยกหน้าที่ไม่ผ่าน",
       "ผู้ตรวจนับอนุมัติงานของตัวเองไม่ได้",
@@ -710,7 +712,7 @@ export function cntApprove(rec: CntRow, ctx: ActionCtx) {
     confirmText: "อนุมัติ",
     onConfirm: () => {
       c.approvalStatus = "Approved";
-      c.approvedBy = USER;
+      c.approvedBy = USER();
       c.approvedAt = stamp();
       c.reviewedAt = stamp();
 
@@ -879,7 +881,7 @@ export function cntCreateAdjustment(rec: CntRow, ctx: ActionCtx) {
         status: "Draft",
         approvalStatus: "Not Submitted",
 
-        requestedBy: USER,
+        requestedBy: USER(),
         reviewer: c.supervisor,
         approvedBy: "",
         approvedDate: "",
@@ -911,7 +913,7 @@ export function cntCreateAdjustment(rec: CntRow, ctx: ActionCtx) {
           {
             t: "Created from Cycle Count",
             d: `สร้างจากผลตรวจนับ ${c.code}`,
-            u: USER,
+            u: USER(),
             when: stamp(),
             kind: "primary",
           },
@@ -919,7 +921,7 @@ export function cntCreateAdjustment(rec: CntRow, ctx: ActionCtx) {
         audit: [
           {
             event: "Created from Cycle Count",
-            user: USER,
+            user: USER(),
             when: stamp(),
             field: "Source Document",
             from: "—",
@@ -929,9 +931,9 @@ export function cntCreateAdjustment(rec: CntRow, ctx: ActionCtx) {
         ],
 
         created: stamp(),
-        createdBy: USER,
+        createdBy: USER(),
         updated: stamp(),
-        updatedBy: USER,
+        updatedBy: USER(),
       };
 
       ADJUSTMENTS.unshift(adjustment);

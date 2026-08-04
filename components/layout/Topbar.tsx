@@ -5,16 +5,45 @@ import { usePathname } from "next/navigation";
 import { Icon } from "@/lib/icons";
 import { findNav } from "@/lib/nav";
 import { useUI } from "@/lib/store";
+import {
+  currentUser,
+  demoAccounts,
+  getRole,
+  restoreAccount,
+  switchAccount,
+} from "@/lib/domain/admin";
 import { DotBadge, IconButton, Menu, MenuItem, MenuSep } from "@/components/ui";
+
+/** พ ส → PS, สุภาวิตา โยธะพันธ์ → สย. Two letters, whatever the script. */
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0] ?? "")
+    .join("");
 
 export function Topbar() {
   const pathname = usePathname();
   const setMobileNav = useUI((s) => s.setMobileNav);
   const toast = useUI((s) => s.toast);
   const crumbCode = useUI((s) => s.crumbCode);
+  const refresh = useUI((s) => s.refresh);
+  /* Subscribing to the revision is what repaints the identity after a switch. */
+  useUI((s) => s.revision);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const nav = findNav(pathname);
+  const me = currentUser();
+  const myRole = getRole(me.roleCode);
+  const accounts = demoAccounts();
+
+  /* The remembered account is applied after mount, never during render: the
+     server has no localStorage, and disagreeing with it here would be a
+     hydration mismatch. */
+  useEffect(() => {
+    restoreAccount();
+    refresh();
+  }, [refresh]);
 
   /* Ctrl/Cmd+K focuses global search from anywhere in the app. */
   useEffect(() => {
@@ -92,12 +121,19 @@ export function Topbar() {
               onClick={toggle}
               className="flex items-center gap-3 rounded-btn py-1 pl-1 pr-2 transition-colors duration-fast hover:bg-neutral-soft"
             >
-              <span className="grid h-[34px] w-[34px] flex-shrink-0 place-items-center rounded-pill bg-gradient-to-br from-[#F97316] to-[#FB923C] text-[13px] font-semibold text-white">
-                PS
+              <span
+                className="grid h-[34px] w-[34px] flex-shrink-0 place-items-center rounded-pill bg-gradient-to-br from-[#F97316] to-[#FB923C] text-[13px] font-semibold text-white"
+                data-testid="session-initials"
+              >
+                {initials(me.name)}
               </span>
               <span className="text-left leading-tight max-md:hidden">
-                <span className="block text-[13px] font-semibold">Pimpaka S.</span>
-                <span className="block text-cap text-ink-2">Administrator</span>
+                <span className="block text-[13px] font-semibold" data-testid="session-name">
+                  {me.name}
+                </span>
+                <span className="block text-cap text-ink-2" data-testid="session-role">
+                  {myRole?.name ?? me.roleCode}
+                </span>
               </span>
               <Icon name="chevronDown" size={15} className="text-ink-2" strokeWidth={2} />
             </button>
@@ -105,6 +141,34 @@ export function Topbar() {
         >
           {(close) => (
             <>
+              {/* Switching account is the whole point of having two, so it
+                  sits above the profile links rather than under them. */}
+              <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+                สลับบัญชี
+              </p>
+              {accounts.map((a) => {
+                const active = a.code === me.code;
+                const role = getRole(a.user.roleCode)?.name ?? a.user.roleCode;
+                return (
+                  <MenuItem
+                    key={a.code}
+                    icon={active ? "checkCircle" : "user"}
+                    onClick={() => {
+                      close();
+                      if (active) return;
+                      switchAccount(a.code);
+                      refresh();
+                      toast(`สลับเป็น ${a.user.name}`, `${role} — ${a.purpose}`, "info");
+                    }}
+                  >
+                    <span className="flex flex-col">
+                      <span className={active ? "font-semibold" : undefined}>{a.user.name}</span>
+                      <span className="text-cap text-ink-2">{role}</span>
+                    </span>
+                  </MenuItem>
+                );
+              })}
+              <MenuSep />
               <MenuItem
                 icon="user"
                 onClick={() => {

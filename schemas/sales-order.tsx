@@ -1,4 +1,5 @@
 import { printActions } from "@/lib/print/actions";
+import { can } from "@/lib/domain/admin";
 import {
   SALES_ORDERS,
   creditCheck,
@@ -160,13 +161,17 @@ export const SO_LIST: ListSchema<SoRow> = {
 
     acts.push({ sep: true });
 
-    if (so.status === "Draft")
+    /* Confirming, releasing credit and opening a pick all move stock or
+       money. They belong to the approver, not to whoever typed the order. */
+    const mayRun = can("sales-order", "approve");
+
+    if (so.status === "Draft" && mayRun)
       acts.push({ label: "Confirm Order", icon: "checkCircle", run: (r) => soConfirm(r, ctx) });
 
-    if (so.status === "On Hold")
+    if (so.status === "On Hold" && mayRun)
       acts.push({ label: "Approve Credit", icon: "shield", run: (r) => soApproveCredit(r, ctx) });
 
-    if (["Confirmed", "Picking", "Partially Delivered"].includes(so.status) && so.outstandingQty > 0)
+    if (["Confirmed", "Picking", "Partially Delivered"].includes(so.status) && so.outstandingQty > 0 && mayRun)
       acts.push({ label: "Create Picking", icon: "picking", run: (r) => soCreatePick(r, ctx) });
 
     if (so.srRef)
@@ -540,11 +545,12 @@ export const SO_DETAIL: DetailSchema<SoRow> = {
 
   actions: (so, ctx) => {
     const acts: RowAction<SoRow>[] = [];
-    if (so.status === "Draft")
+    const mayRun = can("sales-order", "approve");
+    if (so.status === "Draft" && mayRun)
       acts.push({ label: "Confirm Order", icon: "checkCircle", run: () => soConfirm(so, ctx) });
-    if (so.status === "On Hold")
+    if (so.status === "On Hold" && mayRun)
       acts.push({ label: "Approve Credit", icon: "shield", run: () => soApproveCredit(so, ctx) });
-    if (["Confirmed", "Picking", "Partially Delivered"].includes(so.status) && so.outstandingQty > 0)
+    if (["Confirmed", "Picking", "Partially Delivered"].includes(so.status) && so.outstandingQty > 0 && mayRun)
       acts.push({ label: "Create Picking", icon: "picking", run: () => soCreatePick(so, ctx) });
     acts.push({
       label: "Print Order",

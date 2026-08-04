@@ -1,5 +1,6 @@
 "use client";
 
+import { actingUserName } from "./domain/admin";
 import { useState, type ReactNode } from "react";
 import { fmt, stamp, toDisplayDate, today, toInputDate } from "./format";
 import { cn } from "./utils";
@@ -33,18 +34,19 @@ import {
    tracking stays open afterwards.
    ============================================================ */
 
-const USER = "Admin";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 const num = (v: unknown) => Number(v) || 0;
 
-function log(s: ShpRow, t: string, d: string, kind = "primary", u = USER) {
+function log(s: ShpRow, t: string, d: string, kind = "primary", u = USER()) {
   (s.history ??= []).unshift({ t, d, u, when: stamp(), kind });
 }
 
 function audit(s: ShpRow, event: string, field: string, from: string, to: string, kind = "primary") {
-  (s.audit ??= []).unshift({ event, user: USER, when: stamp(), field, from, to, kind });
+  (s.audit ??= []).unshift({ event, user: USER(), when: stamp(), field, from, to, kind });
 }
 
-function track(s: ShpRow, status: string, location: string, remark = "", by = USER) {
+function track(s: ShpRow, status: string, location: string, remark = "", by = USER()) {
   (s.tracking ??= []).unshift({ status, when: stamp(), location, by, remark });
 }
 
@@ -154,7 +156,7 @@ export function shpMarkReady(s: ShpRow, ctx: ActionCtx) {
   s.status = "Ready to Dispatch";
   s.deliveryStatus = "Ready";
   s.updated = stamp();
-  s.updatedBy = USER;
+  s.updatedBy = USER();
   log(s, "Marked ready", "จัดกล่องและตรวจสอบครบ พร้อมนำขึ้นรถ", "info");
   track(s, "Ready to Dispatch", s.warehouse, "Packed and ready");
   audit(s, "Status changed", "status", from, "Ready to Dispatch", "info");
@@ -280,7 +282,7 @@ export function shpDispatch(s: ShpRow, ctx: ActionCtx) {
         if (p.status !== "Damaged") p.status = "Loaded";
       });
       s.updated = now;
-      s.updatedBy = USER;
+      s.updatedBy = USER();
       log(s, "Dispatched", `ออกจากคลัง ${s.packageCount} กล่อง · ${fmt(s.totalQty)} หน่วย`);
       track(s, "Dispatched", s.warehouse, `Handed over to ${s.carrier}`);
       audit(s, "Status changed", "status", "Ready to Dispatch", "Dispatched");
@@ -366,7 +368,7 @@ export function shpAddTracking(s: ShpRow, ctx: ActionCtx) {
         audit(s, "Status changed", "status", from, mapped, "info");
       }
       s.updated = stamp();
-      s.updatedBy = USER;
+      s.updatedBy = USER();
       log(s, `Tracking: ${v.status}`, `${v.location}${v.remark ? ` — ${v.remark}` : ""}`, "info");
       commit(ctx, "เพิ่มสถานะติดตามแล้ว", `${s.code} — ${v.status}`);
     },
@@ -592,7 +594,7 @@ export function shpConfirmDelivery(s: ShpRow, ctx: ActionCtx) {
         });
       }
       s.updated = now;
-      s.updatedBy = USER;
+      s.updatedBy = USER();
 
       log(
         s,
@@ -745,7 +747,7 @@ export function shpRecordException(s: ShpRow, ctx: ActionCtx) {
         audit(s, "Status changed", "status", from, "Exception", "warn");
       }
       s.updated = now;
-      s.updatedBy = USER;
+      s.updatedBy = USER();
       log(s, "Exception recorded", `${e.type} — ระดับ ${e.severity}`, "warn");
       track(s, "Delivery Failed", s.deliveryAddress, e.desc.trim());
       audit(s, "Exception recorded", "exceptions", String((s.exceptions?.length ?? 1) - 1), String(s.exceptions?.length ?? 1), "warn");
@@ -867,7 +869,7 @@ export function shpReschedule(s: ShpRow, ctx: ActionCtx) {
       s.status = "Rescheduled";
       s.deliveryStatus = "Rescheduled";
       s.updated = now;
-      s.updatedBy = USER;
+      s.updatedBy = USER();
 
       log(
         s,
@@ -921,7 +923,7 @@ export function shpCreateReturn(s: ShpRow, ctx: ActionCtx) {
       const code = `RET-2026-${String(SHIPMENTS.length + 10).padStart(6, "0")}`;
       s.returnRef = code;
       s.updated = stamp();
-      s.updatedBy = USER;
+      s.updatedBy = USER();
       log(s, "Return request created", `เปิดคำขอคืนสินค้า ${code}`, "warn");
       audit(s, "Return request created", "returnRef", "—", code, "warn");
       commit(ctx, "เปิดคำขอคืนสินค้าแล้ว (จำลอง)", `${code} — โมดูล Return จะมาในเฟสถัดไป`, "info");
@@ -966,7 +968,7 @@ export function shpCancel(s: ShpRow, ctx: ActionCtx) {
       s.deliveryStatus = "Cancelled";
       s.cancelReason = reason;
       s.updated = stamp();
-      s.updatedBy = USER;
+      s.updatedBy = USER();
       log(s, "Cancelled", `เหตุผล: ${reason}`, "warn");
       audit(s, "Status changed", "status", from, "Cancelled", "warn");
       commit(ctx, "ยกเลิกใบขนส่งแล้ว", `${s.code} — ${reason}`, "danger");
@@ -1053,8 +1055,8 @@ export function shpBulk(
           s.cancelReason = "ยกเลิกแบบกลุ่ม";
         }
         s.updated = now;
-        s.updatedBy = USER;
-        log(s, `${verb} (bulk)`, `ดำเนินการแบบกลุ่มโดย ${USER}`, action === "cancel" ? "warn" : "primary");
+        s.updatedBy = USER();
+        log(s, `${verb} (bulk)`, `ดำเนินการแบบกลุ่มโดย ${USER()}`, action === "cancel" ? "warn" : "primary");
         audit(s, "Status changed", "status", from, s.status, action === "cancel" ? "warn" : "primary");
       }
       commit(

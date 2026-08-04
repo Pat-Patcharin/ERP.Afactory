@@ -1322,7 +1322,7 @@ export const BP_FORM: FormSchema<BpRow> = {
           issue: "",
           expiry: "",
           status: "Active",
-          by: FORM_USER,
+          by: FORM_USER(),
           date: new Date().toISOString().slice(0, 10),
           remark: "",
         };
@@ -1332,7 +1332,7 @@ export const BP_FORM: FormSchema<BpRow> = {
           name: "",
           src: "🖼️",
           kind: "Other",
-          by: FORM_USER,
+          by: FORM_USER(),
           date: new Date().toISOString().slice(0, 10),
           cover: false,
           remark: "",
@@ -1478,7 +1478,7 @@ export const BP_FORM: FormSchema<BpRow> = {
         date: toDisplayDate(i.date),
       })),
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     /* Balances are transactional — the form only sets the policy figures. */
@@ -1495,7 +1495,7 @@ export const BP_FORM: FormSchema<BpRow> = {
       status: isCustomer(s) ? (existing?.credit?.status ?? "Normal") : "Not Applicable",
       holdReason: existing?.credit?.holdReason ?? "",
       holdDate: existing?.credit?.holdDate ?? "",
-      approvedBy: existing?.credit?.approvedBy ?? FORM_USER,
+      approvedBy: existing?.credit?.approvedBy ?? FORM_USER(),
       approvalDate: existing?.credit?.approvalDate ?? now.split(" ")[0],
     };
 
@@ -1504,7 +1504,7 @@ export const BP_FORM: FormSchema<BpRow> = {
       existing.history.unshift({
         t: "Partner updated",
         d: "แก้ไขข้อมูลคู่ค้าจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -1515,12 +1515,12 @@ export const BP_FORM: FormSchema<BpRow> = {
         credit,
         txn: { so: [], po: [], inv: [] },
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: "Partner created",
             d: "สร้างคู่ค้าเข้าระบบจากฟอร์ม",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },

@@ -1,5 +1,6 @@
 "use client";
 
+import { actingUserName } from "./domain/admin";
 import { useState, type ReactNode } from "react";
 import { fmt, money, money0, stamp, toDisplayDate, toInputDate, today } from "./format";
 import { cn } from "./utils";
@@ -31,15 +32,16 @@ import { SALES_RETURNS, decorateReturns } from "./domain/sales-return";
    real AR posting belongs to the Finance module.
    ============================================================ */
 
-const USER = "Admin";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 const num = (v: unknown) => Number(v) || 0;
 
-function log(c: CnRow, t: string, d: string, kind = "primary", u = USER) {
+function log(c: CnRow, t: string, d: string, kind = "primary", u = USER()) {
   (c.history ??= []).unshift({ t, d, u, when: stamp(), kind });
 }
 
 function audit(c: CnRow, event: string, field: string, from: string, to: string, kind = "primary") {
-  (c.audit ??= []).unshift({ event, user: USER, when: stamp(), field, from, to, kind });
+  (c.audit ??= []).unshift({ event, user: USER(), when: stamp(), field, from, to, kind });
 }
 
 function commit(
@@ -165,7 +167,7 @@ export function cnSubmit(c: CnRow, ctx: ActionCtx) {
     c.approvals = CN_APPROVAL_STEPS.map((s, i) => ({
       step: s.step,
       role: s.role,
-      approver: i === 0 ? USER : s.role,
+      approver: i === 0 ? USER() : s.role,
       status: i === 0 ? "done" : "pending",
       requestedAt: now,
       respondedAt: i === 0 ? now : "",
@@ -173,7 +175,7 @@ export function cnSubmit(c: CnRow, ctx: ActionCtx) {
     }));
   }
   c.updated = now;
-  c.updatedBy = USER;
+  c.updatedBy = USER();
   log(c, "Submitted for approval", `ส่งขออนุมัติ — ${c.approvalReasons.join(" · ") || "ตามนโยบาย"}`, "info");
   audit(c, "Status changed", "status", from, "Pending Approval", "info");
   commit(ctx, "ส่งขออนุมัติแล้ว", `${c.code} — รอผู้จัดการฝ่ายขายและฝ่ายบัญชี`);
@@ -218,7 +220,7 @@ export function cnApprove(c: CnRow, ctx: ActionCtx) {
       c.status = "Approved";
       c.approvalStatus = "Approved";
       c.updated = now;
-      c.updatedBy = USER;
+      c.updatedBy = USER();
       log(c, "Approved", `อนุมัติใบลดหนี้ ${money(c.totalCredit)} บาท`);
       audit(c, "Status changed", "status", from, "Approved");
       commit(ctx, "อนุมัติใบลดหนี้แล้ว", `${c.code} — พร้อมออกใบลดหนี้`);
@@ -248,7 +250,7 @@ export function cnReject(c: CnRow, ctx: ActionCtx) {
       c.status = "Draft";
       c.approvalStatus = "Revision Requested";
       c.updated = now;
-      c.updatedBy = USER;
+      c.updatedBy = USER();
       log(c, "Revision requested", "ส่งกลับให้แก้ไข", "warn");
       audit(c, "Status changed", "status", from, "Draft", "warn");
       commit(ctx, "ส่งกลับให้แก้ไขแล้ว", c.code, "warning");
@@ -331,7 +333,7 @@ export function cnIssue(c: CnRow, ctx: ActionCtx) {
       const from = c.status;
       c.status = "Issued";
       c.updated = now;
-      c.updatedBy = USER;
+      c.updatedBy = USER();
       log(c, "Credit note issued", `ออกใบลดหนี้ ${money(c.totalCredit)} บาท ให้ลูกค้า`);
       audit(c, "Status changed", "status", from, "Issued");
 
@@ -345,7 +347,7 @@ export function cnIssue(c: CnRow, ctx: ActionCtx) {
         (rtn.history ??= []).unshift({
           t: "Credit note issued",
           d: `ออกใบลดหนี้ ${c.code}`,
-          u: USER,
+          u: USER(),
           when: now,
           kind: "primary",
         });
@@ -465,7 +467,7 @@ export function cnApply(c: CnRow, ctx: ActionCtx) {
       c.appliedTo = v.invoice.trim();
       c.status = "Applied";
       c.updated = now;
-      c.updatedBy = USER;
+      c.updatedBy = USER();
       log(c, "Credit applied", `ตัดกับ ${c.appliedTo} จำนวน ${money(amount)} บาท`, "info");
       audit(c, "Credit applied", "appliedAmount", money(c.appliedAmount - amount), money(c.appliedAmount), "primary");
       commit(
@@ -509,7 +511,7 @@ export function cnCancel(c: CnRow, ctx: ActionCtx) {
       c.status = "Cancelled";
       c.cancelReason = reason;
       c.updated = stamp();
-      c.updatedBy = USER;
+      c.updatedBy = USER();
       log(c, "Cancelled", `เหตุผล: ${reason}`, "warn");
       audit(c, "Status changed", "status", from, "Cancelled", "warn");
       commit(ctx, "ยกเลิกใบลดหนี้แล้ว", `${c.code} — ${reason}`, "danger");
@@ -554,10 +556,10 @@ export function cnVoid(c: CnRow, ctx: ActionCtx) {
       const from = c.status;
       c.status = "Void";
       c.voidReason = reason;
-      c.voidBy = USER;
+      c.voidBy = USER();
       c.updated = stamp();
-      c.updatedBy = USER;
-      log(c, "Void", `เหตุผล: ${reason} — อนุมัติโดย ${USER}`, "warn");
+      c.updatedBy = USER();
+      log(c, "Void", `เหตุผล: ${reason} — อนุมัติโดย ${USER()}`, "warn");
       audit(c, "Status changed", "status", from, "Void", "warn");
       commit(ctx, "Void ใบลดหนี้แล้ว", `${c.code} — ${reason}`, "danger");
     },
@@ -652,8 +654,8 @@ export function cnBulk(
           c.cancelReason = "ยกเลิกแบบกลุ่ม";
         }
         c.updated = now;
-        c.updatedBy = USER;
-        log(c, `${verb} (bulk)`, `ดำเนินการแบบกลุ่มโดย ${USER}`, action === "cancel" ? "warn" : "primary");
+        c.updatedBy = USER();
+        log(c, `${verb} (bulk)`, `ดำเนินการแบบกลุ่มโดย ${USER()}`, action === "cancel" ? "warn" : "primary");
         audit(c, "Status changed", "status", from, c.status, action === "cancel" ? "warn" : "primary");
       }
       commit(

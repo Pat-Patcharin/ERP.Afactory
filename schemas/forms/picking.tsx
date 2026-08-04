@@ -423,7 +423,7 @@ export const PICK_FORM: FormSchema<PickRow> = {
       /* Status follows the work actually recorded, not a dropdown. */
       status: anyPicked ? "In Progress" : assignedTo ? "Assigned" : "Waiting",
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -433,7 +433,7 @@ export const PICK_FORM: FormSchema<PickRow> = {
       (existing.history ??= []).unshift({
         t: "Picking task updated",
         d: "แก้ไขงานหยิบสินค้าจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -443,12 +443,12 @@ export const PICK_FORM: FormSchema<PickRow> = {
         ...patch,
         packRef: "",
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: patch.soRef ? `Created from ${patch.soRef}` : "Created",
             d: "สร้างงานหยิบสินค้าจากฟอร์ม",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },

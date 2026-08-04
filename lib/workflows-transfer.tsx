@@ -1,5 +1,6 @@
 "use client";
 
+import { actingUserName } from "./domain/admin";
 import { useState } from "react";
 import { fmt, stamp, today } from "./format";
 import { cn } from "./utils";
@@ -39,10 +40,11 @@ import { invalidateMovements } from "./domain/movement";
    Transfer Out / Transfer In without anyone writing a movement row.
    ============================================================ */
 
-const USER = "Admin";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 const num = (v: unknown) => Number(v) || 0;
 
-function log(t: Transfer, title: string, detail: string, kind = "primary", u = USER) {
+function log(t: Transfer, title: string, detail: string, kind = "primary", u = USER()) {
   (t.history ??= []).unshift({ t: title, d: detail, u, when: stamp(), kind });
 }
 
@@ -54,7 +56,7 @@ function audit(
   to: string,
   kind = "primary",
 ) {
-  (t.audit ??= []).unshift({ event, user: USER, when: stamp(), field, from, to, kind });
+  (t.audit ??= []).unshift({ event, user: USER(), when: stamp(), field, from, to, kind });
 }
 
 function commit(
@@ -75,7 +77,7 @@ const setStatus = (t: Transfer, to: string, event: string, kind = "primary") => 
   audit(t, event, "Status", t.status, to, kind);
   t.status = to;
   t.updated = stamp();
-  t.updatedBy = USER;
+  t.updatedBy = USER();
 };
 
 /* ---------- Shared modal fields ---------- */
@@ -335,7 +337,7 @@ export function trfApprove(rec: TrfRow, ctx: ActionCtx) {
     confirmText: "อนุมัติ",
     onConfirm: () => {
       t.approvalStatus = "Approved";
-      t.approvedBy = USER;
+      t.approvedBy = USER();
       t.approvedDate = stamp();
       setStatus(t, "Approved", "Approved");
       log(t, "Approved", "อนุมัติใบโอนย้าย", "primary");
@@ -534,7 +536,7 @@ export function trfDispatch(rec: TrfRow, ctx: ActionCtx) {
       (t.dispatches ??= []).unshift({
         code,
         date: today(),
-        by: USER,
+        by: USER(),
         qty: total,
         packages: Math.max(1, Math.ceil(total / 20)),
         vehicle,
@@ -642,7 +644,7 @@ export function trfReceive(rec: TrfRow, ctx: ActionCtx) {
         code,
         dispatchRef: t.dispatches?.[0]?.code ?? "",
         date: today(),
-        by: USER,
+        by: USER(),
         qty: total,
         short,
         damaged,
@@ -814,7 +816,7 @@ export function trfReverse(rec: TrfRow, ctx: ActionCtx) {
         transferDate: today(),
         status: "Completed",
         approvalStatus: "Approved",
-        approvedBy: USER,
+        approvedBy: USER(),
         approvedDate: stamp(),
         reason: `กลับรายการของ ${t.code}: ${reason}`,
         reference: t.code,
@@ -855,7 +857,7 @@ export function trfReverse(rec: TrfRow, ctx: ActionCtx) {
           {
             t: "Reversal posted",
             d: `กลับรายการของ ${t.code} — ${reason}`,
-            u: USER,
+            u: USER(),
             when: stamp(),
             kind: "danger",
           },
@@ -863,7 +865,7 @@ export function trfReverse(rec: TrfRow, ctx: ActionCtx) {
         audit: [
           {
             event: "Reversal posted",
-            user: USER,
+            user: USER(),
             when: stamp(),
             field: "Reversal Of",
             from: "—",
@@ -872,9 +874,9 @@ export function trfReverse(rec: TrfRow, ctx: ActionCtx) {
           },
         ],
         created: stamp(),
-        createdBy: USER,
+        createdBy: USER(),
         updated: stamp(),
-        updatedBy: USER,
+        updatedBy: USER(),
       };
 
       TRANSFERS.unshift(reversal);

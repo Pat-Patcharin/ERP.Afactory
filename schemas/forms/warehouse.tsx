@@ -514,7 +514,7 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
       },
       locations: build((s.locations ?? []) as TreeNodeState[], 0),
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     /* A new default warehouse demotes the previous one. */
@@ -529,7 +529,7 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
       existing.history.unshift({
         t: "Warehouse updated",
         d: "แก้ไขข้อมูลคลังสินค้าจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -548,12 +548,12 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
         },
         docs: [],
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: "Warehouse created",
             d: "สร้างคลังสินค้าเข้าระบบจากฟอร์ม",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },

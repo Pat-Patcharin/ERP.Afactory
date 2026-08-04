@@ -1,5 +1,6 @@
 "use client";
 
+import { actingUserName } from "./domain/admin";
 import { useRef, useState } from "react";
 import { stamp } from "./format";
 import { cn } from "./utils";
@@ -21,7 +22,8 @@ import { Badge, Barcode, Button, Switch } from "@/components/ui";
    it can be changed.
    ============================================================ */
 
-const USER = "Admin";
+/** The acting user, read per call — a stamp must name who actually did it. */
+const USER = () => actingUserName();
 
 /* ---------- Clipboard ---------- */
 
@@ -302,7 +304,7 @@ export function bcReportUnknown(ctx: ActionCtx, code: string) {
     onConfirm: () =>
       ctx.toast(
         "แจ้งบาร์โค้ดที่ไม่รู้จักแล้ว",
-        `${code} · ${USER} · ${stamp()} — Future support`,
+        `${code} · ${USER()} · ${stamp()} — Future support`,
         "info",
       ),
   });

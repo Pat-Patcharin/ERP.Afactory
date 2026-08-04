@@ -1,4 +1,5 @@
 import { printActions } from "@/lib/print/actions";
+import { can } from "@/lib/domain/admin";
 import {
   SALES_REQUESTS,
   availabilityFor,
@@ -174,15 +175,19 @@ export const SR_LIST: ListSchema<SrRow> = {
     if (sr.status === "Draft")
       acts.push({ label: "Submit for Approval", icon: "send", run: (r) => srSubmit(r, ctx) });
 
-    if (sr.status === "Submitted") {
+    /* The rep raises and submits; only an approver sees the rest. A button
+       nobody may press is worse than no button — it reads as a bug. */
+    const mayApprove = can("sales-request", "approve");
+
+    if (sr.status === "Submitted" && mayApprove) {
       acts.push({ label: "Approve", icon: "checkCircle", run: (r) => srApprove(r, ctx) });
       acts.push({ label: "Reject", icon: "xCircle", danger: true, run: (r) => srReject(r, ctx) });
     }
 
-    if (sr.isConvertible)
+    if (sr.isConvertible && mayApprove)
       acts.push({ label: "Convert to Sales Order", icon: "salesOrder", run: (r) => srConvert(r, ctx) });
 
-    if (sr.status === "Approved" && !sr.soRef)
+    if (sr.status === "Approved" && !sr.soRef && mayApprove)
       acts.push({ label: "Reopen as Draft", icon: "refresh", run: (r) => srReopen(r, ctx) });
 
     if (sr.quotationRef)
@@ -494,13 +499,14 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
     const acts: RowAction<SrRow>[] = [];
     if (sr.status === "Draft")
       acts.push({ label: "Submit for Approval", icon: "send", run: () => srSubmit(sr, ctx) });
-    if (sr.status === "Submitted") {
+    const mayApprove = can("sales-request", "approve");
+    if (sr.status === "Submitted" && mayApprove) {
       acts.push({ label: "Approve", icon: "checkCircle", run: () => srApprove(sr, ctx) });
       acts.push({ label: "Reject", icon: "xCircle", danger: true, run: () => srReject(sr, ctx) });
     }
-    if (sr.isConvertible)
+    if (sr.isConvertible && mayApprove)
       acts.push({ label: "Convert to Sales Order", icon: "salesOrder", run: () => srConvert(sr, ctx) });
-    if (sr.status === "Approved" && !sr.soRef)
+    if (sr.status === "Approved" && !sr.soRef && mayApprove)
       acts.push({ label: "Reopen as Draft", icon: "refresh", run: () => srReopen(sr, ctx) });
     acts.push({
       label: "Print Request",

@@ -436,7 +436,7 @@ export const PACK_FORM: FormSchema<PackRow> = {
       packages,
       status: anyPacked ? "In Progress" : "Waiting",
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -445,7 +445,7 @@ export const PACK_FORM: FormSchema<PackRow> = {
       (existing.history ??= []).unshift({
         t: "Packing task updated",
         d: "แก้ไขงานแพ็คจากฟอร์ม",
-        u: FORM_USER,
+        u: FORM_USER(),
         when: now,
         kind: "primary",
       });
@@ -455,12 +455,12 @@ export const PACK_FORM: FormSchema<PackRow> = {
         ...patch,
         doRef: "",
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
         history: [
           {
             t: patch.pickRef ? `Created from ${patch.pickRef}` : "Created",
             d: "สร้างงานแพ็คจากฟอร์ม",
-            u: FORM_USER,
+            u: FORM_USER(),
             when: now,
             kind: "primary",
           },

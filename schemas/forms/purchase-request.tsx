@@ -441,7 +441,7 @@ export const PR_FORM: FormSchema<PrRow> = {
       note: String(s.note ?? ""),
       items,
       updated: now,
-      updatedBy: FORM_USER,
+      updatedBy: FORM_USER(),
     };
 
     if (existing) {
@@ -453,7 +453,7 @@ export const PR_FORM: FormSchema<PrRow> = {
         status: "Draft",
         approvals: [],
         created: now,
-        createdBy: FORM_USER,
+        createdBy: FORM_USER(),
       } as unknown as PrRow);
     }
 
