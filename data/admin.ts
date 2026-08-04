@@ -50,7 +50,8 @@ export const MODULES: ModuleDef[] = [
   { key: "business-partner", label: "Business Partner", group: "Master Data", href: "/m/business-partner" },
   { key: "warehouse", label: "Warehouse", group: "Master Data", href: "/m/warehouse" },
   { key: "sales-rep", label: "Sales Rep", group: "Master Data", href: "/m/sales-rep" },
-  { key: "price-list", label: "Price List", group: "Master Data", href: "/m/price-list" },
+  { key: "price-list", label: "Price Policy", group: "Master Data", href: "/m/price-list" },
+  { key: "price-list-master", label: "Price List Master", group: "Master Data", href: "/m/price-list-master", actions: ["view"] },
   { key: "pricing", label: "Product Pricing", group: "Master Data", href: "/pricing" },
 
   { key: "purchase-workspace", label: "Purchase Workspace", group: "Purchase", href: "/purchase", actions: ["view"] },

@@ -36,7 +36,8 @@ export const NAV: NavGroup[] = [
       { label: "Product", href: "/m/product", icon: "product" },
       { label: "Warehouse", href: "/m/warehouse", icon: "warehouse" },
       { label: "Sales Rep", href: "/m/sales-rep", icon: "salesRep" },
-      { label: "Price List", href: "/m/price-list", icon: "priceList" },
+      { label: "Price Policy", href: "/m/price-list", icon: "priceList" },
+      { label: "Price List Master", href: "/m/price-list-master", icon: "pricing" },
       { label: "Product Pricing", href: "/pricing", icon: "pricing" },
       {
         label: "Unit of Measure",

@@ -31,6 +31,7 @@ import { cycleCountForm } from "./forms/cycle-count";
 import { lotTrackingSchemas } from "./lot-tracking";
 import { serialTrackingSchemas } from "./serial-tracking";
 import { scanHistorySchemas } from "./scan-history";
+import { priceListMasterSchemas } from "./price-list-master";
 import {
   adminAuditSchemas,
   adminRoleSchemas,
@@ -53,6 +54,8 @@ export const REGISTRY: Record<string, EntitySchemas<any>> = {
   warehouse: warehouseSchemas,
   "sales-rep": salesRepSchemas,
   "price-list": priceListSchemas,
+  /* Catalogue price per SKU. Read-only: the file is generated. */
+  "price-list-master": priceListMasterSchemas,
 
   /* Purchase-to-stock documents */
   "purchase-request": prSchemas,
