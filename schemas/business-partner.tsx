@@ -1210,9 +1210,18 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 value: p ? `${money0(p.minValue)} ${s.currency}` : DASH,
               },
               { label: "Receiving Warehouse", value: p?.warehouse ?? DASH },
+              /* Classification folded in — three fields never justified a
+                 card of their own, and they describe the same supplier. */
+              { label: "Supplier Group", value: b.cls.supGroup || DASH },
+              { label: "Industry", value: b.cls.industry || DASH },
+              { label: "Roles", value: roleBadges(b) },
             ],
           },
 
+          ...financeBlocks(b, ctx),
+
+          /* Last: the longest block on the tab, and the one a buyer scrolls
+             to deliberately rather than reads on the way past. */
           {
             type: "table",
             title: `Supplier Items (${items.length})`,
@@ -1261,19 +1270,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               },
             ],
           },
-
-          {
-            type: "fields",
-            title: "Supplier Classification",
-            cols: 2,
-            items: [
-              { label: "Supplier Group", value: b.cls.supGroup || DASH },
-              { label: "Industry", value: b.cls.industry || DASH },
-              { label: "Roles", value: roleBadges(b) },
-            ],
-          },
-
-          ...financeBlocks(b, ctx),
         ];
       },
     },

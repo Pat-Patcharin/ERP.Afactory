@@ -1048,6 +1048,37 @@ describe("BP Master — detail tabs", () => {
     ]);
   });
 
+  it("orders the Supplier tab with the item table last", () => {
+    /* The item table is the longest block on the tab and the one a buyer
+       scrolls to deliberately — the terms and the bank read first. */
+    const titles = titlesOf(
+      detail.tabs.find((t) => t.key === "supplier")!.blocks(bp(BOTH), makeCtx()),
+    );
+
+    expect(titles[0]).toBe("Supplier Information");
+    expect(titles.at(-1)!.startsWith("Supplier Items")).toBe(true);
+    expect(titles.indexOf("Default Bank Account")).toBeLessThan(
+      titles.findIndex((t) => t.startsWith("Supplier Items")),
+    );
+  });
+
+  it("folds the supplier classification into Supplier Information", () => {
+    const blocks = detail.tabs.find((t) => t.key === "supplier")!.blocks(bp(BOTH), makeCtx());
+    const titles = titlesOf(blocks);
+
+    /* Three fields never justified a card of their own. */
+    expect(titles).not.toContain("Supplier Classification");
+
+    const info = blocks.find(
+      (b) => b && (b as { title?: string }).title === "Supplier Information",
+    ) as { items: ({ label: string } | null | false)[] };
+    const labels = info.items.filter(Boolean).map((i) => (i as { label: string }).label);
+
+    for (const l of ["Supplier Type", "Supplier Group", "Industry", "Roles"]) {
+      expect(labels, l).toContain(l);
+    }
+  });
+
   it("keeps the supplier history to purchase orders and nothing else", () => {
     /* Goods receipts and the product breakdown were cut: this tab answers
        "what have we ordered from them", and the receiving screens own the
