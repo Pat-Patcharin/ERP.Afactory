@@ -1,6 +1,5 @@
 import type { EntitySchemas, RecordBase } from "@/lib/types";
 import { productSchemas } from "./product";
-import { categorySchemas } from "./category";
 import { bpSchemas } from "./business-partner";
 import { warehouseSchemas } from "./warehouse";
 import { salesRepSchemas } from "./sales-rep";
@@ -50,7 +49,6 @@ import {
 export const REGISTRY: Record<string, EntitySchemas<any>> = {
   /* Master data */
   product: productSchemas,
-  category: categorySchemas,
   "business-partner": bpSchemas,
   warehouse: warehouseSchemas,
   "sales-rep": salesRepSchemas,

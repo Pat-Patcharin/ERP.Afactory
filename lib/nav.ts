@@ -25,15 +25,18 @@ export const NAV: NavGroup[] = [
     label: "Master Data",
     /* Ordered by how often the business opens them, not alphabetically:
        partners first, then the item master, then where stock lives, then
-       who sells it and at what price. Category, Product Pricing and Unit of
-       Measure are supporting masters and trail the five. */
+       who sells it and at what price. Product Pricing and Unit of Measure
+       are supporting masters and trail the five.
+
+       Category has no screen of its own — a category is picked while
+       creating a product, and a master list for a plain option set was
+       more navigation than it was worth. */
     items: [
       { label: "Business Partner", href: "/m/business-partner", icon: "partner" },
       { label: "Product", href: "/m/product", icon: "product" },
       { label: "Warehouse", href: "/m/warehouse", icon: "warehouse" },
       { label: "Sales Rep", href: "/m/sales-rep", icon: "salesRep" },
       { label: "Price List", href: "/m/price-list", icon: "priceList" },
-      { label: "Category", href: "/m/category", icon: "category" },
       { label: "Product Pricing", href: "/pricing", icon: "pricing" },
       {
         label: "Unit of Measure",

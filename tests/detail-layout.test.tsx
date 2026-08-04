@@ -8,7 +8,9 @@ import type { DetailSchema, RecordBase } from "@/lib/types";
 import { REGISTRY } from "@/schemas/registry";
 import { bpSchemas } from "@/schemas/business-partner";
 import { getBP } from "@/lib/domain/partner";
-import { USERS } from "@/data/admin";
+import { MODULES, USERS } from "@/data/admin";
+import { NAV_INDEX } from "@/lib/nav";
+import { PRODUCT_FORM } from "@/schemas/forms/product";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 
 /* ============================================================
@@ -310,6 +312,24 @@ describe("Detail layout — reusable by every master", () => {
     expect(hidden.container.textContent).toBe("••••");
     hidden.unmount();
     resetCurrentUser();
+  });
+
+  it("has no Category master — it is a field on Product, not a screen", () => {
+    /* Removing a module must remove it everywhere, or the sidebar links to
+       a 404 and the permission matrix grants access to nothing. */
+    expect(REGISTRY["category"]).toBeUndefined();
+    expect(NAV_INDEX.map((n) => n.label)).not.toContain("Category");
+    expect(MODULES.map((m) => m.key)).not.toContain("category");
+
+    /* The category itself is still chosen on the product form. */
+    const cat = PRODUCT_FORM.steps
+      .flatMap((st) => st.blocks(PRODUCT_FORM.blank()))
+      .flatMap((b) => (b && "fields" in b ? b.fields : [b]))
+      .find((f) => f && "path" in f && f.path === "cat")!;
+
+    expect(cat, "product form still asks for a category").toBeDefined();
+    expect((cat as { required?: boolean }).required).toBe(true);
+    expect((cat as { options?: unknown[] }).options!.length).toBeGreaterThan(0);
   });
 
   it("keeps every tab key unique within a schema", () => {

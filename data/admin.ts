@@ -47,7 +47,6 @@ export const MODULES: ModuleDef[] = [
   { key: "dashboard", label: "Dashboard", group: "General", href: "/dashboard", actions: ["view"] },
 
   { key: "product", label: "Product", group: "Master Data", href: "/m/product" },
-  { key: "category", label: "Category", group: "Master Data", href: "/m/category" },
   { key: "business-partner", label: "Business Partner", group: "Master Data", href: "/m/business-partner" },
   { key: "warehouse", label: "Warehouse", group: "Master Data", href: "/m/warehouse" },
   { key: "sales-rep", label: "Sales Rep", group: "Master Data", href: "/m/sales-rep" },
