@@ -5,6 +5,7 @@ import {
   whTreeNodes,
   type WarehouseRow,
 } from "@/lib/domain/warehouse";
+import { warehouseReceipts } from "@/lib/domain/movement";
 import { WH_TEMPS, WH_TYPES } from "@/data/warehouses";
 import { STATUS_TONE, WH_TYPE_TONE, tone } from "@/lib/badges";
 import { canViewField } from "@/lib/domain/admin";
@@ -231,36 +232,17 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
     tags: [w.nameTh, w.rules.temp, w.addr.prov].filter(Boolean),
   }),
 
-  kpis: (w) => [
-    { icon: "box", label: "Total SKU", value: fmt(w.inv.sku), sub: "รายการ", goTab: "inventory" },
-    {
-      icon: "layers",
-      label: "Utilization",
-      value: `${w.util}%`,
-      sub: `${fmt(w.rules.curCap)}/${fmt(w.rules.maxCap)} ${w.rules.capUnit}`,
-      goTab: "rules",
-    },
-    {
-      icon: "tag",
-      label: "Bin Locations",
-      value: fmt(w.binCount),
-      sub: `${w.zoneCount} zones`,
-      goTab: "locations",
-    },
-    {
-      icon: "truck",
-      label: "Manager",
-      value: w.manager || DASH,
-      sub: w.phone || "",
-      wide: true,
-      goTab: "overview",
-    },
-  ],
+  /* No KPI strip. The stock figures have a tab of their own and the header
+     is for identifying the warehouse, not for reading it. */
+  kpis: () => [],
 
   tabs: [
     {
       key: "overview",
       label: "Overview",
+      /* Everything a user reads about a warehouse rather than configures:
+         who it is, where it is, and what it may hold. The switches that
+         decide how it behaves are maintenance, and live in the edit form. */
       blocks: (w) => [
         {
           type: "fields",
@@ -273,63 +255,13 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
             { label: "ชื่อภาษาไทย", value: w.nameTh },
             { label: "Warehouse Type", value: <Badge tone={tone(WH_TYPE_TONE, w.type)}>{w.type}</Badge> },
             { label: "Default Warehouse", value: yesNo(w.config.isDefault) },
-            { label: "Warehouse Manager", value: w.manager || DASH },
             { label: "Phone", value: w.phone || DASH },
-            { label: "Email", value: w.email || DASH },
           ],
         },
         { type: "note", title: "Description", text: w.desc || DASH },
         {
           type: "fields",
-          title: "System Information",
-          cols: 2,
-          items: [
-            { label: "Created Date", value: w.created, muted: true },
-            { label: "Created By", value: w.createdBy, muted: true },
-            { label: "Last Updated", value: w.updated, muted: true },
-            { label: "Updated By", value: w.updatedBy, muted: true },
-          ],
-        },
-      ],
-    },
-
-    {
-      key: "config",
-      label: "Configuration",
-      blocks: (w) => [
-        {
-          type: "flags",
-          title: "Allowed Transactions",
-          cols: 2,
-          items: [
-            { label: "Allow Purchase Receipt", value: w.config.purchase },
-            { label: "Allow Sales Shipment", value: w.config.sales },
-            { label: "Allow Stock Transfer", value: w.config.transfer },
-            { label: "Allow Production", value: w.config.production },
-            { label: "Allow Returns", value: w.config.returns },
-            { label: "Allow Negative Stock", value: w.config.negative },
-          ],
-        },
-        {
-          type: "fields",
-          title: "Valuation",
-          cols: 2,
-          items: [
-            { label: "Default Warehouse", value: yesNo(w.config.isDefault) },
-            { label: "Inventory Valuation Method", value: w.config.valuation },
-            { label: "Default Cost Method", value: w.config.costing },
-          ],
-        },
-      ],
-    },
-
-    {
-      key: "address",
-      label: "Address",
-      blocks: (w) => [
-        {
-          type: "fields",
-          title: "Primary Address",
+          title: "Address",
           cols: 2,
           items: [
             { label: "Address", value: w.addr.line, span: true },
@@ -340,6 +272,24 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
             { label: "Country", value: w.addr.country },
             { label: "Latitude", value: w.addr.lat || DASH },
             { label: "Longitude", value: w.addr.lng || DASH },
+          ],
+        },
+        {
+          type: "fields",
+          title: "Storage Conditions",
+          cols: 2,
+          items: [
+            {
+              label: "Temperature",
+              value: (
+                <Badge tone={w.rules.temp === "Ambient" ? "success" : "info"}>{w.rules.temp}</Badge>
+              ),
+            },
+            { label: "Humidity Control", value: yesNo(w.rules.humidity) },
+            { label: "Hazardous Storage", value: yesNo(w.rules.hazardous) },
+            { label: "Controlled Substance", value: yesNo(w.rules.controlled) },
+            { label: "Secure Storage", value: w.rules.secure },
+            { label: "Remarks", value: w.rules.remarks || DASH, span: true },
           ],
         },
       ],
@@ -410,52 +360,6 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
             "โครงสร้าง Location Path พร้อมรองรับแล้ว — ฟีเจอร์จะเปิดใช้งานใน Phase ถัดไป",
         },
       ],
-    },
-
-    {
-      key: "rules",
-      label: "Storage Rules",
-      blocks: (w) => {
-        const r = w.rules;
-        const high = w.util >= 85;
-        return [
-          high && {
-            type: "alert",
-            tone: "warn",
-            title: "พื้นที่จัดเก็บใกล้เต็ม",
-            message: `ใช้งานแล้ว ${w.util}% (${fmt(r.curCap)}/${fmt(r.maxCap)} ${r.capUnit})`,
-          },
-          {
-            type: "cards",
-            title: "Capacity",
-            cols: 3,
-            items: [
-              { label: "Maximum Capacity", value: fmt(r.maxCap), unit: r.capUnit, tone: "accent" },
-              { label: "Current Capacity", value: fmt(r.curCap), unit: r.capUnit },
-              { label: "Utilization", value: `${w.util}%`, tone: high ? "warn" : undefined },
-            ],
-          },
-          {
-            type: "fields",
-            title: "Storage Conditions",
-            cols: 2,
-            items: [
-              {
-                label: "Temperature",
-                value: (
-                  <Badge tone={r.temp === "Ambient" ? "success" : "info"}>{r.temp}</Badge>
-                ),
-              },
-              { label: "Capacity Unit", value: r.capUnit },
-              { label: "Humidity Control", value: yesNo(r.humidity) },
-              { label: "Hazardous Storage", value: yesNo(r.hazardous) },
-              { label: "Controlled Substance", value: yesNo(r.controlled) },
-              { label: "Secure Storage", value: r.secure },
-            ],
-          },
-          { type: "note", title: "Remarks", text: r.remarks || DASH },
-        ];
-      },
     },
 
     {
@@ -541,20 +445,62 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
 
     {
       key: "history",
-      label: "History",
-      blocks: (w) => [
-        {
-          type: "timeline",
-          title: "Activity",
-          items: w.history.map((e) => ({
-            title: e.t,
-            detail: e.d,
-            user: e.u,
-            when: e.when,
-            kind: e.kind,
-          })),
-        },
-      ],
+      label: "Receiving History",
+      /* What actually arrived here, read from the same ledger Stock Card
+         shows — not the record's own edit log. */
+      blocks: (w, ctx) => {
+        const rows = warehouseReceipts(w.code);
+        const qty = rows.reduce((t, m) => t + m.qtyIn, 0);
+
+        return [
+          {
+            type: "cards",
+            title: "Goods Received",
+            cols: 3,
+            items: [
+              { label: "Receipts", value: fmt(rows.length), tone: "accent" },
+              { label: "Quantity In", value: fmt(qty) },
+              { label: "Last Receipt", value: rows[0]?.date || DASH },
+            ],
+          },
+          {
+            type: "table",
+            title: `Goods Received (${rows.length})`,
+            rows: rows.slice(0, 40),
+            empty: "ยังไม่มีสินค้ารับเข้าคลังนี้",
+            cols: [
+              { key: "when", label: "Date and Time", cell: (m) => m.when },
+              { key: "code", label: "Movement", muted: true, cell: (m) => m.code },
+              { key: "type", label: "Movement Type", cell: (m) => m.type },
+              {
+                key: "sourceDoc",
+                label: "Source Document",
+                cell: (m) =>
+                  m.sourceDoc && m.sourceModule ? (
+                    <button
+                      onClick={() => ctx.openEntity(m.sourceModule, m.sourceDoc)}
+                      className="font-medium text-info hover:underline"
+                    >
+                      {m.sourceDoc}
+                    </button>
+                  ) : (
+                    m.sourceDoc || DASH
+                  ),
+              },
+              {
+                key: "product",
+                label: "Product",
+                cell: (m) => `${m.product} · ${m.productName}`,
+              },
+              { key: "lot", label: "Lot", muted: true, cell: (m) => m.lot || DASH },
+              { key: "serial", label: "Serial", muted: true, cell: (m) => m.serial || DASH },
+              { key: "toLoc", label: "Location", muted: true, cell: (m) => m.toLoc || DASH },
+              { key: "qtyIn", label: "Qty In", align: "right", cell: (m) => fmt(m.qtyIn) },
+              { key: "user", label: "User", muted: true, cell: (m) => m.user },
+            ],
+          },
+        ];
+      },
     },
   ],
 };

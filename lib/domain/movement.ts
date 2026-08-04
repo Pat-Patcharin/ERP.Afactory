@@ -1271,3 +1271,14 @@ export const getProductCard = (code: string) =>
 /** Reservations and incoming come from Stock Inquiry — one source, not two. */
 export const cardReservations = productReservations;
 export const cardIncoming = productIncoming;
+
+/**
+ * What actually arrived at one warehouse, newest first. A movement counts as
+ * a receipt when it added quantity there, whatever document caused it: a
+ * goods receipt, a transfer in, a return or a positive adjustment.
+ *
+ * It lives here rather than in the warehouse module because the ledger reads
+ * the warehouse master, and the dependency must not run both ways.
+ */
+export const warehouseReceipts = (code: string): MovementRow[] =>
+  movementRows().filter((m) => m.warehouse === code && m.qtyIn > 0);
