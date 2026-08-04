@@ -8,6 +8,8 @@ import type { DetailSchema, RecordBase } from "@/lib/types";
 import { REGISTRY } from "@/schemas/registry";
 import { bpSchemas } from "@/schemas/business-partner";
 import { getBP } from "@/lib/domain/partner";
+import { USERS } from "@/data/admin";
+import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 
 /* ============================================================
    ENTERPRISE DETAIL LAYOUT regression suite.
@@ -251,7 +253,7 @@ describe("Detail layout — reusable by every master", () => {
   it("keeps the record image off the list and on the detail page", () => {
     /* A thumbnail is decorative at list scale and costs a column of width
        users scan past; the detail header is where it identifies the record. */
-    for (const key of ["product", "business-partner"]) {
+    for (const key of ["product", "business-partner", "warehouse"]) {
       const schemas = REGISTRY[key];
       const code = schemas.list.columns.find((c) => c.key === "code")!;
       const rec = schemas.list.source()[0];
@@ -264,6 +266,50 @@ describe("Detail layout — reusable by every master", () => {
       /* The detail identity still carries it. */
       expect(schemas.detail.identity(rec).image, `${key} detail image`).toBeTruthy();
     }
+  });
+
+  it("keeps the warehouse list to what is in the warehouse", () => {
+    /* Capacity and utilisation describe the building; a list of warehouses
+       is opened to compare what is in them. */
+    const cols = REGISTRY["warehouse"].list.columns;
+    const keys = cols.map((c) => c.key);
+
+    expect(keys).not.toContain("manager");
+    expect(keys).not.toContain("cap");
+    expect(keys).not.toContain("util");
+
+    expect(keys).toContain("qty");
+    expect(keys).toContain("value");
+    expect(cols.find((c) => c.key === "value")!.label).toBe("Inventory Value");
+
+    /* Manager is off the table but still findable. */
+    expect(REGISTRY["warehouse"].list.searchFields).toContain("manager");
+  });
+
+  it("sorts warehouses on the real inventory value, not its rendering", () => {
+    const col = REGISTRY["warehouse"].list.columns.find((c) => c.key === "value")!;
+    const rows = REGISTRY["warehouse"].list.source();
+    expect(col.sortValue).toBeDefined();
+    for (const r of rows) {
+      expect(col.sortValue!(r), r.code).toBe(r.inv.value);
+    }
+  });
+
+  it("hides the inventory value from a role that may not see it", () => {
+    const col = REGISTRY["warehouse"].list.columns.find((c) => c.key === "value")!;
+    const row = REGISTRY["warehouse"].list.source()[0];
+
+    const shown = render(<>{col.cell(row)}</>);
+    expect(shown.container.textContent).not.toBe("••••");
+    shown.unmount();
+
+    /* Warehouse Staff have no inventoryValue field permission. */
+    const staff = USERS.find((u) => u.roleCode === "WAREHOUSE_STAFF" && u.status === "Active")!;
+    setCurrentUser(staff.code);
+    const hidden = render(<>{col.cell(row)}</>);
+    expect(hidden.container.textContent).toBe("••••");
+    hidden.unmount();
+    resetCurrentUser();
   });
 
   it("keeps every tab key unique within a schema", () => {

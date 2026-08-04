@@ -7,9 +7,10 @@ import {
 } from "@/lib/domain/warehouse";
 import { WH_TEMPS, WH_TYPES } from "@/data/warehouses";
 import { STATUS_TONE, WH_TYPE_TONE, tone } from "@/lib/badges";
+import { canViewField } from "@/lib/domain/admin";
 import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
 import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
-import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
+import { Badge, CellSub } from "@/components/ui";
 import { Icon } from "@/lib/icons";
 import { WAREHOUSE_FORM } from "./forms/warehouse";
 
@@ -74,15 +75,13 @@ export const WAREHOUSE_LIST: ListSchema<WarehouseRow> = {
 
   columns: [
     {
+      /* No thumbnail: the icon is decorative at list scale and the code is
+         what a user scans for. It still identifies the record on the detail
+         page, where there is room for it. */
       key: "code",
       label: "Warehouse Code",
       sortable: true,
-      cell: (w) => (
-        <CellMedia>
-          <Thumb>{w.icon}</Thumb>
-          <span className="font-medium">{w.code}</span>
-        </CellMedia>
-      ),
+      cell: (w) => <span className="font-medium">{w.code}</span>,
     },
     {
       key: "name",
@@ -100,7 +99,6 @@ export const WAREHOUSE_LIST: ListSchema<WarehouseRow> = {
       label: "Warehouse Type",
       cell: (w) => <Badge tone={tone(WH_TYPE_TONE, w.type)}>{w.type}</Badge>,
     },
-    { key: "manager", label: "Manager", muted: true, cell: (w) => w.manager || DASH },
     {
       key: "temp",
       label: "Temperature",
@@ -113,23 +111,41 @@ export const WAREHOUSE_LIST: ListSchema<WarehouseRow> = {
           <Badge tone="info">{w.rules.temp}</Badge>
         ),
     },
+    /* What is actually in the warehouse, in quantity and in money. Capacity
+       and utilisation describe the building; these describe the business,
+       and are what a list of warehouses is usually opened to compare. */
     {
-      key: "cap",
-      label: "Capacity",
+      key: "qty",
+      label: "Stock Qty",
       align: "right",
       sortable: true,
-      sortValue: (w) => w.rules.maxCap,
-      cell: (w) => `${fmt(w.rules.maxCap)} ${w.rules.capUnit}`,
+      sortValue: (w) => w.inv.qty,
+      cell: (w) => <span className="tnum">{fmt(w.inv.qty)}</span>,
     },
     {
-      key: "util",
-      label: "Current Stock %",
+      key: "value",
+      label: "Inventory Value",
       align: "right",
       sortable: true,
-      sortValue: (w) => w.util,
-      cell: (w) => (
-        <UtilBar pct={w.util} tone={w.util >= 85 ? "high" : w.util >= 60 ? "mid" : undefined} />
-      ),
+      sortValue: (w) => w.inv.value,
+      cell: (w) =>
+        /* Layer 2 of the permission framework: a role without inventory-value
+           sight gets no figure, not a masked one. */
+        canViewField("inventoryValue") ? (
+          <span className="tnum font-medium">{money0(w.inv.value)}</span>
+        ) : (
+          <span className="text-ink-3">••••</span>
+        ),
+    },
+    {
+      key: "sku",
+      label: "SKU",
+      align: "right",
+      muted: true,
+      defaultHidden: true,
+      sortable: true,
+      sortValue: (w) => w.inv.sku,
+      cell: (w) => fmt(w.inv.sku),
     },
     {
       key: "status",
