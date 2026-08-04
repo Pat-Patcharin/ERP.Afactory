@@ -93,6 +93,30 @@ export interface Product {
     kind: string;
   }[];
   low?: boolean;
+
+  /**
+   * Present only on products materialised from the price list master, and
+   * the record of everything that file knew and this shape has nowhere to
+   * put. Absent on the prototype's own eight records.
+   */
+  priceRef?: {
+    /** Row key in the price list master — the file's own address for it. */
+    row: string;
+    /** Sheet the row was read from. */
+    sheet: string;
+    /** OK | REVIEW | PENDING_COST | NO_PRICE, straight from the file. */
+    priceStatus: string;
+    /** The file had no product code; `code` carries the row key instead. */
+    codePending: boolean;
+    /** Other price rows using this same code. */
+    conflicts: string[];
+    /** Those rows name a different product — one code, two things. */
+    conflictClash: boolean;
+    /** Floor below which a quote needs approval. Never a sellable tier. */
+    floor: number | null;
+    gpPrivate: number | null;
+    sellable: boolean;
+  };
 }
 
 export interface ProductClassification {

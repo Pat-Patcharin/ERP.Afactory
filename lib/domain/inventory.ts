@@ -8,7 +8,7 @@ import {
   type InvHealthMetric,
 } from "@/data/inventory";
 import type { BadgeTone } from "@/lib/types";
-import { PRODUCTS, productStock } from "./product";
+import { PRODUCTS, productStock, stockedProducts } from "./product";
 import { WAREHOUSES } from "./warehouse";
 import { GOODS_RECEIPTS, QC_INSPECTIONS, PUTAWAY_TASKS } from "./inbound";
 import { PICKING_TASKS, PACKING_TASKS } from "./outbound";
@@ -132,7 +132,10 @@ export function invStockHealth(): StockHealthRow[] {
     Healthy: 3,
   };
 
-  return PRODUCTS.map((p) => {
+  /* Stocked products only. The price list master contributes hundreds of
+     catalogue rows the warehouse has never held; listing them here would
+     read as "out of stock" when the truth is "no stock record yet". */
+  return stockedProducts().map((p) => {
     const s = productStock(p.code)!;
     const stocks = p.stocks ?? [];
     const top = [...stocks].sort((a, b) => b.avail - a.avail)[0];
@@ -255,7 +258,7 @@ export function invSnapshot(): InvSnapshot {
   return {
     warehouses: active.length,
     bins: sum(active, (w) => w.binCount),
-    skus: PRODUCTS.length,
+    skus: stockedProducts().length,
     onHand: sum(active, (w) => w.inv.qty),
     reserved: sum(active, (w) => w.inv.reserved),
     available: sum(active, (w) => w.inv.available),

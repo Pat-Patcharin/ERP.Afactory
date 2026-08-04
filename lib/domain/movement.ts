@@ -8,7 +8,7 @@ import {
   type MovementTypeDef,
 } from "@/data/movements";
 import type { BadgeTone, RecordBase } from "@/lib/types";
-import { PRODUCTS } from "./product";
+import { PRODUCTS, isStocked, stockedProducts } from "./product";
 import { WAREHOUSES } from "./warehouse";
 import { parseStamp } from "./inventory";
 import { GOODS_RECEIPTS, PUTAWAY_TASKS, QC_INSPECTIONS } from "./inbound";
@@ -653,7 +653,9 @@ function buildLedger(): MovementRow[] {
   const rows: MovementRow[] = [];
   let seq = 100;
 
-  for (const p of PRODUCTS) {
+  /* Stocked products only — a movement is something the warehouse did, and
+     a catalogue product carrying nothing but a price has never moved. */
+  for (const p of stockedProducts()) {
     const events = [...realEvents(p.code), ...syntheticEvents(p.code, rand)]
       .filter((e) => MOVEMENT_TYPE_MAP.has(e.type))
       .sort((a, b) => a.ts - b.ts);
@@ -1235,33 +1237,37 @@ export interface ProductCardRow extends RecordBase {
 }
 
 /** One row per product — the entry point to a full stock card. */
-const buildCards = (): ProductCardRow[] =>
-  PRODUCTS.map((p) => {
-  const ledger = productLedger(p.code);
-  const s = ledgerSummary(ledger);
-  const t = productTotals(p.code);
-  const last = ledger[ledger.length - 1];
-  return {
-    code: p.code,
-    name: p.name,
-    barcode: p.barcode,
-    icon: p.icon,
-    cat: p.cat,
-    brand: p.brand,
-    unit: p.unit,
-    onHand: t.onHand,
-    available: t.available,
-    reserved: t.reserved,
-    qcHold: t.qcHold,
-    returnHold: t.returnHold,
-    damaged: t.damaged,
-    movements: s.count,
-    totalIn: s.totalIn,
-    totalOut: s.totalOut,
-    lastMovement: last?.when ?? "—",
-    lastType: last?.type ?? "—",
-  };
-});
+const buildCards = (): ProductCardRow[] => {
+  /* A stock card is a warehouse record, so it exists for a product the
+     warehouse has held or moved — not for every line in the price list. */
+  const moved = new Set(movementRows().map((m) => m.product));
+  return PRODUCTS.filter((p) => isStocked(p) || moved.has(p.code)).map((p) => {
+    const ledger = productLedger(p.code);
+    const s = ledgerSummary(ledger);
+    const t = productTotals(p.code);
+    const last = ledger[ledger.length - 1];
+    return {
+      code: p.code,
+      name: p.name,
+      barcode: p.barcode,
+      icon: p.icon,
+      cat: p.cat,
+      brand: p.brand,
+      unit: p.unit,
+      onHand: t.onHand,
+      available: t.available,
+      reserved: t.reserved,
+      qcHold: t.qcHold,
+      returnHold: t.returnHold,
+      damaged: t.damaged,
+      movements: s.count,
+      totalIn: s.totalIn,
+      totalOut: s.totalOut,
+      lastMovement: last?.when ?? "—",
+      lastType: last?.type ?? "—",
+    };
+  });
+};
 
 export const productCards = (): ProductCardRow[] => (cardCache ??= buildCards());
 

@@ -17,7 +17,9 @@ import {
   SUPPLIER_ITEMS,
   SUPPLIER_SEED,
 } from "@/data/partner-profiles";
-import { PRODUCTS } from "@/data/products";
+/* The decorated master, not the raw file: the price list master folds in
+   there, so a supplier item naming a catalogue product still finds its unit. */
+import { PRODUCTS } from "./product";
 import { DASH, daysUntil } from "@/lib/format";
 
 /* ============================================================

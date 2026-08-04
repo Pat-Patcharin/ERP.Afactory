@@ -1,5 +1,6 @@
 import { DEFAULT_CLASS, DETAIL, PRODUCTS as RAW, type Product } from "@/data/products";
 import { DASH, daysUntil } from "@/lib/format";
+import { catalogBuild } from "./product-catalog";
 
 /** Per-product detail payload — the shape the API will eventually return. */
 export type ProductDetail = (typeof DETAIL)[string];
@@ -107,7 +108,7 @@ function detailFor(p: Product): ProductDetail {
       status: "Active",
     })),
     regRows:
-      p.reg.no === "อยู่ระหว่างยื่นคำขอ"
+      !p.reg.no || p.reg.no === DASH || p.reg.no === "อยู่ระหว่างยื่นคำขอ"
         ? []
         : [
             {
@@ -162,11 +163,49 @@ export function decorateProducts() {
   }
 }
 
+/**
+ * Fold the price list master into the product master, once.
+ *
+ * The two were separate catalogues of the same business — eight prototype
+ * records here, 807 priced rows there. Merging happens at load rather than
+ * in the data file so the price file stays generated and hand-editing it
+ * stays unnecessary: regenerate the file and Product Master follows.
+ *
+ * A price row never overwrites a prototype record. Codes that already exist
+ * keep the richer record, which is the one carrying stock, lots and
+ * documents.
+ */
+function mergeCatalog() {
+  const { products, details } = catalogBuild();
+  const known = new Set(RAW.map((p) => p.code));
+
+  for (const p of products) {
+    if (known.has(p.code)) continue;
+    known.add(p.code);
+    RAW.push(p);
+    DETAIL[p.code] = details[p.code];
+  }
+}
+
+mergeCatalog();
+
 export const PRODUCTS = RAW as ProductRow[];
 decorateProducts();
 
 export const getProduct = (code: string) =>
   PRODUCTS.find((p) => p.code === code) ?? null;
+
+/**
+ * Whether the warehouse holds a stock record for this product at all.
+ *
+ * A catalogue product imported from the price list has none, which is not
+ * the same thing as having run out — "0 available" and "never stocked" mean
+ * different things to a buyer, and every stock screen keeps them apart.
+ */
+export const isStocked = (p: Product) => (p.stocks?.length ?? 0) > 0;
+
+/** The products stock figures may be counted over. */
+export const stockedProducts = () => PRODUCTS.filter(isStocked);
 
 /** Stock status from the agreed definitions. */
 export function stockStatus(onHand: number, res: number, rop: number) {

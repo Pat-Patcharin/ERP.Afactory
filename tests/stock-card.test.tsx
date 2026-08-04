@@ -5,7 +5,7 @@ import { ListView } from "@/components/engine/ListView";
 import { FullDetail } from "@/components/engine/FullDetail";
 import { QuickViewHost } from "@/components/engine/QuickViewHost";
 import { MOVEMENT_TARGETS, MOVEMENT_TYPE_MAP, MOVEMENT_TYPES } from "@/data/movements";
-import { PRODUCTS } from "@/lib/domain/product";
+import { PRODUCTS, stockedProducts } from "@/lib/domain/product";
 import { productTotals } from "@/lib/domain/stock";
 import {
   movementRows,
@@ -61,7 +61,10 @@ beforeEach(() => window.localStorage.clear());
 describe("Stock Card — mock data", () => {
   it("generates at least the volume the module was specified with", () => {
     expect(MOVEMENTS.length).toBeGreaterThanOrEqual(MOVEMENT_TARGETS.minMovements);
-    expect(PRODUCT_CARDS.length).toBe(PRODUCTS.length);
+    /* One card per product the warehouse holds — not per line in the price
+       list. A catalogue product has never moved, so it has no stock card. */
+    expect(PRODUCT_CARDS.length).toBe(stockedProducts().length);
+    expect(PRODUCT_CARDS.length).toBeLessThan(PRODUCTS.length);
   });
 
   it("covers inbound, outbound, status and non-quantity movement types", () => {

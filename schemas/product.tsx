@@ -1,4 +1,11 @@
-import { PRODUCTS, getProduct, productStock, stockStatus, type ProductRow } from "@/lib/domain/product";
+import {
+  PRODUCTS,
+  getProduct,
+  isStocked,
+  productStock,
+  stockStatus,
+  type ProductRow,
+} from "@/lib/domain/product";
 import {
   productGoodsReceipts,
   productPurchaseByYear,
@@ -53,7 +60,21 @@ export const PRODUCT_LIST: ListSchema<ProductRow> = {
   tabs: [
     { key: "all", label: "All" },
     { key: "Active", label: "Active", test: (p) => p.status === "Active" },
-    { key: "Low", label: "Low Stock", test: (p) => p.availTotal <= p.lowLevel },
+    {
+      key: "Low",
+      label: "Low Stock",
+      /* Only what the warehouse actually holds. A catalogue product has no
+         stock record at all, and calling that "low" would bury the handful
+         of items genuinely running out. */
+      test: (p) => isStocked(p) && p.availTotal <= p.lowLevel,
+    },
+    {
+      key: "Draft",
+      label: "Draft",
+      /* Where the blocked price rows land: no cost, no price, or a GP the
+         private tier cannot reach. */
+      test: (p) => p.status === "Draft",
+    },
     { key: "Inactive", label: "Inactive", test: (p) => p.status === "Inactive" },
   ],
 
@@ -86,7 +107,17 @@ export const PRODUCT_LIST: ListSchema<ProductRow> = {
       key: "code",
       label: "Product Code",
       sortable: true,
-      cell: (p) => <span className="font-medium tnum">{p.code}</span>,
+      cell: (p) =>
+        p.priceRef?.codePending ? (
+          /* 51 price rows carry no code. The key shown is the price row's
+             own, which is why it must not look like a product code. */
+          <span className="flex items-center gap-2">
+            <span className="tnum text-ink-2">{p.code}</span>
+            <Badge tone="warning">รอรหัส</Badge>
+          </span>
+        ) : (
+          <span className="font-medium tnum">{p.code}</span>
+        ),
     },
     { key: "name", label: "Product Name", sortable: true, cell: (p) => p.name },
     { key: "cat", label: "Category", muted: true, cell: (p) => p.cat },
@@ -104,12 +135,17 @@ export const PRODUCT_LIST: ListSchema<ProductRow> = {
       label: "Available Stock",
       sortable: true,
       align: "right",
-      sortValue: (p) => p.availTotal,
-      cell: (p) => (
-        <span className={p.availTotal <= p.lowLevel ? "font-semibold text-danger" : ""}>
-          {fmt(p.availTotal)}
-        </span>
-      ),
+      sortValue: (p) => (isStocked(p) ? p.availTotal : -1),
+      cell: (p) =>
+        !isStocked(p) ? (
+          <span className="text-ink-3" title="ยังไม่มีระเบียนสต๊อกในคลัง">
+            {DASH}
+          </span>
+        ) : (
+          <span className={p.availTotal <= p.lowLevel ? "font-semibold text-danger" : ""}>
+            {fmt(p.availTotal)}
+          </span>
+        ),
     },
     {
       key: "status",
@@ -180,8 +216,11 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
     badges: [
       { text: p.status, tone: tone(STATUS_TONE, p.status) },
       ...(p.demo ? ([{ text: "Demo", tone: "info" }] as const) : []),
-      ...(p.availTotal <= p.lowLevel
+      ...(isStocked(p) && p.availTotal <= p.lowLevel
         ? ([{ text: "Low stock", tone: "warning" }] as const)
+        : []),
+      ...(p.priceRef?.codePending
+        ? ([{ text: "รอรหัสสินค้า", tone: "warning" }] as const)
         : []),
     ],
     tags: [p.cat, p.brand, p.series],
@@ -192,8 +231,8 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
     {
       icon: "box",
       label: "Available Stock",
-      value: fmt(p.availTotal),
-      sub: p.unit,
+      value: isStocked(p) ? fmt(p.availTotal) : DASH,
+      sub: isStocked(p) ? p.unit : "ยังไม่มีระเบียนสต๊อก",
       goTab: "warehouse",
     },
     {
@@ -419,6 +458,58 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
             ],
           },
           !canCost && { type: "restricted" },
+
+          /* ---- The four tiers, for products the price file priced ---- */
+          p.priceRef && {
+            type: "cards",
+            title: "ราคา 4 ชั้น — จาก Price List Master",
+            cols: 4,
+            items: [
+              { label: "ราคาราชการ", value: money(c.gov), unit: c.currency },
+              {
+                label: "ราคาเอกชน",
+                value: money(c.retail),
+                unit: c.currency,
+                sub: "ราคาแคตตาล็อก",
+                tone: "accent",
+              },
+              { label: "ราคา Dealer", value: money(c.dealer), unit: c.currency },
+              {
+                /* Not a fourth price a customer can be sold at — the line the
+                   quote needs approval to cross. */
+                label: "Last Price — เพดานล่าง",
+                value: p.priceRef.floor === null ? DASH : money(p.priceRef.floor),
+                sub: "ต่ำกว่านี้ต้องขออนุมัติ",
+                tone: "warn",
+              },
+            ],
+          },
+          p.priceRef && {
+            type: "note",
+            text: `ทุกช่องเป็นราคาก่อน VAT · GP คิดจากราคาขายตรง ๆ ไม่หาร 1.07 · แถวต้นทางคือ ${p.priceRef.row} จากชีต ${p.priceRef.sheet}`,
+          },
+          p.priceRef &&
+            !p.priceRef.sellable && {
+              type: "alert",
+              tone: p.priceRef.priceStatus === "PENDING_COST" ? "danger" : "warn",
+              title: `สถานะราคา: ${p.priceRef.priceStatus} — ยังขายไม่ได้`,
+              message: p.desc || "ราคายังไม่ครบทั้ง 4 ชั้น",
+            },
+          p.priceRef &&
+            p.priceRef.conflicts.length > 0 && {
+              type: "alert",
+              /* Two products sharing a code is a data fault someone has to fix;
+                 the same product entered twice is only untidy. */
+              tone: p.priceRef.conflictClash ? "danger" : "warn",
+              title: p.priceRef.conflictClash
+                ? `รหัสนี้ถูกใช้กับสินค้าคนละตัว ${p.priceRef.conflicts.length + 1} รายการ`
+                : `รหัสนี้มีแถวซ้ำในไฟล์ราคา ${p.priceRef.conflicts.length + 1} แถว`,
+              message: `ระบบใช้แถว ${p.priceRef.row} เป็นสินค้านี้ และพักแถว ${p.priceRef.conflicts.join(", ")} ไว้ ${
+                p.priceRef.conflictClash
+                  ? "— ต้องแยกรหัสที่ไฟล์ต้นทางก่อนนำไปใช้ขาย"
+                  : "— ชื่อสินค้าตรงกัน จึงถือเป็นรายการเดียว"
+              }`,
+            },
           {
             type: "table",
             title: "Price Lists",

@@ -8,7 +8,7 @@ import {
   type StockStatus,
 } from "@/data/stock";
 import type { BadgeTone, RecordBase } from "@/lib/types";
-import { PRODUCTS } from "./product";
+import { PRODUCTS, stockedProducts } from "./product";
 import { WAREHOUSES, flattenBins, type WarehouseRow } from "./warehouse";
 import { parseStamp } from "./inventory";
 import { GOODS_RECEIPTS, PUTAWAY_TASKS, QC_INSPECTIONS } from "./inbound";
@@ -246,7 +246,10 @@ export interface LotRow {
 
 function buildLots(rand: () => number): LotRow[] {
   const out: LotRow[] = [];
-  const lotProducts = PRODUCTS.filter(
+  /* Only what the warehouse holds. The price list master puts hundreds of
+     catalogue products in the master; inventing lots for stock nobody has
+     would be fabricating the warehouse. */
+  const lotProducts = stockedProducts().filter(
     (p) => !(STOCK_PROFILES[p.code] ?? DEFAULT_PROFILE).serialTracked,
   );
   if (!lotProducts.length) return out;
@@ -279,7 +282,7 @@ function buildPositions(rand: () => number, lots: LotRow[]): StockRow[] {
   const binCache = new Map<string, BinSlot[]>();
 
   /* How many positions each product gets, proportional to its warehouses. */
-  const plans = PRODUCTS.map((p) => {
+  const plans = stockedProducts().map((p) => {
     const prof = STOCK_PROFILES[p.code] ?? DEFAULT_PROFILE;
     const whs = (prof.warehouses.length ? prof.warehouses : ["WH-BKK"]).filter((c) =>
       byCode.has(c),
@@ -914,7 +917,7 @@ export const productIncoming = (product: string) =>
 
 /** Products whose available stock has fallen to or below the reorder point. */
 export function lowStockProducts() {
-  return PRODUCTS.map((p) => {
+  return stockedProducts().map((p) => {
     const t = productTotals(p.code);
     return {
       code: p.code,

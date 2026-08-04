@@ -28,7 +28,7 @@ import { clearDraft, draftKey, readDraft, writeDraft } from "@/lib/form";
 import { money, money0, timeAgo } from "@/lib/format";
 import { Icon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
-import { Button, Menu, MenuItem, MenuSep, Modal, Textarea } from "@/components/ui";
+import { Button, Input, Menu, MenuItem, MenuSep, Modal, Textarea } from "@/components/ui";
 import { useActionCtx } from "@/components/engine/useActionCtx";
 import { useCrumbCode } from "@/components/layout/Topbar";
 import {
@@ -784,6 +784,7 @@ function PasteItemsModal({
 }) {
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [find, setFind] = useState("");
 
   const parsed = useMemo(() => {
     const wanted = text
@@ -793,6 +794,20 @@ function PasteItemsModal({
     const found = wanted.filter((c) => PRODUCTS.some((p) => p.code === c));
     return { wanted, found, missing: wanted.filter((c) => !found.includes(c)) };
   }, [text]);
+
+  /* The product master carries the whole price list now, so this list is
+     searched rather than scrolled. Ticked rows stay at the top even when a
+     later search would exclude them — unticking has to stay possible. */
+  const shown = useMemo(() => {
+    const t = find.trim().toLowerCase();
+    const on = PRODUCTS.filter((p) => picked.has(p.code));
+    const rest = PRODUCTS.filter(
+      (p) =>
+        !picked.has(p.code) &&
+        (!t || p.code.toLowerCase().includes(t) || p.name.toLowerCase().includes(t)),
+    ).slice(0, 60);
+    return [...on, ...rest];
+  }, [find, picked]);
 
   const codes = [...new Set([...picked, ...parsed.found])];
 
@@ -808,8 +823,15 @@ function PasteItemsModal({
       <div className="grid max-h-[52vh] grid-cols-2 gap-4 overflow-y-auto p-5 max-md:grid-cols-1">
         <div>
           <p className="mb-2 text-cap font-medium text-ink-2">เลือกจากสินค้า</p>
+          <Input
+            aria-label="ค้นหาสินค้า"
+            placeholder="ค้นหารหัสหรือชื่อสินค้า..."
+            value={find}
+            onChange={(e) => setFind(e.target.value)}
+            className="mb-2"
+          />
           <ul className="max-h-[300px] overflow-y-auto rounded-card border border-line">
-            {PRODUCTS.slice(0, 40).map((p) => (
+            {shown.map((p) => (
               <li key={p.code} className="border-b border-line last:border-b-0">
                 <label className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-surface">
                   <input
@@ -834,6 +856,9 @@ function PasteItemsModal({
               </li>
             ))}
           </ul>
+          <p className="mt-2 text-cap text-ink-3">
+            แสดง {shown.length} จาก {PRODUCTS.length} รายการ — พิมพ์เพื่อค้นหาที่เหลือ
+          </p>
         </div>
 
         <div>
