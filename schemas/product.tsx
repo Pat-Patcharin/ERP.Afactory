@@ -3,7 +3,7 @@ import { REG_TONE, STATUS_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt, money } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
 import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
-import { Badge, Barcode, CellMedia, LinkButton, Thumb } from "@/components/ui";
+import { Badge, Barcode, LinkButton } from "@/components/ui";
 import { Icon } from "@/lib/icons";
 import { PRODUCT_FORM } from "./forms/product";
 
@@ -63,15 +63,13 @@ export const PRODUCT_LIST: ListSchema<ProductRow> = {
 
   columns: [
     {
+      /* No thumbnail: the image is decorative at list scale and the code is
+         what a user scans for. It still identifies the record on the detail
+         page, where there is room for it. */
       key: "code",
       label: "Product Code",
       sortable: true,
-      cell: (p) => (
-        <CellMedia>
-          <Thumb>{p.icon}</Thumb>
-          <span className="font-medium">{p.code}</span>
-        </CellMedia>
-      ),
+      cell: (p) => <span className="font-medium tnum">{p.code}</span>,
     },
     { key: "name", label: "Product Name", sortable: true, cell: (p) => p.name },
     { key: "cat", label: "Category", muted: true, cell: (p) => p.cat },

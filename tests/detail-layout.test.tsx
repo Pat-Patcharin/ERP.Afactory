@@ -248,6 +248,24 @@ describe("Detail layout — reusable by every master", () => {
     expect(screen.queryByTestId("detail-quick-links")).not.toBeInTheDocument();
   });
 
+  it("keeps the record image off the list and on the detail page", () => {
+    /* A thumbnail is decorative at list scale and costs a column of width
+       users scan past; the detail header is where it identifies the record. */
+    for (const key of ["product", "business-partner"]) {
+      const schemas = REGISTRY[key];
+      const code = schemas.list.columns.find((c) => c.key === "code")!;
+      const rec = schemas.list.source()[0];
+
+      const { container, unmount } = render(<>{code.cell(rec)}</>);
+      expect(container.querySelector("img"), `${key} list thumbnail`).toBeNull();
+      expect(container.textContent, key).toBe(rec.code);
+      unmount();
+
+      /* The detail identity still carries it. */
+      expect(schemas.detail.identity(rec).image, `${key} detail image`).toBeTruthy();
+    }
+  });
+
   it("keeps every tab key unique within a schema", () => {
     for (const [key, schemas] of Object.entries(REGISTRY)) {
       const keys = schemas.detail.tabs.map((t) => t.key);
