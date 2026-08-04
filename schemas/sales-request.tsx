@@ -22,7 +22,7 @@ import {
 } from "@/lib/workflows-outbound";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
-import { SR_FORM } from "./forms/sales-request";
+import { SalesRequestEditor } from "@/components/sales-request/SalesRequestEditor";
 
 /* ============================================================
    SALES REQUEST — the REQUIRED first operational document.
@@ -521,5 +521,9 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
 export const srSchemas: EntitySchemas<SrRow> = {
   list: SR_LIST,
   detail: SR_DETAIL,
-  form: SR_FORM,
+  /* No `form`: a sales request is created and edited as the document itself.
+     The three-step wizard is gone, and with it the schema that described it —
+     validation and save now live in lib/domain/sales-request-draft.ts, which
+     the editor and the print preview both read. */
+  editor: ({ record }) => <SalesRequestEditor record={record} />,
 };

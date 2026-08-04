@@ -2,20 +2,18 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { COMPANY } from "@/data/admin";
-import { QT_CHANNELS, QT_PRICE_LISTS } from "@/data/quotations";
-import { PAY_TERMS } from "@/data/partners";
-import { PO_CURRENCIES } from "@/data/purchase-orders";
-import { customerOptions, salesRepOptions, warehouseOptions } from "@/lib/domain/outbound";
+import { customerOptions } from "@/lib/domain/outbound";
 import {
   DISCOUNT_THRESHOLD,
   lineAvailability,
   productSearch,
   shipToChoices,
-  type DraftInsight,
+  type ChargeFields,
+  type DocInsight,
+  type DocTotals,
   type DraftLine,
-  type DraftTotals,
-  type QuotationDraft,
-} from "@/lib/domain/quotation-draft";
+  type PartyFields,
+} from "@/lib/domain/doc-draft";
 import { bahtText } from "@/lib/print/words";
 import { AFactoryLogo, BarcodePlaceholder, QRPlaceholder } from "@/components/print/marks";
 import { fmt, money, money0, toDisplayDate } from "@/lib/format";
@@ -99,7 +97,17 @@ export const DocValue = ({ value }: { value: string }) => (
 
 /* ---------- Header ---------- */
 
-export function DocHeader({ draft }: { draft: QuotationDraft }) {
+export function DocHeader({
+  title,
+  titleTh,
+  code,
+  status,
+}: {
+  title: string;
+  titleTh: string;
+  code: string;
+  status: string;
+}) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-6 border-b-[3px] border-primary pb-5">
       <div className="flex min-w-0 items-start gap-4">
@@ -125,15 +133,15 @@ export function DocHeader({ draft }: { draft: QuotationDraft }) {
 
       <div className="flex items-start gap-5">
         <div className="text-right">
-          <p className="text-[26px] font-bold leading-none tracking-[-0.01em]">QUOTATION</p>
-          <p className="mt-0.5 text-[13px] text-ink-2">ใบเสนอราคา</p>
+          <p className="text-[26px] font-bold leading-none tracking-[-0.01em]">{title}</p>
+          <p className="mt-0.5 text-[13px] text-ink-2">{titleTh}</p>
           <p className="mt-2 text-[22px] font-bold tracking-[0.01em] text-primary tnum">
-            {draft.code}
+            {code}
           </p>
           <p className="mt-2 flex items-center justify-end gap-2 text-cap text-ink-2">
             Status :
-            <Badge tone={draft.status === "Draft" ? "neutral" : "info"}>
-              {draft.status.toUpperCase()}
+            <Badge tone={status === "Draft" ? "neutral" : "info"}>
+              {status.toUpperCase()}
             </Badge>
           </p>
         </div>
@@ -144,9 +152,9 @@ export function DocHeader({ draft }: { draft: QuotationDraft }) {
             <br />
             document
           </p>
-          <QRPlaceholder value={draft.code} size={17} />
+          <QRPlaceholder value={code} size={17} />
           <div className="mt-1.5">
-            <BarcodePlaceholder value={draft.code} width={34} height={7} />
+            <BarcodePlaceholder value={code} width={34} height={7} />
           </div>
         </div>
       </div>
@@ -162,9 +170,9 @@ export function BillToPanel({
   set,
   invalid,
 }: {
-  draft: QuotationDraft;
+  draft: PartyFields;
   mode: DocMode;
-  set: (patch: Partial<QuotationDraft>) => void;
+  set: (patch: Partial<PartyFields>) => void;
   invalid: Set<string>;
 }) {
   return (
@@ -244,9 +252,9 @@ export function ShipToPanel({
   set,
   invalid,
 }: {
-  draft: QuotationDraft;
+  draft: PartyFields;
   mode: DocMode;
-  set: (patch: Partial<QuotationDraft>) => void;
+  set: (patch: Partial<PartyFields>) => void;
   invalid: Set<string>;
 }) {
   const choices = useMemo(() => shipToChoices(draft.customerPick), [draft.customerPick]);
@@ -319,50 +327,100 @@ export function ShipToPanel({
 
 /* ---------- Metadata ---------- */
 
+/**
+ * The metadata column, described by the document rather than hard-coded.
+ *
+ * A quotation lists a validity date; a sales request lists a required date and
+ * a priority. Both are the same rows in the same box, so the panel takes the
+ * rows and the document decides what they are.
+ */
+export interface MetaRow {
+  /** Draft field name — also the scroll anchor the error summary jumps to. */
+  field: string;
+  label: string;
+  required?: boolean;
+  /** Editable control; omitted rows are read-only in both modes. */
+  control?: ReactNode;
+  read: string;
+}
+
 export function MetaPanel({
-  draft,
+  rows,
   mode,
-  set,
   invalid,
 }: {
-  draft: QuotationDraft;
+  rows: MetaRow[];
   mode: DocMode;
-  set: (patch: Partial<QuotationDraft>) => void;
   invalid: Set<string>;
 }) {
-  const row = (
-    label: string,
-    field: keyof QuotationDraft & string,
-    control: ReactNode,
-    read: string,
-    required?: boolean,
-  ) => (
-    <div
-      id={anchorId(field)}
-      className={cn(
-        "grid grid-cols-[136px_1fr] items-center gap-3 border-b border-line px-3 py-1.5 last:border-b-0",
-        invalid.has(field) && "bg-danger-soft",
-      )}
-    >
-      <span className="text-cap text-ink-2">
-        {label}
-        {required && <span className="font-semibold text-danger"> *</span>}
-      </span>
-      {mode === "edit" ? control : <span className="text-[13px]">{read || "—"}</span>}
-    </div>
+  return (
+    <section className="overflow-hidden rounded-card border border-line">
+      {rows.map((r) => (
+        <div
+          key={r.field}
+          id={anchorId(r.field)}
+          className={cn(
+            "grid grid-cols-[136px_1fr] items-center gap-3 border-b border-line px-3 py-1.5 last:border-b-0",
+            invalid.has(r.field) && "bg-danger-soft",
+          )}
+        >
+          <span className="text-cap text-ink-2">
+            {r.label}
+            {r.required && <span className="font-semibold text-danger"> *</span>}
+          </span>
+          {mode === "edit" && r.control ? (
+            r.control
+          ) : (
+            <span className="text-[13px]">{r.read || "—"}</span>
+          )}
+        </div>
+      ))}
+    </section>
   );
+}
 
-  const sel = (
-    field: keyof QuotationDraft & string,
-    label: string,
-    options: readonly string[],
-    placeholder?: string,
-  ) => (
+/** Controls a document builds its metadata rows from. */
+export function MetaText({
+  label,
+  value,
+  type = "text",
+  onChange,
+}: {
+  label: string;
+  value: string;
+  type?: string;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <Input
+      aria-label={label}
+      type={type}
+      className="h-9"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+export function MetaSelect({
+  label,
+  value,
+  options,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  placeholder?: string;
+  onChange: (next: string) => void;
+}) {
+  return (
     <Select
       aria-label={label}
       className="h-9"
-      value={String(draft[field] ?? "")}
-      onChange={(e) => set({ [field]: e.target.value } as Partial<QuotationDraft>)}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
     >
       {placeholder && <option value="">{placeholder}</option>}
       {options.map((o) => (
@@ -372,48 +430,11 @@ export function MetaPanel({
       ))}
     </Select>
   );
-
-  const txt = (field: keyof QuotationDraft & string, label: string, type = "text") => (
-    <Input
-      aria-label={label}
-      type={type}
-      className="h-9"
-      value={String(draft[field] ?? "")}
-      onChange={(e) => set({ [field]: e.target.value } as Partial<QuotationDraft>)}
-    />
-  );
-
-  return (
-    <section className="overflow-hidden rounded-card border border-line">
-      {row("Quotation Date", "quoteDate", txt("quoteDate", "Quotation Date", "date"), toDisplayDate(draft.quoteDate), true)}
-      {row("Valid Until", "validUntil", txt("validUntil", "Valid Until", "date"), toDisplayDate(draft.validUntil), true)}
-      {row("Customer Reference", "customerRef", txt("customerRef", "Customer Reference"), draft.customerRef)}
-      {row(
-        "Sales Representative",
-        "salesRep",
-        sel("salesRep", "Sales Representative", salesRepOptions(), "— เลือกพนักงานขาย —"),
-        draft.salesRep,
-        true,
-      )}
-      {row("Price List", "priceList", sel("priceList", "Price List", QT_PRICE_LISTS), draft.priceList, true)}
-      {row("Currency", "currency", sel("currency", "Currency", PO_CURRENCIES), draft.currency, true)}
-      {row("Payment Term", "payTerm", sel("payTerm", "Payment Term", PAY_TERMS), draft.payTerm)}
-      {row("Sales Channel", "channel", sel("channel", "Sales Channel", QT_CHANNELS), draft.channel)}
-      {row("Delivery Date", "deliveryDate", txt("deliveryDate", "Delivery Date", "date"), toDisplayDate(draft.deliveryDate))}
-      {row(
-        "Warehouse",
-        "warehouse",
-        sel("warehouse", "Warehouse", warehouseOptions(), "— ยังไม่ระบุ —"),
-        draft.warehouse,
-      )}
-      {row("Internal Reference", "internalRef", txt("internalRef", "Internal Reference"), draft.internalRef)}
-    </section>
-  );
 }
 
 /* ---------- Customer insight ---------- */
 
-export function InsightPanel({ insight }: { insight: DraftInsight }) {
+export function InsightPanel({ insight }: { insight: DocInsight }) {
   const [open, setOpen] = useState(false);
   if (!insight.found) return null;
 
@@ -474,7 +495,7 @@ export function InsightPanel({ insight }: { insight: DraftInsight }) {
   );
 }
 
-export function CreditWarning({ insight }: { insight: DraftInsight }) {
+export function CreditWarning({ insight }: { insight: DocInsight }) {
   if (!insight.found || insight.withinLimit) return null;
   return (
     <div
@@ -515,7 +536,7 @@ export function CreditWarning({ insight }: { insight: DraftInsight }) {
 const HEAD = "bg-[#2f3542] text-white text-[11px] font-semibold uppercase tracking-[0.03em]";
 
 export function ItemTable({
-  draft,
+  items,
   mode,
   invalid,
   onCell,
@@ -525,7 +546,7 @@ export function ItemTable({
   selected,
   onSelect,
 }: {
-  draft: QuotationDraft;
+  items: DraftLine[];
   mode: DocMode;
   invalid: Set<string>;
   onCell: (id: string, col: keyof DraftLine, value: string) => void;
@@ -535,7 +556,7 @@ export function ItemTable({
   selected: Set<string>;
   onSelect: (id: string, on: boolean) => void;
 }) {
-  const rows = mode === "read" ? draft.items.filter((l) => l.code) : draft.items;
+  const rows = mode === "read" ? items.filter((l) => l.code) : items;
 
   return (
     <div className="overflow-x-auto rounded-card border border-line">
@@ -814,15 +835,19 @@ function ProductCell({
 /* ---------- Remarks and totals ---------- */
 
 export function RemarksPanel({
-  draft,
+  remarks,
+  internalNote,
   mode,
-  set,
+  onRemarks,
+  onInternalNote,
 }: {
-  draft: QuotationDraft;
+  remarks: string;
+  internalNote: string;
   mode: DocMode;
-  set: (patch: Partial<QuotationDraft>) => void;
+  onRemarks: (next: string) => void;
+  onInternalNote: (next: string) => void;
 }) {
-  const lines = draft.remarks.split("\n").filter((l) => l.trim());
+  const lines = remarks.split("\n").filter((l) => l.trim());
 
   return (
     <div className="flex flex-col gap-3">
@@ -833,8 +858,8 @@ export function RemarksPanel({
             aria-label="Remarks"
             rows={5}
             className="mt-2 text-[13px]"
-            value={draft.remarks}
-            onChange={(e) => set({ remarks: e.target.value })}
+            value={remarks}
+            onChange={(e) => onRemarks(e.target.value)}
           />
         ) : (
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] text-ink-2">
@@ -860,8 +885,8 @@ export function RemarksPanel({
             aria-label="Internal Note"
             rows={3}
             className="mt-2 text-[13px]"
-            value={draft.internalNote}
-            onChange={(e) => set({ internalNote: e.target.value })}
+            value={internalNote}
+            onChange={(e) => onInternalNote(e.target.value)}
           />
           <p className="mt-1.5 text-cap text-ink-3">
             ไม่พิมพ์ลงเอกสาร และไม่ถูกส่งให้ลูกค้า
@@ -873,15 +898,18 @@ export function RemarksPanel({
 }
 
 export function TotalsPanel({
-  draft,
+  charges,
   totals,
+  taxed,
   mode,
   set,
 }: {
-  draft: QuotationDraft;
-  totals: DraftTotals;
+  charges: ChargeFields;
+  totals: DocTotals;
+  /** Whether any line carries VAT — decides the "VAT 7%" label. */
+  taxed: boolean;
   mode: DocMode;
-  set: (patch: Partial<QuotationDraft>) => void;
+  set: (patch: Partial<ChargeFields>) => void;
 }) {
   const row = (label: string, value: number, show = true) =>
     show ? (
@@ -904,8 +932,8 @@ export function TotalsPanel({
           type="number"
           min={0}
           className="w-[120px] text-right"
-          value={String(draft[field])}
-          onChange={(e) => set({ [field]: e.target.value } as Partial<QuotationDraft>)}
+          value={String(charges[field])}
+          onChange={(e) => set({ [field]: e.target.value } as Partial<ChargeFields>)}
         />
       </div>
     ) : (
@@ -918,7 +946,7 @@ export function TotalsPanel({
       {row("Line Discount", totals.lineDiscount, totals.lineDiscount > 0)}
       {editable("Discount", "headerDisc", totals.headerDiscount)}
       {row("Net Amount", totals.netAmount)}
-      {row(`VAT ${draft.items.some((l) => num(l.tax)) ? "7%" : ""}`.trim(), totals.vat)}
+      {row(taxed ? "VAT 7%" : "VAT", totals.vat)}
       {editable("Freight", "freight", totals.freight)}
       {editable("Other Charges", "otherCharges", totals.otherCharges)}
       {row("Rounding", totals.rounding, totals.rounding !== 0)}
@@ -936,14 +964,18 @@ export function TotalsPanel({
 
 /* ---------- Signatures and footer ---------- */
 
-const SIGNATURES = [
-  { en: "Prepared By", th: "ผู้จัดทำ" },
-  { en: "Sales Representative", th: "พนักงานขาย" },
-  { en: "Approved By", th: "ผู้อนุมัติ" },
-  { en: "Customer Acceptance", th: "ลูกค้าผู้รับรอง" },
-];
+export interface SignatureBlock {
+  en: string;
+  th: string;
+}
 
-export function SignatureRow() {
+/**
+ * Who signs differs by document: a quotation ends with the customer, an
+ * internal request ends with the approver.
+ */
+export function SignatureRow({ blocks }: { blocks: SignatureBlock[] }) {
+  const SIGNATURES = blocks;
+
   return (
     <div className="grid grid-cols-4 gap-4 max-md:grid-cols-2">
       {SIGNATURES.map((s) => (

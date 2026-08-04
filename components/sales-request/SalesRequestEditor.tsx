@@ -6,20 +6,22 @@ import { can } from "@/lib/domain/admin";
 import {
   applyCustomer,
   applyProduct,
+  applyQuotation,
   applyShipTo,
-  blankDraft,
   blankLine,
+  blankSrDraft,
   blockingIssues,
-  draftFromQuotation,
-  draftInsight,
-  draftPrintDoc,
-  draftTotals,
-  saveQuotationDraft,
-  validateDraft,
+  draftFromSalesRequest,
+  quotationChoices,
+  saveSalesRequestDraft,
+  srInsight,
+  srPrintDoc,
+  srTotals,
+  validateSrDraft,
   type DraftLine,
-  type QuotationDraft,
-} from "@/lib/domain/quotation-draft";
-import type { Quotation } from "@/data/quotations";
+  type SalesRequestDraft,
+} from "@/lib/domain/sales-request-draft";
+import type { SalesRequest } from "@/data/sales-requests";
 import { buildPrintJob, getPrintConfig } from "@/lib/print";
 import { PrintDocument } from "@/components/print/PrintDocument";
 import { clearDraft, draftKey, readDraft, writeDraft } from "@/lib/form";
@@ -48,26 +50,27 @@ import {
   type DocMode,
   type MetaRow,
 } from "@/components/document/parts";
-import { QT_CHANNELS, QT_PRICE_LISTS } from "@/data/quotations";
+import { SR_CHANNELS, SR_PRICE_LISTS, SR_PRIORITY } from "@/data/sales-requests";
 import { PAY_TERMS } from "@/data/partners";
 import { PO_CURRENCIES } from "@/data/purchase-orders";
 import { warehouseOptions, salesRepOptions } from "@/lib/domain/outbound";
 import { toDisplayDate } from "@/lib/format";
 
 /* ============================================================
-   QUOTATION EDITOR
+   SALES REQUEST EDITOR
 
-   One page. The salesperson types into the quotation itself —
-   the same header, the same panels, the same item table and the
-   same totals block that will come out of the printer.
+   The same document-first editor as the quotation, on the
+   document that actually starts the outbound process.
 
-   There is no wizard, no review step and no separate preview
-   summary: the document IS the form, so there is nothing left to
-   review afterwards. Preview only strips the controls.
+   A request is internal: it goes to an approver, not to the
+   customer. So the header carries a required date, a priority
+   and the warehouse expected to serve it, the closing signature
+   is the approver rather than the customer, and the primary
+   action submits for approval rather than issuing a price.
 
-   Business logic lives in lib/domain/quotation-draft.ts; this
-   file owns the interaction — editing, autosave, validation
-   timing and the save actions.
+   Everything else — customer, lines, totals, credit, printing —
+   is the shared sell-side machinery in lib/domain/doc-draft.ts
+   and components/document/parts.tsx.
    ============================================================ */
 
 const AUTOSAVE_DEBOUNCE = 1500;
@@ -76,21 +79,21 @@ const FORM_USER = "Pimpaka S.";
 
 type SaveState = "idle" | "saving" | "saved" | "failed";
 
-/** A quotation closes with the customer accepting it. */
-const QT_SIGNATURES = [
+/** An internal request closes with the approver, never the customer. */
+const SR_SIGNATURES = [
   { en: "Prepared By", th: "ผู้จัดทำ" },
   { en: "Sales Representative", th: "พนักงานขาย" },
+  { en: "Reviewed By", th: "ผู้ตรวจสอบ" },
   { en: "Approved By", th: "ผู้อนุมัติ" },
-  { en: "Customer Acceptance", th: "ลูกค้าผู้รับรอง" },
 ];
 
-export function QuotationEditor({ record }: { record?: Quotation }) {
+export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
   const ctx = useActionCtx();
   const mode = record ? "edit" : "create";
-  const storeKey = draftKey("quotation", record?.code);
+  const storeKey = draftKey("sales-request", record?.code);
 
-  const [draft, setDraft] = useState<QuotationDraft>(() =>
-    record ? draftFromQuotation(record) : blankDraft(),
+  const [draft, setDraft] = useState<SalesRequestDraft>(() =>
+    record ? draftFromSalesRequest(record) : blankSrDraft(),
   );
   const [showErrors, setShowErrors] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -103,17 +106,20 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
 
   useCrumbCode(mode === "edit" ? (record?.code ?? null) : "New");
 
-  const mayEdit = can("quotation", mode === "edit" ? "edit" : "create");
+  const mayEdit = can("sales-request", mode === "edit" ? "edit" : "create");
 
   /* ---------- Writing ---------- */
 
-  const set = useCallback((patch: Partial<QuotationDraft>) => {
+  const set = useCallback((patch: Partial<SalesRequestDraft>) => {
     dirty.current = true;
     setDraft((d) => {
       /* The customer drives half the document; picking one loads the partner
          rather than only writing the field. */
       if ("customerPick" in patch) return applyCustomer(d, String(patch.customerPick ?? ""));
       if ("shipAddressPick" in patch) return applyShipTo(d, String(patch.shipAddressPick ?? ""));
+      /* The whole reason a quotation exists: the customer agreed a price, so
+         the request carries those exact lines rather than being retyped. */
+      if ("quotationRef" in patch) return applyQuotation(d, String(patch.quotationRef ?? ""));
       return { ...d, ...patch };
     });
   }, []);
@@ -212,9 +218,9 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
 
   /* ---------- Derived ---------- */
 
-  const totals = useMemo(() => draftTotals(draft), [draft]);
-  const insight = useMemo(() => draftInsight(draft), [draft]);
-  const issues = useMemo(() => validateDraft(draft), [draft]);
+  const totals = useMemo(() => srTotals(draft), [draft]);
+  const insight = useMemo(() => srInsight(draft), [draft]);
+  const issues = useMemo(() => validateSrDraft(draft), [draft]);
   const blocking = useMemo(() => blockingIssues(issues), [issues]);
   const invalid = useMemo(
     () => new Set(showErrors ? blocking.map((i) => i.field) : []),
@@ -249,11 +255,11 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
   }, [savedAt]);
 
   /* Recover an interrupted session. */
-  const [recovered, setRecovered] = useState<{ draft: QuotationDraft; at: number } | null>(null);
+  const [recovered, setRecovered] = useState<{ draft: SalesRequestDraft; at: number } | null>(null);
   useEffect(() => {
     const found = readDraft(storeKey);
     if (found?.state) {
-      setRecovered({ draft: found.state as unknown as QuotationDraft, at: found.at });
+      setRecovered({ draft: found.state as unknown as SalesRequestDraft, at: found.at });
     }
   }, [storeKey]);
 
@@ -269,7 +275,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
   }, []);
 
   const saveDraftNow = useCallback(() => {
-    const res = saveQuotationDraft(draft, { issue: false, user: FORM_USER });
+    const res = saveSalesRequestDraft(draft, { submit: false, user: FORM_USER });
     clearDraft(storeKey);
     dirty.current = false;
     setSavedAt(Date.now());
@@ -289,21 +295,21 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
       jumpTo(blocking[0].field);
       return;
     }
-    const res = saveQuotationDraft(draft, { issue: true, user: FORM_USER });
+    const res = saveSalesRequestDraft(draft, { submit: true, user: FORM_USER });
     clearDraft(storeKey);
     dirty.current = false;
     ctx.toast(
-      res.created ? "สร้างใบเสนอราคาแล้ว" : "บันทึกการแก้ไขแล้ว",
+      res.created ? "สร้างคำขอขายแล้ว — รออนุมัติ" : "บันทึกการแก้ไขแล้ว",
       `${res.code} — ${draft.customer}`,
       "success",
     );
-    ctx.goto(`/m/quotation/${encodeURIComponent(res.code)}`);
+    ctx.goto(`/m/sales-request/${encodeURIComponent(res.code)}`);
   }, [blocking, ctx, draft, jumpTo, storeKey]);
 
   const cancel = useCallback(() => {
     const leave = () => {
       clearDraft(storeKey);
-      ctx.goto(mode === "edit" ? `/m/quotation/${encodeURIComponent(draft.code)}` : "/m/quotation");
+      ctx.goto(mode === "edit" ? `/m/sales-request/${encodeURIComponent(draft.code)}` : "/m/sales-request");
     };
     if (!dirty.current) return leave();
     ctx.confirm({
@@ -318,12 +324,12 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
   const reset = useCallback(() => {
     ctx.confirm({
       title: "ล้างเอกสาร",
-      message: "ล้างข้อมูลทั้งหมดกลับเป็นใบเสนอราคาเปล่า",
+      message: "ล้างข้อมูลทั้งหมดกลับเป็นคำขอขายเปล่า",
       confirmText: "ล้างเอกสาร",
       tone: "danger",
       onConfirm: () => {
         clearDraft(storeKey);
-        setDraft(record ? draftFromQuotation(record) : blankDraft());
+        setDraft(record ? draftFromSalesRequest(record) : blankSrDraft());
         setShowErrors(false);
         setSelected(new Set());
         dirty.current = false;
@@ -332,7 +338,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
   }, [ctx, record, storeKey]);
 
   const duplicate = useCallback(() => {
-    const fresh = blankDraft();
+    const fresh = blankSrDraft();
     setDraft((d) => ({ ...d, code: fresh.code, mode: "create", status: "Draft" }));
     dirty.current = true;
     ctx.toast("ทำสำเนาแล้ว", `เอกสารใหม่ ${fresh.code} — ข้อมูลเดิมถูกคัดลอกมาให้`, "info");
@@ -341,10 +347,10 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
   /** Print job built from what is on screen right now, not from the store. */
   const printJob = useMemo(() => {
     if (preview !== "print") return null;
-    const config = getPrintConfig("quotation");
+    const config = getPrintConfig("sales-request");
     if (!config) return null;
-    return buildPrintJob("quotation", draft.code, {
-      document: draftPrintDoc(draft, config),
+    return buildPrintJob("sales-request", draft.code, {
+      document: srPrintDoc(draft, config),
       watermark: draft.status === "Draft" ? "DRAFT" : undefined,
     });
   }, [draft, preview]);
@@ -352,16 +358,16 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
   /* ---------- Metadata rows this document shows ---------- */
 
   const metaRows: MetaRow[] = useMemo(() => {
-    const txt = (field: keyof QuotationDraft & string, label: string, type = "text") => (
+    const txt = (field: keyof SalesRequestDraft & string, label: string, type = "text") => (
       <MetaText
         label={label}
         type={type}
         value={String(draft[field] ?? "")}
-        onChange={(v) => set({ [field]: v } as Partial<QuotationDraft>)}
+        onChange={(v) => set({ [field]: v } as Partial<SalesRequestDraft>)}
       />
     );
     const sel = (
-      field: keyof QuotationDraft & string,
+      field: keyof SalesRequestDraft & string,
       label: string,
       options: readonly string[],
       placeholder?: string,
@@ -371,21 +377,35 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
         value={String(draft[field] ?? "")}
         options={options}
         placeholder={placeholder}
-        onChange={(v) => set({ [field]: v } as Partial<QuotationDraft>)}
+        onChange={(v) => set({ [field]: v } as Partial<SalesRequestDraft>)}
       />
     );
 
     return [
-      { field: "quoteDate", label: "Quotation Date", required: true, control: txt("quoteDate", "Quotation Date", "date"), read: toDisplayDate(draft.quoteDate) },
-      { field: "validUntil", label: "Valid Until", required: true, control: txt("validUntil", "Valid Until", "date"), read: toDisplayDate(draft.validUntil) },
+      { field: "requestDate", label: "Request Date", required: true, control: txt("requestDate", "Request Date", "date"), read: toDisplayDate(draft.requestDate) },
+      { field: "requiredDate", label: "Required Date", required: true, control: txt("requiredDate", "Required Date", "date"), read: toDisplayDate(draft.requiredDate) },
+      { field: "priority", label: "Priority", required: true, control: sel("priority", "Priority", SR_PRIORITY), read: draft.priority },
+      {
+        field: "quotationRef",
+        label: "Source Quotation",
+        control: (
+          <MetaSelect
+            label="Source Quotation"
+            value={draft.quotationRef}
+            options={quotationChoices(draft.customerCode)}
+            placeholder="— ลูกค้าติดต่อตรง —"
+            onChange={(v) => set({ quotationRef: v })}
+          />
+        ),
+        read: draft.quotationRef,
+      },
       { field: "customerRef", label: "Customer Reference", control: txt("customerRef", "Customer Reference"), read: draft.customerRef },
       { field: "salesRep", label: "Sales Representative", required: true, control: sel("salesRep", "Sales Representative", salesRepOptions(), "— เลือกพนักงานขาย —"), read: draft.salesRep },
-      { field: "priceList", label: "Price List", required: true, control: sel("priceList", "Price List", QT_PRICE_LISTS), read: draft.priceList },
+      { field: "warehouse", label: "Preferred Warehouse", required: true, control: sel("warehouse", "Preferred Warehouse", warehouseOptions(), "— เลือกคลัง —"), read: draft.warehouse },
+      { field: "priceList", label: "Price List", required: true, control: sel("priceList", "Price List", SR_PRICE_LISTS), read: draft.priceList },
       { field: "currency", label: "Currency", required: true, control: sel("currency", "Currency", PO_CURRENCIES), read: draft.currency },
       { field: "payTerm", label: "Payment Term", control: sel("payTerm", "Payment Term", PAY_TERMS), read: draft.payTerm },
-      { field: "channel", label: "Sales Channel", control: sel("channel", "Sales Channel", QT_CHANNELS), read: draft.channel },
-      { field: "deliveryDate", label: "Delivery Date", control: txt("deliveryDate", "Delivery Date", "date"), read: toDisplayDate(draft.deliveryDate) },
-      { field: "warehouse", label: "Warehouse", control: sel("warehouse", "Warehouse", warehouseOptions(), "— ยังไม่ระบุ —"), read: draft.warehouse },
+      { field: "channel", label: "Sales Channel", control: sel("channel", "Sales Channel", SR_CHANNELS), read: draft.channel },
       { field: "internalRef", label: "Internal Reference", control: txt("internalRef", "Internal Reference"), read: draft.internalRef },
     ];
   }, [draft, set]);
@@ -412,9 +432,9 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
     return (
       <main className="grid min-h-[60vh] place-items-center p-6 text-center">
         <div>
-          <p className="text-h3 font-semibold">ไม่มีสิทธิ์สร้างใบเสนอราคา</p>
-          <p className="mt-2 text-ink-2">บทบาทของคุณเปิดใบเสนอราคาได้ แต่แก้ไขไม่ได้</p>
-          <Button className="mt-5" onClick={() => ctx.goto("/m/quotation")}>
+          <p className="text-h3 font-semibold">ไม่มีสิทธิ์สร้างคำขอขาย</p>
+          <p className="mt-2 text-ink-2">บทบาทของคุณเปิดคำขอขายได้ แต่แก้ไขไม่ได้</p>
+          <Button className="mt-5" onClick={() => ctx.goto("/m/sales-request")}>
             กลับไปหน้ารายการ
           </Button>
         </div>
@@ -436,12 +456,12 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
     <main className="pb-28">
       {/* ---------- Sticky application toolbar ---------- */}
       <div
-        data-testid="qt-toolbar"
+        data-testid="sr-toolbar"
         className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-line bg-card px-6 py-3 max-md:px-4"
       >
         <div className="min-w-0">
           <p className="truncate text-[15px] font-semibold">
-            {mode === "edit" ? "Edit Quotation" : "New Quotation"}
+            {mode === "edit" ? "Edit Sales Request" : "New Sales Request"}
             <span className="ml-2 font-normal text-ink-2 tnum">{draft.code}</span>
           </p>
           <p className="truncate text-cap text-ink-3" data-testid="autosave-status">
@@ -459,7 +479,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
           </Button>
           <Button size="sm" variant="primary" onClick={saveQuotation}>
             <Icon name="save" size={15} strokeWidth={2} />
-            Save Quotation
+            Submit Request
           </Button>
           <Button size="sm" variant="ghost" onClick={cancel}>
             Cancel
@@ -550,13 +570,13 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
       {/* ---------- The document ---------- */}
       <div className="px-6 py-5 max-md:px-3 max-md:py-4">
         <article
-          data-testid="quotation-document"
+          data-testid="request-document"
           data-mode={docMode}
           className="mx-auto max-w-[1180px] rounded-card border border-line bg-card p-8 shadow-sm max-md:p-4"
         >
           <DocHeader
-            title="QUOTATION"
-            titleTh="ใบเสนอราคา"
+            title="SALES REQUEST"
+            titleTh="ใบขอขาย"
             code={draft.code}
             status={draft.status}
           />
@@ -655,7 +675,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
           </div>
 
           <div className="mt-6">
-            <SignatureRow blocks={QT_SIGNATURES} />
+            <SignatureRow blocks={SR_SIGNATURES} />
           </div>
 
           <div className="mt-6">
@@ -667,7 +687,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
       {/* ---------- Sticky bottom summary ---------- */}
       {docMode === "edit" && (
         <div
-          data-testid="qt-sticky-summary"
+          data-testid="sr-sticky-summary"
           className="fixed inset-x-0 bottom-0 z-20 flex flex-wrap items-center gap-4 border-t border-line bg-card px-6 py-2.5 shadow-[0_-2px_12px_rgba(16,24,40,.06)] max-md:px-3"
         >
           <span className="text-cap text-ink-2">
@@ -687,7 +707,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
               Save Draft
             </Button>
             <Button size="sm" variant="primary" onClick={saveQuotation}>
-              Save Quotation
+              Submit Request
             </Button>
           </div>
         </div>

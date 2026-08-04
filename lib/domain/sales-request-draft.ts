@@ -1,0 +1,532 @@
+import { PAY_TERMS } from "@/data/partners";
+import {
+  SR_CHANNELS,
+  SR_PRICE_LISTS,
+  SR_PRIORITY,
+  type SalesRequest,
+} from "@/data/sales-requests";
+import {
+  QUOTATIONS,
+  SALES_REQUESTS,
+  decorateSalesRequests,
+  getQT,
+  nextSalesRequestCode,
+  type SrRow,
+} from "./outbound";
+import {
+  applyCustomerTo,
+  applyShipToOn,
+  blankLine,
+  blankParty,
+  docInsight,
+  docTotals,
+  validateLines,
+  validateParty,
+  type DocInsight,
+  type DocTotals,
+  type DraftIssue,
+  type DraftLine,
+  type PartyFields,
+  type TermFields,
+} from "./doc-draft";
+import { toDisplayDate, toInputDate, stamp, today } from "@/lib/format";
+import { META_LABELS } from "@/lib/print/config";
+import { defaultBank, printCompany } from "@/lib/print/mapper";
+import { bahtText } from "@/lib/print/words";
+import type { PrintConfig, PrintDoc, PrintLine } from "@/lib/print/types";
+
+/* ============================================================
+   SALES REQUEST DRAFT
+
+   Same document editor as the quotation, different document.
+
+   A sales request is INTERNAL: it records what a customer asked
+   for and carries it through approval. So it has no validity
+   window and no customer signature — it has a required date, a
+   priority, a warehouse and an approver.
+
+   Everything a sell-side document shares — customer, lines,
+   totals, credit — comes from doc-draft.ts, so this file only
+   describes what makes a request a request.
+   ============================================================ */
+
+const num = (v: unknown) => Number(v) || 0;
+const str = (v: unknown) => String(v ?? "").trim();
+
+/* The parts shared with every other sell-side document, re-exported so a
+   caller reads one module rather than two. */
+export {
+  DISCOUNT_THRESHOLD,
+  applyProduct,
+  blankLine,
+  blockingIssues,
+  lineAvailability,
+  productSearch,
+  resolvePriceList,
+  resolveRep,
+  shipToChoices,
+  warningIssues,
+  type DraftIssue,
+  type DraftLine,
+} from "./doc-draft";
+
+export type SrTotals = DocTotals;
+export type SrInsight = DocInsight;
+
+export interface SalesRequestDraft extends PartyFields, TermFields {
+  mode: "create" | "edit";
+  code: string;
+  status: string;
+
+  /* What makes it a request: when the goods are needed, how urgent,
+     and which warehouse is expected to serve it. */
+  requestDate: string;
+  requiredDate: string;
+  priority: string;
+  warehouse: string;
+
+  /** The quotation this request came from. Empty when the customer rang up. */
+  quotationRef: string;
+
+  customerRef: string;
+  currency: string;
+  internalRef: string;
+
+  items: DraftLine[];
+
+  headerDisc: number | "";
+  freight: number | "";
+  otherCharges: number | "";
+
+  /** Printed under the item table. */
+  remarks: string;
+  /** Never saved and never printed. */
+  internalNote: string;
+}
+
+/* ---------- Defaults ---------- */
+
+export const DEFAULT_SR_REMARKS = [
+  "คำขอขายนี้ยังไม่ผูกมัดและไม่จองสินค้า — การจองเกิดขึ้นเมื่อยืนยันใบสั่งขาย",
+  "กรุณาตรวจสอบจำนวนและวันที่ลูกค้าต้องการก่อนส่งอนุมัติ",
+].join("\n");
+
+/** How many days ahead the customer usually needs the goods. */
+export const SR_LEAD_DAYS = 7;
+
+export function defaultRequiredDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + SR_LEAD_DAYS);
+  return d.toISOString().slice(0, 10);
+}
+
+export function blankSrDraft(): SalesRequestDraft {
+  return {
+    ...blankParty(),
+    mode: "create",
+    code: nextSalesRequestCode(),
+    status: "Draft",
+    requestDate: toInputDate(today()),
+    requiredDate: defaultRequiredDate(),
+    priority: "Normal",
+    warehouse: "",
+    quotationRef: "",
+    customerRef: "",
+    salesRep: "",
+    priceList: SR_PRICE_LISTS[0],
+    currency: "THB",
+    payTerm: PAY_TERMS[0] ?? "เครดิต 30 วัน",
+    channel: "Direct",
+    internalRef: "",
+    items: [blankLine()],
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
+    remarks: DEFAULT_SR_REMARKS,
+    internalNote: "",
+  };
+}
+
+/**
+ * Open an existing request in the editor.
+ *
+ * The record names a customer; the addresses come from the partner master,
+ * exactly as the print mapper reads them.
+ */
+export function draftFromSalesRequest(r: SalesRequest): SalesRequestDraft {
+  const pick = `${r.customerCode} - ${r.customer}`;
+  const draft: SalesRequestDraft = {
+    ...blankSrDraft(),
+    mode: "edit",
+    code: r.code,
+    status: r.status,
+    customerPick: pick,
+    customerCode: r.customerCode,
+    customer: r.customer,
+    requestDate: toInputDate(r.requestDate),
+    requiredDate: toInputDate(r.requiredDate),
+    priority: r.priority,
+    warehouse: r.warehouse,
+    quotationRef: r.quotationRef,
+    customerRef: r.customerRef,
+    salesRep: r.salesRep,
+    priceList: r.priceList,
+    currency: r.currency,
+    payTerm: r.payTerm,
+    channel: r.channel,
+    remarks: r.note || DEFAULT_SR_REMARKS,
+    items: (r.items ?? []).map((it) => ({
+      ...blankLine(),
+      code: it.code,
+      name: it.name,
+      unit: it.unit,
+      qty: it.qty,
+      price: it.price,
+      disc: it.disc,
+      tax: it.tax,
+      note: it.note ?? "",
+    })),
+  };
+  if (!draft.items.length) draft.items = [blankLine()];
+  return applyCustomerTo(draft, pick);
+}
+
+/* ---------- Customer and source quotation ---------- */
+
+export const applyCustomer = (draft: SalesRequestDraft, customerPick: string) =>
+  applyCustomerTo(draft, customerPick);
+
+export const applyShipTo = (draft: SalesRequestDraft, label: string) =>
+  applyShipToOn(draft, label);
+
+/**
+ * Adopt an accepted quotation.
+ *
+ * This is the whole reason a quotation exists: the customer agreed a price, so
+ * the request that follows must carry exactly those lines and those terms. The
+ * salesperson may still edit afterwards — the point is that they do not have
+ * to retype it.
+ */
+export function applyQuotation(draft: SalesRequestDraft, quotationRef: string): SalesRequestDraft {
+  const qt = getQT(str(quotationRef));
+  if (!qt) return { ...draft, quotationRef };
+
+  /* Load the customer FIRST — addresses and contacts come from the master —
+     then lay the quotation's own terms on top. The quotation is what the
+     customer agreed to; the master is only what they usually get. */
+  const withCustomer = applyCustomerTo(draft, `${qt.customerCode} - ${qt.customer}`);
+
+  const next: SalesRequestDraft = {
+    ...withCustomer,
+    quotationRef: qt.code,
+    salesRep: qt.salesRep,
+    currency: qt.currency,
+    payTerm: qt.payTerm,
+    priceList: qt.priceList,
+    channel: qt.channel,
+    customerRef: qt.customerRef,
+    /* The customer wanted the goods by the day the price stops standing. */
+    requiredDate: toInputDate(qt.validUntil),
+    items: (qt.items ?? []).map((it) => ({
+      ...blankLine(),
+      code: it.code,
+      name: it.name,
+      unit: it.unit,
+      qty: it.qty,
+      price: it.price,
+      disc: it.disc,
+      tax: it.tax,
+      note: it.note ?? "",
+    })),
+  };
+  if (!next.items.length) next.items = [blankLine()];
+
+  return next;
+}
+
+/** Quotations that may still be turned into a request. */
+export function quotationChoices(customerCode = ""): string[] {
+  /* Read at call time, not at load time: the store is mutable mock state and
+     a quotation accepted a moment ago must appear here. */
+  return QUOTATIONS.filter(
+    (q) => ["Draft", "Sent", "Accepted"].includes(q.status) && !q.srRef,
+  )
+    .filter((q) => !customerCode || q.customerCode === customerCode)
+    .map((q) => q.code);
+}
+
+/* ---------- Derived ---------- */
+
+export const srTotals = (draft: SalesRequestDraft): SrTotals => docTotals(draft.items, draft);
+
+export const srInsight = (draft: SalesRequestDraft): SrInsight =>
+  docInsight(draft.customerPick, srTotals(draft).grandTotal, draft);
+
+/* ---------- Validation ---------- */
+
+/**
+ * What a request cannot be submitted without.
+ *
+ * Save Draft ignores all of it. Submit for Approval is the gate — a request
+ * that reaches an approver with a missing warehouse or an impossible date
+ * wastes the approver's time, not the salesperson's.
+ */
+export function validateSrDraft(draft: SalesRequestDraft): DraftIssue[] {
+  const out: DraftIssue[] = [...validateParty(draft), ...validateLines(draft.items)];
+  const block = (field: string, message: string) => out.push({ field, message, blocking: true });
+  const warn = (field: string, message: string) => out.push({ field, message, blocking: false });
+
+  if (!draft.salesRep) block("salesRep", "ยังไม่ได้เลือกพนักงานขาย");
+  if (!draft.requestDate) block("requestDate", "ยังไม่ได้ระบุวันที่ขอ");
+  if (!draft.requiredDate) block("requiredDate", "ยังไม่ได้ระบุวันที่ลูกค้าต้องการ");
+  if (draft.requestDate && draft.requiredDate && draft.requiredDate < draft.requestDate) {
+    block("requiredDate", "วันที่ลูกค้าต้องการต้องไม่อยู่ก่อนวันที่ขอ");
+  }
+  if (!draft.priority) block("priority", "ยังไม่ได้ระบุความเร่งด่วน");
+  if (!draft.warehouse) block("warehouse", "ยังไม่ได้เลือกคลังที่จะจ่ายของ");
+  if (!draft.priceList) block("priceList", "ยังไม่ได้เลือกรายการราคา");
+  if (!draft.currency) block("currency", "ยังไม่ได้เลือกสกุลเงิน");
+
+  /* A quotation belongs to one customer; pointing at someone else's is a
+     mistake worth stopping, not a note worth making. */
+  if (draft.quotationRef) {
+    const qt = getQT(draft.quotationRef);
+    if (!qt) {
+      block("quotationRef", `ไม่พบใบเสนอราคา ${draft.quotationRef}`);
+    } else if (draft.customerCode && qt.customerCode !== draft.customerCode) {
+      block("quotationRef", "ใบเสนอราคาที่อ้างอิงเป็นของลูกค้ารายอื่น");
+    }
+  }
+
+  if (!draft.customerRef) warn("customerRef", "ยังไม่ได้ระบุเลขที่อ้างอิงของลูกค้า");
+
+  const insight = srInsight(draft);
+  if (insight.found && !insight.withinLimit) {
+    warn("credit", `เกินวงเงินเครดิต ${insight.overBy.toLocaleString("en-US")} บาท`);
+  }
+
+  return out;
+}
+
+/* ---------- Printing an unsaved draft ---------- */
+
+/**
+ * Turn the editor's state into the print engine's neutral document, so
+ * Preview shows what is on screen rather than the last saved version.
+ *
+ * The internal note is deliberately absent — it is the one field that must
+ * never reach paper.
+ */
+export function srPrintDoc(draft: SalesRequestDraft, config: PrintConfig): PrintDoc {
+  const t = srTotals(draft);
+  const values: Record<string, string> = {
+    docNo: draft.code,
+    docDate: toDisplayDate(draft.requestDate),
+    deliveryDate: toDisplayDate(draft.requiredDate),
+    customerCode: draft.customerCode,
+    salesRep: draft.salesRep,
+    quotationNo: draft.quotationRef,
+    payTerm: draft.payTerm,
+    currency: draft.currency,
+    warehouse: draft.warehouse,
+    reference: draft.customerRef,
+  };
+
+  const meta = config.metaFields
+    .map((field) => ({
+      field,
+      label: META_LABELS[field]?.en ?? field,
+      labelTH: META_LABELS[field]?.th ?? "",
+      value: str(values[field]),
+    }))
+    .filter((r) => r.value);
+
+  const lines: PrintLine[] = draft.items
+    .filter((l) => str(l.code))
+    .map((l, i) => {
+      const base = num(l.qty) * num(l.price);
+      const disc = base * (num(l.disc) / 100);
+      return {
+        no: i + 1,
+        code: str(l.code),
+        description: str(l.name),
+        extraLines: [str(l.desc), str(l.note)].filter(Boolean),
+        warehouse: draft.warehouse,
+        location: "",
+        bin: "",
+        lot: str(l.lot),
+        serial: str(l.serial),
+        packageNo: "",
+        qty: num(l.qty),
+        requiredQty: num(l.qty),
+        pickedQty: 0,
+        weight: 0,
+        uom: str(l.unit),
+        unitPrice: num(l.price),
+        discount: num(l.disc),
+        netPrice: num(l.price) * (1 - num(l.disc) / 100),
+        vatRate: num(l.tax),
+        amount: base - disc,
+      };
+    });
+
+  return {
+    entity: "sales-request",
+    code: draft.code,
+    status: draft.status,
+    statusTone: "info",
+    date: toDisplayDate(draft.requestDate),
+    company: printCompany(),
+    billTo: {
+      name: draft.customer,
+      code: draft.customerCode,
+      address: draft.billAddress,
+      taxId: draft.taxId,
+      branch: "",
+      phone: draft.billPhone,
+      contact: draft.billContact,
+    },
+    shipTo: {
+      name: draft.sameAsBill ? draft.customer : draft.shipName || draft.customer,
+      code: draft.customerCode,
+      address: draft.sameAsBill ? draft.billAddress : draft.shipAddress,
+      taxId: "",
+      branch: "",
+      phone: draft.sameAsBill ? draft.billPhone : draft.shipPhone,
+      contact: draft.sameAsBill ? draft.billContact : draft.shipContact,
+      instruction: draft.sameAsBill ? "" : draft.shipInstruction,
+    },
+    meta,
+    lines,
+    totals: {
+      subtotal: t.subtotal,
+      lineDiscount: t.lineDiscount,
+      headerDiscount: t.headerDiscount,
+      freight: t.freight,
+      otherCharges: t.otherCharges,
+      netAmount: t.netAmount,
+      vat: t.vat,
+      withholding: 0,
+      rounding: t.rounding,
+      grandTotal: t.grandTotal,
+      currency: draft.currency,
+      amountInWords: bahtText(t.grandTotal),
+    },
+    bank: defaultBank(draft.code),
+    remarks: str(draft.remarks)
+      .split("\n")
+      .map((r) => r.replace(/^\s*\d+[.)]\s*/, "").trim())
+      .filter(Boolean),
+  };
+}
+
+/* ---------- Saving ---------- */
+
+export interface SrSaveResult {
+  code: string;
+  created: boolean;
+}
+
+/**
+ * Write the draft into the sales request store.
+ *
+ * `submit: false` parks a draft — same record, same number, status untouched.
+ * There is exactly one record per request number, so Save Draft and autosave
+ * update rather than pile up duplicates.
+ *
+ * Submitting a request built from a quotation closes that quotation, which is
+ * the one side effect the old wizard had and the one worth keeping.
+ */
+export function saveSalesRequestDraft(
+  draft: SalesRequestDraft,
+  { submit = false, user = "Pimpaka S." }: { submit?: boolean; user?: string } = {},
+): SrSaveResult {
+  const now = stamp();
+  const code = str(draft.code);
+  const existing = SALES_REQUESTS.find((x) => x.code === code);
+
+  const items = draft.items
+    .filter((l) => str(l.code))
+    .map((l) => ({
+      code: str(l.code),
+      name: str(l.name),
+      unit: str(l.unit),
+      qty: num(l.qty),
+      price: num(l.price),
+      disc: num(l.disc),
+      tax: num(l.tax),
+      note: str(l.note),
+    }));
+
+  const patch = {
+    quotationRef: str(draft.quotationRef),
+    customer: str(draft.customer),
+    customerCode: str(draft.customerCode),
+    salesRep: str(draft.salesRep),
+    requestDate: toDisplayDate(draft.requestDate),
+    requiredDate: toDisplayDate(draft.requiredDate),
+    priority: str(draft.priority) || "Normal",
+    warehouse: str(draft.warehouse),
+    currency: str(draft.currency) || "THB",
+    payTerm: str(draft.payTerm),
+    priceList: str(draft.priceList),
+    channel: str(draft.channel),
+    customerRef: str(draft.customerRef),
+    note: str(draft.remarks),
+    items,
+    updated: now,
+    updatedBy: user,
+  };
+
+  if (existing) {
+    Object.assign(existing, patch);
+    (existing.history ??= []).unshift({
+      t: submit ? "Sales request updated" : "Draft saved",
+      d: submit ? "แก้ไขคำขอขายจากตัวแก้ไขเอกสาร" : "บันทึกฉบับร่าง",
+      u: user,
+      when: now,
+      kind: submit ? "primary" : "",
+    });
+    decorateSalesRequests();
+    return { code, created: false };
+  }
+
+  SALES_REQUESTS.unshift({
+    code,
+    ...patch,
+    /* Approval is a deliberate step — a new request always starts as Draft. */
+    status: "Draft",
+    approvedBy: "",
+    approvedDate: "",
+    rejectReason: "",
+    soRef: "",
+    created: now,
+    createdBy: user,
+    history: [
+      {
+        t: patch.quotationRef ? `Created from ${patch.quotationRef}` : "Created",
+        d: patch.quotationRef
+          ? "สร้างคำขอขายจากใบเสนอราคาที่ลูกค้าตอบรับ"
+          : "สร้างคำขอขายจากตัวแก้ไขเอกสาร",
+        u: user,
+        when: now,
+        kind: "primary",
+      },
+    ],
+  } as unknown as SrRow);
+
+  /* Close the loop on the quotation this request came from. */
+  const qt = getQT(patch.quotationRef);
+  if (qt && !qt.srRef) {
+    qt.srRef = code;
+    qt.status = "Converted";
+    qt.updated = now;
+  }
+
+  decorateSalesRequests();
+  return { code, created: true };
+}
+
+export const SR_PRIORITIES = SR_PRIORITY;
+export const SR_CHANNEL_OPTIONS = SR_CHANNELS;
+export const SR_PRICE_LIST_OPTIONS = SR_PRICE_LISTS;
