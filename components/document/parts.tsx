@@ -531,6 +531,43 @@ export function CreditWarning({ insight }: { insight: DocInsight }) {
   );
 }
 
+/**
+ * Which price tier the customer is on, and anything odd about how it was
+ * decided. It sits on the document rather than only on the partner record
+ * because the moment the tier matters is the moment a price is quoted, and
+ * the person who needs to see it is the one typing the document.
+ */
+export function PriceTierNotice({ insight }: { insight: DocInsight }) {
+  if (!insight.found || insight.tierNotices.length === 0) return null;
+
+  return (
+    <div data-testid="price-tier-notice" className="flex flex-col gap-2">
+      {insight.tierNotices.map((n) => (
+        <div
+          key={n.kind}
+          className={cn(
+            "rounded-card border px-4 py-3",
+            n.tone === "danger"
+              ? "border-danger/40 bg-danger-soft"
+              : "border-warning/40 bg-warning-soft",
+          )}
+        >
+          <p
+            className={cn(
+              "flex items-center gap-2 text-[13px] font-semibold",
+              n.tone === "danger" ? "text-danger" : "text-warning-text",
+            )}
+          >
+            <Icon name={n.tone === "danger" ? "alert" : "info"} size={16} />
+            {n.title}
+          </p>
+          <p className="mt-1.5 text-cap leading-relaxed text-ink-2">{n.message}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ---------- Item table ---------- */
 
 const HEAD = "bg-[#2f3542] text-white text-[11px] font-semibold uppercase tracking-[0.03em]";

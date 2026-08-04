@@ -30,7 +30,15 @@ export const PRICING_CONFIG = {
 
 export type PriceSource = 'CATALOG_SPECIAL' | 'CATALOG_LIST' | 'PRICELIST_LEGACY';
 export type PriceStatus = 'OK' | 'PENDING_COST' | 'REVIEW' | 'NO_PRICE';
-export type PriceTier = 'private' | 'government' | 'dealer' | 'last';
+
+/**
+ * ชั้นราคาที่ "ลูกค้า" ได้รับ — มีสามชั้นเท่านั้น
+ * `last` ไม่อยู่ในนี้โดยตั้งใจ: มันคือเพดานล่างของทุกดีล ไม่ใช่ราคาของกลุ่มลูกค้าใด
+ */
+export type CustomerPriceTier = 'private' | 'government' | 'dealer';
+
+/** ทุกชั้นราคาในไฟล์ รวม `last` ที่ใช้เป็นเกณฑ์อนุมัติ ไม่ใช่ราคาเสนอ */
+export type PriceTier = CustomerPriceTier | 'last';
 
 export interface PriceListItem {
   product_code: string;
@@ -230,12 +238,27 @@ export function checkQuotedPrice(item: PriceListItem, quotedPrice: number): Quot
   return { allowed: !blocked, requiresApproval: blocked, gp, violations };
 }
 
-/** ราคาตั้งต้นตามประเภทลูกค้า */
-export function priceForTier(item: PriceListItem, tier: PriceTier): number | null {
+/**
+ * ราคาตั้งต้นสำหรับลูกค้า — ทางเข้าหลักที่ทุกเอกสารขายต้องใช้
+ *
+ * รับได้แค่สามชั้น ส่ง `'last'` เข้ามาจะไม่ผ่าน type check ตั้งแต่ตอน compile
+ * เพราะ Last price คือเพดานล่างที่ต้องขออนุมัติจึงจะขายได้ ไม่ใช่ราคาที่เสนอ
+ * ให้ลูกค้ากลุ่มไหนโดยอัตโนมัติ
+ */
+export function priceForCustomer(item: PriceListItem, tier: CustomerPriceTier): number | null {
   switch (tier) {
     case 'private': return item.price_private;
     case 'government': return item.price_government;
     case 'dealer': return item.price_dealer;
-    case 'last': return item.price_last;
   }
+}
+
+/**
+ * อ่านราคาช่องใดก็ได้รวม `last`
+ *
+ * ⚠️ ใช้กับการตรวจสอบและการอนุมัติเท่านั้น (เช่นเทียบว่าราคาที่กรอกต่ำกว่า
+ * Last price ไหม) การเลือกราคาให้ลูกค้าให้ใช้ `priceForCustomer()`
+ */
+export function priceForTier(item: PriceListItem, tier: PriceTier): number | null {
+  return tier === 'last' ? item.price_last : priceForCustomer(item, tier);
 }

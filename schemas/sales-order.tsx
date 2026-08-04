@@ -6,6 +6,7 @@ import {
   soLinkedDocs,
   type SoRow,
 } from "@/lib/domain/outbound";
+import { tierNotices } from "@/lib/domain/price-tier";
 import { docDiscTotal, docSubtotal, docTaxTotal, lineNet, pctOf } from "@/lib/domain/lines";
 import { SO_STATUS } from "@/data/sales-orders";
 import { PICK_TONE, PRIORITY_TONE, SO_TONE, DO_TONE, PACK_TONE, tone } from "@/lib/badges";
@@ -268,6 +269,18 @@ export const SO_DETAIL: DetailSchema<SoRow> = {
             title: "ใบสั่งขายถูกระงับด้วยเหตุผลด้านเครดิต",
             message: `${so.creditNote} — ต้องได้รับอนุมัติจากฝ่ายบัญชีก่อนจึงจะจัดของได้`,
           },
+          /* Which price tier this customer is on, and anything odd about how
+             it was decided — the same notice the editors show, because this
+             is where the order that used those prices is read back. */
+          ...(bp ? tierNotices(bp) : []).map(
+            (n) =>
+              ({
+                type: "alert",
+                tone: n.tone,
+                title: n.title,
+                message: n.message,
+              }) as const,
+          ),
           so.isOverdue && {
             type: "alert",
             tone: "warn",

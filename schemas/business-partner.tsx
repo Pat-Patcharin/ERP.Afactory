@@ -56,6 +56,7 @@ import type {
 } from "@/lib/types";
 import { Badge, CellSub, Thumb } from "@/components/ui";
 import { isPhoto } from "@/components/engine/FormFields";
+import { TIER_TH, tierForPartner, tierNotices } from "@/lib/domain/price-tier";
 import { Icon, type IconName } from "@/lib/icons";
 import { BP_FORM } from "./forms/business-partner";
 
@@ -871,6 +872,19 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             message: blocking.map((i) => i.message).join(" · "),
           },
 
+          /* Price tier disagreements. The same notices ride along on every
+             sales document, so what a salesperson sees at quoting time is
+             what the partner record says here. */
+          ...tierNotices(b).map(
+            (n) =>
+              ({
+                type: "alert",
+                tone: n.tone,
+                title: n.title,
+                message: n.message,
+              }) as const,
+          ),
+
           /* ---- Every card runs the full width of the page.
              Side by side, each one was a quarter of the screen and every
              value wrapped; given the whole row the fields lay out in two
@@ -1028,6 +1042,12 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 ),
               },
               { label: "Payment Terms", value: b.payTerm },
+              b.customer
+                ? {
+                    label: "Price Tier",
+                    value: <Badge tone="primary">{TIER_TH[tierForPartner(b)]}</Badge>,
+                  }
+                : null,
               { label: "Price List", value: b.customer?.priceList ?? DASH },
               { label: "Currency", value: b.supplier?.currency ?? "THB" },
               { label: "Sale Area", value: b.salesArea },

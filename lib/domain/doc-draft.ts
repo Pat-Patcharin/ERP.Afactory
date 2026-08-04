@@ -4,6 +4,7 @@ import { PRODUCTS, productStock } from "./product";
 import { addressLine, bpBillingAddress, bpDeliveryAddress } from "./partner";
 import { docDiscTotal, docSubtotal, docTaxTotal } from "./lines";
 import { creditCheck, getCustomer, salesRepOptions } from "./outbound";
+import { TIER_TH, tierForPartner, tierNotices, type TierNotice } from "./price-tier";
 import { SALES_REPRESENTATIVES } from "./sales";
 import { bpLatestSalesYear, bpSalesOrders } from "./partner-analytics";
 import { SALES_INVOICES } from "./invoice";
@@ -393,6 +394,11 @@ export interface DocInsight {
   lastInvoice: string;
   outstandingInvoices: number;
   salesThisYear: number;
+  /** ชั้นราคาที่ลูกค้ารายนี้ได้รับ — private / government / dealer */
+  priceTier: string;
+  priceTierLabel: string;
+  /** ข้อสังเกตที่คนขายต้องเห็นตอนออกเอกสาร ไม่ใช่แค่ในหน้า BP */
+  tierNotices: TierNotice[];
 }
 
 /** Read-only context for the customer panel. Never any cost or margin. */
@@ -424,6 +430,9 @@ export function docInsight(customerPick: string, documentValue: number, fallback
     lastInvoice: invoices[0]?.code ?? "",
     outstandingInvoices: invoices.filter((i) => i.paymentStatus !== "Paid").length,
     salesThisYear: year?.revenue ?? 0,
+    priceTier: bp ? tierForPartner(bp) : "private",
+    priceTierLabel: bp ? TIER_TH[tierForPartner(bp)] : TIER_TH.private,
+    tierNotices: bp ? tierNotices(bp) : [],
   };
 }
 

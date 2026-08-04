@@ -32,6 +32,7 @@ import { useCrumbCode } from "@/components/layout/Topbar";
 import {
   BillToPanel,
   CreditWarning,
+  PriceTierNotice,
   DocFooter,
   DocHeader,
   InsightPanel,
@@ -571,6 +572,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
             <div className="mt-4 flex flex-col gap-3">
               <InsightPanel insight={insight} />
               <CreditWarning insight={insight} />
+              <PriceTierNotice insight={insight} />
               <IssueSummary issues={shownIssues} onJump={jumpTo} />
             </div>
           )}
