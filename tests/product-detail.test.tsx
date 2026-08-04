@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { productSchemas } from "@/schemas/product";
+import { productSchemas, splitWarehouse } from "@/schemas/product";
 import { PRODUCTS, getProduct } from "@/lib/domain/product";
 import {
   productGoodsReceipts,
@@ -96,6 +96,80 @@ describe("Product detail — Overview", () => {
     for (const l of ["Registration", "Main Warehouse", "Main Supplier", "Base Unit"]) {
       expect(labels, l).toContain(l);
     }
+  });
+});
+
+describe("Product detail — Warehouse & Stock", () => {
+  const stock = (code: string) =>
+    detail.tabs.find((t) => t.key === "warehouse")!.blocks(getProduct(code)!, ctx);
+
+  it("drops the Projected Balance block", () => {
+    for (const p of PRODUCTS) {
+      expect(titlesOf(stock(p.code)), p.code).not.toContain("Projected Balance");
+    }
+  });
+
+  it("renders Stock Summary as a table of measures, not cards", () => {
+    const summary = stock(ORDERED).find(
+      (b) => b && (b as { title?: string }).title === "Stock Summary",
+    ) as { type: string; rows: { metric: string }[] };
+
+    expect(summary.type).toBe("table");
+    expect(summary.rows.map((r) => r.metric)).toEqual([
+      "Stock on Hand",
+      "Reserved",
+      "Back Order",
+      "On Order",
+      "Available",
+      "Reorder Point",
+      "Stock Status",
+    ]);
+  });
+
+  it("computes Available as On Hand minus Reserved", () => {
+    for (const p of PRODUCTS) {
+      const summary = stock(p.code).find(
+        (b) => b && (b as { title?: string }).title === "Stock Summary",
+      ) as { rows: { metric: string; qty: number }[] };
+      const by = (m: string) => summary.rows.find((r) => r.metric === m)!.qty;
+
+      expect(by("Available"), p.code).toBe(by("Stock on Hand") - by("Reserved"));
+      expect(by("Reorder Point"), p.code).toBe(p.lowLevel);
+    }
+  });
+
+  it("carries the stock status as a badge row, not a quantity", () => {
+    const summary = stock(ORDERED).find(
+      (b) => b && (b as { title?: string }).title === "Stock Summary",
+    ) as { rows: { metric: string; badge?: { text: string } }[] };
+
+    const row = summary.rows.find((r) => r.metric === "Stock Status")!;
+    expect(row.badge).toBeDefined();
+    expect(row.badge!.text).toBeTruthy();
+  });
+
+  it("reduces Stock by Warehouse to where and how much", () => {
+    const table = stock(ORDERED).find(
+      (b) => b && (b as { title?: string }).title === "Stock by Warehouse",
+    ) as { cols: { key: string; label: string }[] };
+
+    expect(table.cols.map((c) => c.key)).toEqual(["code", "name", "loc", "onHand"]);
+    expect(table.cols.map((c) => c.label)).toEqual([
+      "Warehouse Code",
+      "Warehouse Name",
+      "Location",
+      "Quantity",
+    ]);
+  });
+
+  it("splits the warehouse string into a code and a name", () => {
+    expect(splitWarehouse("WH-01 Samut Prakan")).toEqual({
+      code: "WH-01",
+      name: "Samut Prakan",
+    });
+    /* A warehouse with no name keeps the whole string rather than losing it. */
+    expect(splitWarehouse("WH-09")).toEqual({ code: "WH-09", name: "" });
+    expect(splitWarehouse("")).toEqual({ code: "", name: "" });
   });
 });
 

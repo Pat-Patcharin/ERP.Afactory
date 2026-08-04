@@ -8,7 +8,7 @@ import {
 import { REG_TONE, STATUS_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt, money } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
-import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
+import type { BadgeTone, DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
 import { Badge, Barcode, LinkButton } from "@/components/ui";
 import { Icon } from "@/lib/icons";
 import { PRODUCT_FORM } from "./forms/product";
@@ -21,6 +21,17 @@ import { PRODUCT_FORM } from "./forms/product";
 const regBadge = (status: string) => (
   <Badge tone={tone(REG_TONE, status)}>{status}</Badge>
 );
+
+/**
+ * Warehouse rows store code and name as one string ("WH-01 Samut Prakan"),
+ * which is how the documents carry it. Split on the first space so the two
+ * can be columns; a warehouse with no name keeps the whole string as its code
+ * rather than losing it.
+ */
+export function splitWarehouse(wh: string): { code: string; name: string } {
+  const m = String(wh ?? "").trim().match(/^(\S+)\s+(.*)$/);
+  return m ? { code: m[1], name: m[2] } : { code: String(wh ?? ""), name: "" };
+}
 
 /* ---------- LIST ---------- */
 
@@ -506,43 +517,59 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
         const isLow = p.availTotal <= p.lowLevel;
         const noWh = d.whRows.every((r) => r.onHand === 0 && r.res === 0);
 
+        const status = stockStatus(p.onHandTotal, p.resTotal, p.lowLevel);
+
+        /* A table, not cards: these are one measure each of the same
+           quantity, and a column of figures compares far better than a
+           grid of tiles. Available and Stock Status are the two lines a
+           reader is actually looking for, so both carry emphasis. */
+        const summaryRows: {
+          metric: string;
+          qty: number;
+          note: string;
+          strong?: boolean;
+          badge?: { text: string; tone: BadgeTone };
+        }[] = [
+          { metric: "Stock on Hand", qty: p.onHandTotal, note: "ยอดคงเหลือทั้งหมดทุกคลัง" },
+          { metric: "Reserved", qty: p.resTotal, note: "ถูกจองไว้กับเอกสารขาย" },
+          { metric: "Back Order", qty: p.backOrder, note: "ค้างส่งลูกค้า" },
+          { metric: "On Order", qty: p.onOrderTotal, note: "อยู่ระหว่างสั่งซื้อ" },
+          {
+            metric: "Available",
+            qty: p.availTotal,
+            note: "On Hand − Reserved",
+            strong: true,
+          },
+          { metric: "Reorder Point", qty: p.lowLevel, note: "จุดสั่งซื้อ" },
+          { metric: "Stock Status", qty: 0, note: "เทียบ Available กับจุดสั่งซื้อ", badge: status },
+        ];
+
         return [
           {
-            type: "cards",
+            type: "table",
             title: "Stock Summary",
-            cols: 3,
-            items: [
-              { label: "Stock on Hand", value: fmt(p.onHandTotal), unit: p.unit },
-              { label: "Reserved", value: fmt(p.resTotal), unit: p.unit },
+            rows: summaryRows,
+            empty: "",
+            cols: [
               {
-                label: "Available",
-                value: fmt(p.availTotal),
-                unit: p.unit,
-                tone: isLow ? "warn" : "accent",
-                sub: "On Hand − Reserved",
-              },
-              { label: "On Order", value: fmt(p.onOrderTotal), unit: p.unit },
-              { label: "Back Order", value: fmt(p.backOrder), unit: p.unit },
-            ],
-          },
-          {
-            type: "fields",
-            title: "Projected Balance",
-            cols: 2,
-            items: [
-              {
-                label: "Projected Balance",
-                value: (
-                  <strong>
-                    {fmt(p.projected)} {p.unit}
-                  </strong>
-                ),
+                key: "metric",
+                label: "Measure",
+                cell: (r) => (r.strong ? <strong>{r.metric}</strong> : r.metric),
               },
               {
-                label: "สูตรคำนวณ",
-                value: "On Hand − Back Order + On Order",
-                muted: true,
+                key: "qty",
+                label: "Quantity",
+                align: "right",
+                cell: (r) =>
+                  r.badge ? (
+                    <Badge tone={r.badge.tone}>{r.badge.text}</Badge>
+                  ) : (
+                    <span className={r.strong ? "font-semibold" : undefined}>
+                      {fmt(r.qty)} {p.unit}
+                    </span>
+                  ),
               },
+              { key: "note", label: "หมายเหตุ", muted: true },
             ],
           },
           isLow && {
@@ -561,53 +588,35 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
               "สินค้านี้ยังไม่ถูกผูกเข้ากับคลังใด — ติดต่อฝ่ายคลังสินค้าเพื่อกำหนดคำแหน่งจัดเก็บ",
           },
           {
+            /* Where the stock physically sits, and how much. The reserved /
+               available / reorder breakdown is a company-wide question and
+               is answered once by Stock Summary above — repeating it per
+               warehouse made an eight-column table nobody read across. */
             type: "table",
             title: "Stock by Warehouse",
             rows: d.whRows,
             empty: "ยังไม่มีการกำหนดคลังสินค้า",
             cols: [
-              { key: "wh", label: "Warehouse" },
+              {
+                key: "code",
+                label: "Warehouse Code",
+                cell: (r) => <span className="font-medium">{splitWarehouse(r.wh).code}</span>,
+              },
+              {
+                key: "name",
+                label: "Warehouse Name",
+                cell: (r) => splitWarehouse(r.wh).name || DASH,
+              },
               { key: "loc", label: "Location", muted: true },
               {
                 key: "onHand",
-                label: "On Hand",
+                label: "Quantity",
                 align: "right",
-                cell: (r) => fmt(r.onHand),
-              },
-              {
-                key: "res",
-                label: "Reserved",
-                align: "right",
-                muted: true,
-                cell: (r) => fmt(r.res),
-              },
-              {
-                key: "avail",
-                label: "Available",
-                align: "right",
-                cell: (r) => <strong>{fmt(r.onHand - r.res)}</strong>,
-              },
-              {
-                key: "onOrder",
-                label: "On Order",
-                align: "right",
-                muted: true,
-                cell: (r) => fmt(r.onOrder),
-              },
-              {
-                key: "rop",
-                label: "Reorder Point",
-                align: "right",
-                muted: true,
-                cell: (r) => fmt(r.rop),
-              },
-              {
-                key: "st",
-                label: "Stock Status",
-                cell: (r) => {
-                  const s = stockStatus(r.onHand, r.res, r.rop);
-                  return <Badge tone={s.tone}>{s.text}</Badge>;
-                },
+                cell: (r) => (
+                  <span className="font-medium">
+                    {fmt(r.onHand)} {p.unit}
+                  </span>
+                ),
               },
             ],
           },
