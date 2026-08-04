@@ -10,9 +10,13 @@
    stops lining up with pre-printed stationery.
    ============================================================ */
 
+/* The physical sheet takes no margin of its own: the page box below carries
+   its own padding, so what is on screen is exactly what comes out of the
+   printer. A margin declared in both places is what pushes content off the
+   edge — the browser subtracts one, the layout subtracts the other. */
 @page {
   size: A4 portrait;
-  margin: 8mm;
+  margin: 0;
 }
 
 .a4-root {
@@ -34,14 +38,18 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* One physical sheet. */
+/* One physical sheet, at full A4, carrying its own margins as padding.
+   Content area: 210 − 2×10 = 190mm wide, 297 − 9 − 8 = 280mm tall. */
 .a4-page {
   position: relative;
   box-sizing: border-box;
-  width: 194mm;          /* 210mm − 8mm margins */
-  min-height: 281mm;     /* 297mm − 8mm margins */
+  width: 210mm;
+  /* min-height, not height: a page that somehow outgrows the sheet spills
+     visibly onto another one rather than being clipped. Silent truncation on
+     a tax document is the one failure that must not be possible. */
+  min-height: 297mm;
   background: #fff;
-  padding: 0;
+  padding: 9mm 10mm 8mm;
   display: flex;
   flex-direction: column;
 }
@@ -84,8 +92,8 @@
     margin: 0;
     box-shadow: none;
     border-radius: 0;
-    width: auto;
-    min-height: auto;
+    /* Width and padding stay exactly as they are on screen — that is what
+       makes the preview trustworthy. */
     /* Each planned page is its own sheet. The engine decided where the
        breaks fall; the browser only honours them. */
     page-break-after: always;
@@ -163,10 +171,14 @@
 }
 
 .a4-table tbody td {
-  padding: 1.3mm 1.5mm;
+  /* Slightly smaller than the body copy: the item table is the one place
+     where an extra millimetre per row decides whether a document runs to a
+     second sheet. */
+  font-size: 7.6pt;
+  padding: 1.2mm 1.4mm;
   border-bottom: 0.2mm solid var(--pr-line);
   vertical-align: top;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Blank rows keep a short page the same height as a full one. They carry

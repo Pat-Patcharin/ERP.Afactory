@@ -1,7 +1,7 @@
 import { COLUMN_LABELS, SIGNATURE_LABELS, fillerRows } from "@/lib/print";
 import { visibleColumns } from "@/lib/print/permissions";
 import type { ItemColumn, PrintJob, PrintLine, PrintPage } from "@/lib/print/types";
-import { AFactoryLogo, BarcodePlaceholder, QRPlaceholder } from "./marks";
+import { AFactoryLogo, AllInOneMark, BarcodePlaceholder, QRPlaceholder } from "./marks";
 
 /* ============================================================
    PRINT RENDERER
@@ -23,28 +23,69 @@ const money = (n: number | null | undefined) =>
 
 const qty = (n: number) => n.toLocaleString("en-US");
 
-/** Column widths in percent, so the table lays out identically on every page. */
-const COL_WIDTH: Record<ItemColumn, string> = {
-  no: "4%",
-  code: "12%",
-  description: "auto",
-  warehouse: "10%",
-  location: "8%",
-  bin: "8%",
-  lot: "11%",
-  serial: "12%",
-  package: "8%",
-  qty: "7%",
-  requiredQty: "7%",
-  pickedQty: "7%",
-  weight: "7%",
-  uom: "7%",
-  unitPrice: "10%",
-  discount: "7%",
-  netPrice: "10%",
-  vat: "6%",
-  amount: "11%",
+/**
+ * Column widths in percent of the table.
+ *
+ * Description has no fixed width: it takes what the others leave. A document
+ * with eleven columns would otherwise squeeze it to a few millimetres and
+ * wrap every product name over four lines, which pushes the sheet past its
+ * planned height — the paginator counted one row unit, not four.
+ */
+const COL_WIDTH: Partial<Record<ItemColumn, number>> = {
+  no: 3.6,
+  code: 11,
+  warehouse: 8.5,
+  location: 7.5,
+  bin: 7.5,
+  lot: 9.5,
+  serial: 10,
+  package: 7,
+  qty: 6.5,
+  requiredQty: 6.5,
+  pickedQty: 6.5,
+  weight: 6.5,
+  uom: 5.5,
+  unitPrice: 8.5,
+  discount: 6,
+  netPrice: 8.5,
+  vat: 5,
+  amount: 9.5,
 };
+
+/** Description never drops below this share of the table. */
+const MIN_DESCRIPTION = 28;
+
+/**
+ * Resolve the widths for one document's columns.
+ *
+ * The fixed columns are scaled down together when they would leave the
+ * description too little — narrowing every number column a shade is far
+ * better than making the item name unreadable.
+ */
+export function columnWidths(cols: ItemColumn[]): Record<string, string> {
+  const fixed = cols.filter((c) => c !== "description");
+  const asked = fixed.reduce((t, c) => t + (COL_WIDTH[c] ?? 7), 0);
+  const hasDescription = cols.includes("description");
+  if (!hasDescription) {
+    /* No description: share the table out in the declared proportions. */
+    const out: Record<string, string> = {};
+    for (const c of fixed) out[c] = `${(((COL_WIDTH[c] ?? 7) / asked) * 100).toFixed(2)}%`;
+    return out;
+  }
+
+  const budget = 100 - MIN_DESCRIPTION;
+  const scale = asked > budget ? budget / asked : 1;
+
+  const out: Record<string, string> = {};
+  let used = 0;
+  for (const c of fixed) {
+    const w = (COL_WIDTH[c] ?? 7) * scale;
+    used += w;
+    out[c] = `${w.toFixed(2)}%`;
+  }
+  out.description = `${(100 - used).toFixed(2)}%`;
+  return out;
+}
 
 function cellValue(line: PrintLine, col: ItemColumn): string {
   switch (col) {
@@ -76,23 +117,73 @@ function cellValue(line: PrintLine, col: ItemColumn): string {
 function CompanyBlock({ job }: { job: PrintJob }) {
   const c = job.doc.company;
   return (
-    <div style={{ display: "flex", gap: "3.5mm", alignItems: "flex-start", minWidth: 0 }}>
-      <AFactoryLogo size={17} />
+    <div style={{ display: "flex", gap: "3mm", alignItems: "flex-start", minWidth: 0 }}>
+      <AFactoryLogo size={15} src={c.logoUrl} />
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: "12.5pt", fontWeight: 800, letterSpacing: "-0.01em", lineHeight: 1.05 }}>
+        <div style={{ fontSize: "11.5pt", fontWeight: 800, letterSpacing: "-0.01em", lineHeight: 1.05 }}>
           {c.nameEN}
         </div>
-        <div style={{ fontSize: "8.4pt", fontWeight: 600 }} className="a4-muted">
+        <div style={{ fontSize: "8pt", fontWeight: 600 }} className="a4-muted">
           {c.nameTH}
         </div>
-        <div style={{ marginTop: "1.2mm", fontSize: "7.2pt" }} className="a4-muted">
-          <div>{c.address}</div>
+        <div style={{ marginTop: "1.2mm", fontSize: "7pt" }} className="a4-muted">
           <div>
-            โทร. {c.phone} · เลขประจำตัวผู้เสียภาษี {c.taxId} · {c.branch} {c.branchNo}
+            {c.branch} {c.address}
           </div>
           <div>
-            {c.email} · {c.website}
+            เลขประจำตัวผู้เสียภาษี {c.taxId} · โทร. {c.phone}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The letterhead band that closes every sheet — the company's own printed
+ * footer: address on the left, the ways to reach them on the right, the
+ * ALL IN · ONE lockup and the QR.
+ */
+function LetterheadFooter({ job }: { job: PrintJob }) {
+  const c = job.doc.company;
+  return (
+    <div style={{ marginTop: "auto", paddingTop: "2.5mm" }}>
+      {/* The short orange rule the artwork opens with. */}
+      <div
+        style={{
+          width: "14mm",
+          height: "1.4mm",
+          background: "var(--pr-orange)",
+          borderRadius: "0.4mm",
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          gap: "4mm",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+          marginTop: "1.8mm",
+        }}
+      >
+        <div style={{ fontSize: "6.9pt", lineHeight: 1.45, minWidth: 0 }} className="a4-muted">
+          <div>
+            {c.branch} : {c.address}
+          </div>
+          <div>เลขประจำตัวผู้เสียภาษี {c.taxId}</div>
+        </div>
+
+        <div style={{ display: "flex", gap: "3mm", alignItems: "flex-end", flexShrink: 0 }}>
+          <div style={{ fontSize: "6.9pt", lineHeight: 1.5, textAlign: "right" }}>
+            <div style={{ fontWeight: 700 }}>โทร. {c.phone}</div>
+            {c.line && <div className="a4-muted">LINE {c.line}</div>}
+            {c.facebook && <div className="a4-muted">Facebook {c.facebook}</div>}
+            <div style={{ color: "var(--pr-orange)", fontWeight: 700 }}>{c.website}</div>
+          </div>
+
+          {c.tagline && <AllInOneMark label={c.tagline} />}
+          {job.config.showQRCode && <QRPlaceholder value={c.website} size={13} />}
         </div>
       </div>
     </div>
@@ -150,16 +241,16 @@ function MarksBlock({ job }: { job: PrintJob }) {
     <div style={{ textAlign: "center", flexShrink: 0 }}>
       {config.showQRCode && (
         <>
-          <div className="a4-label" style={{ fontSize: "5.6pt", marginBottom: "0.8mm" }}>
+          <div className="a4-label" style={{ fontSize: "5.4pt", marginBottom: "0.6mm" }}>
             Scan to verify
           </div>
-          <QRPlaceholder value={doc.code} size={16} />
+          <QRPlaceholder value={doc.code} size={14} />
         </>
       )}
       {config.showBarcode && (
-        <div style={{ marginTop: "1.5mm" }}>
-          <BarcodePlaceholder value={doc.code} width={40} height={7} />
-          <div style={{ fontSize: "6pt", letterSpacing: "0.08em" }} className="a4-dim">
+        <div style={{ marginTop: "1.2mm" }}>
+          <BarcodePlaceholder value={doc.code} width={30} height={6} />
+          <div style={{ fontSize: "5.8pt", letterSpacing: "0.06em" }} className="a4-dim">
             {doc.code}
           </div>
         </div>
@@ -304,12 +395,13 @@ function MetaTable({ job }: { job: PrintJob }) {
 function ItemTable({ job, page }: { job: PrintJob; page: PrintPage }) {
   const cols = visibleColumns(job.config, job.copyType);
   const filler = fillerRows(page);
+  const widths = columnWidths(cols);
 
   return (
     <table className="a4-table">
       <colgroup>
         {cols.map((c) => (
-          <col key={c} style={{ width: COL_WIDTH[c] }} />
+          <col key={c} style={{ width: widths[c] }} />
         ))}
       </colgroup>
       <thead>
@@ -493,17 +585,18 @@ function Signatures({ job }: { job: PrintJob }) {
   );
 }
 
+/** The control line: who printed this, when, and which sheet of how many. */
 function Footer({ job, page }: { job: PrintJob; page: PrintPage }) {
   return (
     <div
       style={{
-        marginTop: "auto",
-        paddingTop: "2mm",
+        marginTop: "1.8mm",
+        paddingTop: "1.4mm",
         borderTop: "0.3mm solid var(--pr-line)",
         display: "flex",
         gap: "3mm",
         justifyContent: "space-between",
-        fontSize: "6.8pt",
+        fontSize: "6.4pt",
       }}
       className="a4-dim"
     >
@@ -596,6 +689,7 @@ export function PrintPageView({ job, page }: { job: PrintJob; page: PrintPage })
           <Signatures job={job} />
         )}
 
+        <LetterheadFooter job={job} />
         <Footer job={job} page={page} />
       </div>
     </section>

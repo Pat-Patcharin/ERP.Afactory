@@ -90,15 +90,12 @@ export function printActions<T extends RecordBase>(
     run: (r) => ctx.goto(href(types[0], r.code, "REPRINT")),
   });
 
+  /* Save as PDF happens in the preview, through the same dialog as printing —
+     so the menu takes the user there rather than to a dead end. */
   out.push({
     label: "Export PDF",
     icon: "download",
-    run: () =>
-      ctx.toast(
-        "ส่งออก PDF",
-        "เปิด Print Preview แล้วเลือก Save as PDF — ตัวสร้าง PDF ฝั่งเซิร์ฟเวอร์ยังไม่เปิดใช้",
-        "info",
-      ),
+    run: (r) => ctx.goto(`${href(types[0], r.code)}?pdf=1`),
   });
 
   return out;

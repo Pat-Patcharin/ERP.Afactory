@@ -9,13 +9,27 @@
 /**
  * A-Factory mark.
  *
- * NOTE: this is a faithful reconstruction of the brand mark — an orange
- * square with the outlined A and the wordmark beneath — drawn as SVG because
- * no logo asset was supplied with the repository. Drop the official file into
- * `public/` and swap this component's body for an <img>; nothing else needs
- * to change, since every page renders the logo through here.
+ * Pass `src` — Company Settings → Logo file — and the official artwork is
+ * used. Drop the file into `public/` (e.g. `public/logo-afactory.svg`) and
+ * set `COMPANY.logoUrl` to "/logo-afactory.svg"; nothing else changes,
+ * because every printed page draws its logo through this one component.
+ *
+ * Without a file it falls back to the vector mark below: the orange bar and
+ * the A of the letterhead. That is a reconstruction, not the official asset.
  */
-export function AFactoryLogo({ size = 17 }: { size?: number }) {
+export function AFactoryLogo({ size = 17, src = "" }: { size?: number; src?: string }) {
+  if (src) {
+    return (
+      /* eslint-disable-next-line @next/next/no-img-element -- the print sheet
+         must not depend on the Next image optimiser at print time. */
+      <img
+        src={src}
+        alt="A-Factory"
+        style={{ width: `${size}mm`, height: `${size}mm`, objectFit: "contain", flexShrink: 0 }}
+      />
+    );
+  }
+
   return (
     <svg
       width={`${size}mm`}
@@ -32,6 +46,45 @@ export function AFactoryLogo({ size = 17 }: { size?: number }) {
       <path d="M50 42 L45.5 54 H54.5 Z" fill="#F26522" />
       <rect x="20" y="80" width="60" height="6" rx="1" fill="#fff" opacity="0.9" />
     </svg>
+  );
+}
+
+/**
+ * The ALL IN · ONE lockup that closes the letterhead — three stacked rows of
+ * widely tracked capitals, the middle one carrying the dot. Typographic, so
+ * it is set in type rather than traced.
+ */
+export function AllInOneMark({ label = "ALL IN · ONE" }: { label?: string }) {
+  /* "ALL IN · ONE" → the three printed rows. Falls back to one row for any
+     other wording, so a changed tagline still renders. */
+  const rows = label.split(/\s+/).length === 4 ? ["ALL", "IN ·", "ONE"] : [label];
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.4mm",
+        lineHeight: 1,
+        flexShrink: 0,
+      }}
+      aria-label={label}
+    >
+      {rows.map((r) => (
+        <span
+          key={r}
+          style={{
+            fontSize: "8.4pt",
+            fontWeight: 800,
+            letterSpacing: "0.34em",
+            color: "var(--pr-ink)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {r}
+        </span>
+      ))}
+    </div>
   );
 }
 

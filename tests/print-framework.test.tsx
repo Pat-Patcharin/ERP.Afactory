@@ -1,10 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PrintDocument } from "@/components/print/PrintDocument";
+import { PrintDocument, columnWidths } from "@/components/print/PrintDocument";
 import { PrintPreview } from "@/components/print/PrintPreview";
 import DocumentTemplatesPage from "@/app/(erp)/admin/templates/page";
-import { AUDIT_LOG, COMPANY_BANKS, USERS } from "@/data/admin";
+import { AUDIT_LOG, COMPANY, COMPANY_BANKS, USERS } from "@/data/admin";
 import { BULK_ORDER_ITEMS } from "@/data/bulk-order";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 import { DELIVERY_ORDERS, SALES_ORDERS } from "@/lib/domain/outbound";
@@ -24,6 +24,7 @@ import {
   getPrintConfig,
   mapDocument,
   paginate,
+  pdfFilename,
   printCount,
   printTypesFor,
   recordPrint,
@@ -273,9 +274,11 @@ describe("Print framework — pagination", () => {
   });
 
   it("uses the operational capacities for a picking list", () => {
+    /* No totals block, so its final page holds more rows than an invoice's. */
     const p = PRINT_CONFIGS.picking;
-    expect(paginate(lines(20), p)).toHaveLength(1);
-    expect(paginate(lines(21), p).length).toBeGreaterThan(1);
+    expect(p.lastPageRows).toBeGreaterThan(PRINT_CONFIGS["tax-invoice"].lastPageRows);
+    expect(paginate(lines(p.lastPageRows), p)).toHaveLength(1);
+    expect(paginate(lines(p.lastPageRows + 1), p).length).toBeGreaterThan(1);
   });
 });
 
@@ -906,9 +909,24 @@ describe("Print framework — preview", () => {
     expect(screen.getByText("80%")).toBeInTheDocument();
     await user.click(screen.getByLabelText("Zoom in"));
     expect(screen.getByText("100%")).toBeInTheDocument();
-    await user.click(screen.getByText("Fit Width"));
-    expect(screen.getByText("80%")).toBeInTheDocument();
     expect(screen.getByTestId("print-document")).toBeInTheDocument();
+  });
+
+  it("fits a whole A4 sheet across the viewport", async () => {
+    const user = userEvent.setup();
+    render(<PrintPreview docType="delivery-order" code={SMALL_DO} />);
+    await user.click(screen.getByText("Fit Width"));
+
+    /* 210mm at 96dpi is 793.7px; jsdom's window is 1024 wide, so a whole
+       sheet fits at slightly over 1:1. */
+    const shown = Number(
+      within(screen.getByTestId("preview-toolbar")).getByText(/%$/).textContent!.replace("%", ""),
+    );
+    const sheetPx = (210 / 25.4) * 96;
+    expect(shown / 100).toBeCloseTo(
+      Math.round(((window.innerWidth - 64) / sheetPx) * 100) / 100,
+      2,
+    );
   });
 
   it("lists every issue the document carries, and never in the printed area", () => {
@@ -931,6 +949,14 @@ describe("Print framework — preview", () => {
     expect(warn.textContent).toMatch(/ข้อควรทราบ/);
   });
 
+  it("does not cry wolf about page height on a document that fits", () => {
+    /* The overflow guard measures the laid-out sheet, so it must stay silent
+       unless a page really outgrew A4 — a banner on every print would train
+       the user to ignore it. */
+    render(<PrintPreview docType="delivery-tax-invoice" code={BULK_DO} />);
+    expect(screen.queryByTestId("preview-overflow")).not.toBeInTheDocument();
+  });
+
   it("shows no issue banner when the document has nothing outstanding", () => {
     const job = buildPrintJob("sales-order", "SO2506-0001")!;
     expect(job.issues).toEqual([]);
@@ -942,6 +968,151 @@ describe("Print framework — preview", () => {
     render(<PrintPreview docType="delivery-order" code="DO-NOPE-9999" />);
     expect(screen.getByText("ไม่พบเอกสารที่ต้องการพิมพ์")).toBeInTheDocument();
     expect(screen.queryByTestId("print-document")).not.toBeInTheDocument();
+  });
+});
+
+/* ============================================================
+   Letterhead — the company's own branding
+   ============================================================ */
+
+describe("Print framework — letterhead", () => {
+  beforeEach(asAdmin);
+
+  it("prints the registered company details from Company Settings", () => {
+    const job = buildPrintJob("delivery-tax-invoice", SMALL_DO)!;
+    expect(job.doc.company.taxId).toBe(COMPANY.taxId);
+    expect(job.doc.company.address).toBe(COMPANY.address);
+    expect(job.doc.company.phone).toBe(COMPANY.phone);
+    expect(job.doc.company.line).toBe(COMPANY.line);
+    expect(job.doc.company.facebook).toBe(COMPANY.facebook);
+  });
+
+  it("closes every sheet with the letterhead band", () => {
+    const job = buildPrintJob("delivery-tax-invoice", BULK_DO)!;
+    render(<PrintDocument job={job} />);
+
+    for (let p = 1; p <= job.totalPages; p++) {
+      const page = within(screen.getByTestId(`print-page-${p}`));
+      expect(page.getAllByText(new RegExp(COMPANY.website)).length, `page ${p}`).toBeGreaterThan(0);
+      expect(page.getAllByText(/LINE @afactory/).length, `page ${p}`).toBeGreaterThan(0);
+      expect(page.getByLabelText(COMPANY.tagline)).toBeInTheDocument();
+    }
+  });
+
+  it("prints the tax id in both the header and the letterhead", () => {
+    const job = buildPrintJob("delivery-tax-invoice", SMALL_DO)!;
+    render(<PrintDocument job={job} />);
+    expect(screen.getAllByText(new RegExp(COMPANY.taxId)).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("uses the official logo file when Company Settings names one", () => {
+    const job = buildPrintJob("delivery-order", SMALL_DO)!;
+    expect(job.doc.company.logoUrl).toBe(COMPANY.logoUrl);
+
+    const branded = { ...job, doc: { ...job.doc, company: { ...job.doc.company, logoUrl: "/logo.svg" } } };
+    const { container } = render(<PrintDocument job={branded} />);
+    const imgs = container.querySelectorAll('img[alt="A-Factory"]');
+    /* One per sheet — the header carries it on every page. */
+    expect(imgs.length).toBe(branded.totalPages);
+    expect(imgs[0].getAttribute("src")).toBe("/logo.svg");
+  });
+
+  it("falls back to the vector mark when no logo file is set", () => {
+    const job = buildPrintJob("delivery-order", SMALL_DO)!;
+    const { container } = render(<PrintDocument job={job} />);
+    expect(container.querySelectorAll('img[alt="A-Factory"]')).toHaveLength(0);
+    expect(container.querySelectorAll('svg[aria-label="A-Factory"]').length).toBeGreaterThan(0);
+  });
+});
+
+/* ============================================================
+   Layout — nothing may run off the sheet
+   ============================================================ */
+
+describe("Print framework — sheet layout", () => {
+  /* The floor the renderer guarantees; kept here so the two cannot drift. */
+  const MIN_DESCRIPTION = 28;
+
+  it("leaves the item description at least a quarter of the table", () => {
+    /* Eleven columns on a tax invoice used to squeeze the description to a
+       few millimetres, wrapping every product name over four lines and
+       pushing the sheet past the height the paginator planned for. */
+    for (const t of PRINT_DOC_TYPES) {
+      const cols = PRINT_CONFIGS[t].itemColumns;
+      if (!cols.includes("description")) continue;
+      const w = columnWidths(cols);
+      expect(parseFloat(w.description), t).toBeGreaterThanOrEqual(MIN_DESCRIPTION);
+    }
+  });
+
+  it("always adds the columns up to exactly the table width", () => {
+    for (const t of PRINT_DOC_TYPES) {
+      const cols = PRINT_CONFIGS[t].itemColumns;
+      const total = Object.values(columnWidths(cols)).reduce((s, v) => s + parseFloat(v), 0);
+      expect(total, t).toBeCloseTo(100, 1);
+    }
+  });
+
+  it("keeps every column on the sheet once permissions remove some", () => {
+    asAdmin();
+    const c = PRINT_CONFIGS["sales-return"];
+    const cols = visibleColumns(c, "WAREHOUSE");
+    const total = Object.values(columnWidths(cols)).reduce((s, v) => s + parseFloat(v), 0);
+    expect(total).toBeCloseTo(100, 1);
+    expect(parseFloat(columnWidths(cols).description)).toBeGreaterThanOrEqual(MIN_DESCRIPTION);
+  });
+});
+
+/* ============================================================
+   Saving a PDF
+   ============================================================ */
+
+describe("Print framework — save as PDF", () => {
+  beforeEach(asAdmin);
+
+  it("names the file after the document, not 'document.pdf'", () => {
+    expect(pdfFilename(PRINT_CONFIGS["delivery-tax-invoice"], BULK_DO, "ORIGINAL")).toBe(
+      "DELIVERY-ORDER---TAX-INVOICE_DO2507-0006_ORIGINAL",
+    );
+    /* Nothing a filesystem rejects survives. */
+    expect(pdfFilename(PRINT_CONFIGS.receipt, "INV/2026:1", "COMPANY")).not.toMatch(/[\\/:*?"<>|]/);
+  });
+
+  it("records a PDF export as an issued document, distinctly from a print", () => {
+    const before = AUDIT_LOG.length;
+    recordPrint(PRINT_CONFIGS["delivery-order"], SMALL_DO, "ORIGINAL", 1, "pdf");
+    expect(AUDIT_LOG.length).toBe(before + 1);
+    expect(AUDIT_LOG[0].detail).toContain("ส่งออก PDF");
+    /* Same counter as paper: a saved PDF can be presented like a print. */
+    expect(printCount("delivery-order", SMALL_DO)).toBe(1);
+  });
+
+  it("saves from the preview and logs it", async () => {
+    const user = userEvent.setup();
+    render(<PrintPreview docType="delivery-tax-invoice" code={SMALL_DO} />);
+    const before = AUDIT_LOG.length;
+
+    await user.click(screen.getByText("Export PDF"));
+
+    expect(AUDIT_LOG.length).toBe(before + 1);
+    expect(AUDIT_LOG[0].detail).toContain("ส่งออก PDF");
+    expect(printCount("delivery-tax-invoice", SMALL_DO)).toBe(1);
+  });
+
+  it("refuses to save a document that may not be printed", async () => {
+    const user = userEvent.setup();
+    const c = PRINT_CONFIGS["delivery-tax-invoice"];
+    const d = mapDocument({ entity: "delivery-order", code: SMALL_DO }, c)!;
+    /* Same blocking rule as Print — a PDF is not a lesser document. */
+    expect(
+      validatePrint({ ...d, billTo: { ...d.billTo, taxId: "" } }, c, "ORIGINAL").some(
+        (i) => i.blocking,
+      ),
+    ).toBe(true);
+
+    render(<PrintPreview docType="delivery-order" code="DO-NOPE-9999" />);
+    expect(screen.queryByText("Export PDF")).not.toBeInTheDocument();
+    await user.click(screen.getByText("กลับ"));
   });
 });
 

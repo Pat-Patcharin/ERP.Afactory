@@ -93,6 +93,6 @@ export {
 export { paginate, rowUnits, totalRowUnits, fillerRows } from "./pagination";
 export { bahtText, thaiNumberText } from "./words";
 export { allowedCopyTypes, canSeePrice, canSeeTax, visibleColumns } from "./permissions";
-export { recordPrint, recordPreview, printCount, resetPrintCounts } from "./audit";
+export { recordPrint, recordPreview, printCount, resetPrintCounts, pdfFilename } from "./audit";
 export { validatePrint } from "./validate";
 export { mapDocument, printCompany, defaultBank } from "./mapper";

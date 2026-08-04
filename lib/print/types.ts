@@ -195,6 +195,8 @@ export interface PrintTotals {
 
 export interface PrintCompany {
   logo: string;
+  /** Official logo file under /public. Empty = the built-in vector mark. */
+  logoUrl: string;
   nameTH: string;
   nameEN: string;
   address: string;
@@ -204,6 +206,9 @@ export interface PrintCompany {
   phone: string;
   email: string;
   website: string;
+  line: string;
+  facebook: string;
+  tagline: string;
 }
 
 export interface PrintBank {

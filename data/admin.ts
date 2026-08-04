@@ -870,14 +870,25 @@ export const NUMBER_SERIES: SeriesDef[] = [
 export const COMPANY = {
   nameTh: "บริษัท เอ-แฟคทอรี่ จำกัด",
   nameEn: "A-Factory Co., Ltd.",
-  taxId: "0105561234567",
+  /* Registered details, taken from the company's own letterhead artwork. */
+  taxId: "0115562015713",
   branch: "สำนักงานใหญ่",
   branchNo: "00000",
-  address: "88/8 ถนนพระราม 9 แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพมหานคร 10310",
-  phone: "02-123-4567",
+  address:
+    "11/20 หมู่ที่ 2 ซ.หนามแดง-บางพลี ถ.ศรีนครินทร์ ต.บางแก้ว อ.บางพลี จ.สมุทรปราการ 10540",
+  phone: "099 201 0100",
   email: "contact@afactory.co.th",
   website: "www.afactory.co.th",
+  line: "@afactory",
+  facebook: "AFactoryCompany",
+  tagline: "ALL IN · ONE",
   logo: "🏭",
+  /**
+   * Official logo file, served from /public — e.g. "/logo-afactory.svg".
+   * Empty falls back to the built-in vector mark. This is the ONLY place to
+   * change: every printed page draws its logo through it.
+   */
+  logoUrl: "",
   fiscalYearStart: "01/01",
   baseCurrency: "THB",
   vatRate: 7,

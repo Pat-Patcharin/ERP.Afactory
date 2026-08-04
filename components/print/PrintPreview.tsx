@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   allowedCopyTypes,
   buildPrintJob,
   getCopyDef,
   getPrintConfig,
+  pdfFilename,
   printTypesFor,
   recordPrint,
 } from "@/lib/print";
@@ -30,16 +31,31 @@ import { PrintDocument } from "./PrintDocument";
 
 const ZOOMS = [0.5, 0.65, 0.8, 1, 1.25, 1.5];
 
+/** An A4 sheet is 210 × 297mm; CSS resolves mm at 96dpi. */
+const SHEET_PX = (210 / 25.4) * 96;
+const SHEET_HEIGHT_PX = (297 / 25.4) * 96;
+
+/** Zoom that puts one whole sheet across the viewport, with room to breathe. */
+function fitWidthZoom(): number {
+  if (typeof window === "undefined") return 0.8;
+  const usable = window.innerWidth - 64;
+  return Math.min(1.5, Math.max(0.3, Math.round((usable / SHEET_PX) * 100) / 100));
+}
+
 export function PrintPreview({
   docType,
   code,
   /* Which copy the caller asked for — "Print Warehouse Copy" in a detail
      menu opens straight onto that copy rather than onto the original. */
   initialCopy = "ORIGINAL",
+  /* "Export PDF" in a detail menu opens the save dialog on arrival; the user
+     already said what they wanted, so making them click again is friction. */
+  autoPdf = false,
 }: {
   docType: PrintDocType;
   code: string;
   initialCopy?: CopyType;
+  autoPdf?: boolean;
 }) {
   const router = useRouter();
   const toast = useUI((s) => s.toast);
@@ -61,6 +77,32 @@ export function PrintPreview({
   );
   const copies = useMemo(() => (config ? allowedCopyTypes(config) : []), [config]);
 
+  /* Arriving from "Export PDF": open the save dialog once the sheets are on
+     screen, so the user sees what is about to be saved. Held in a ref because
+     the handler is defined below, after the not-found guard. */
+  const issueRef = useRef<(channel: "print" | "pdf") => void>(() => {});
+  useEffect(() => {
+    if (!autoPdf) return;
+    const t = window.setTimeout(() => issueRef.current("pdf"), 0);
+    return () => window.clearTimeout(t);
+  }, [autoPdf]);
+
+  /* Sheets that outgrew A4. The engine plans in row units, which assumes one
+     printed line per item; an unusually long description can still push a
+     page over. Measuring the laid-out sheet is the only way to know, and a
+     page that silently ran onto a second sheet at the printer is exactly the
+     failure this preview exists to prevent. */
+  const [overflowing, setOverflowing] = useState<number[]>([]);
+  useEffect(() => {
+    const sheets = Array.from(document.querySelectorAll<HTMLElement>(".a4-page"));
+    const over = sheets
+      .map((el, i) => ({ page: i + 1, h: el.getBoundingClientRect().height / (zoom || 1) }))
+      /* 2px of tolerance for sub-pixel rounding; 0 means jsdom, not overflow. */
+      .filter((s) => s.h > SHEET_HEIGHT_PX + 2)
+      .map((s) => s.page);
+    setOverflowing(over);
+  }, [job, zoom]);
+
   if (!config || !job) {
     return (
       <div className="grid min-h-screen place-items-center bg-surface p-6 text-center">
@@ -80,15 +122,23 @@ export function PrintPreview({
   const blocking = job.issues.filter((i) => i.blocking);
   const warnings = job.issues.filter((i) => !i.blocking);
 
-  const doPrint = () => {
+  /**
+   * Print, or save a PDF — the same act through the same dialog.
+   *
+   * The PDF is produced by the browser from these very sheets, so the text
+   * stays selectable and the millimetre layout survives exactly. Rasterising
+   * the page into an image-PDF instead would lose both, and would render Thai
+   * worse than the printer does.
+   */
+  const issue = (channel: "print" | "pdf") => {
     if (blocking.length) {
       /* ERP modal, never alert() — and never a print that would produce a
          document missing something a tax office asks for. */
       confirm({
-        title: "พิมพ์เอกสารไม่ได้",
+        title: channel === "pdf" ? "บันทึก PDF ไม่ได้" : "พิมพ์เอกสารไม่ได้",
         message: (
           <>
-            <p className="mb-2">ต้องแก้ไขข้อมูลต่อไปนี้ก่อนจึงจะพิมพ์ได้</p>
+            <p className="mb-2">ต้องแก้ไขข้อมูลต่อไปนี้ก่อนจึงจะออกเอกสารได้</p>
             <ul className="list-disc pl-5">
               {blocking.map((i) => (
                 <li key={i.field}>{i.message}</li>
@@ -102,21 +152,45 @@ export function PrintPreview({
       return;
     }
 
-    const seq = recordPrint(config, code, copyType, job.totalPages);
+    const seq = recordPrint(config, code, job.copyType, job.totalPages, channel);
+
+    /* The Save-as-PDF dialog offers the document title as the filename. */
+    const previous = document.title;
+    document.title = pdfFilename(config, code, job.copyType);
+    const restore = () => {
+      document.title = previous;
+    };
+    window.addEventListener("afterprint", restore, { once: true });
+    /* Not every browser fires afterprint; never leave the tab renamed. */
+    window.setTimeout(restore, 60_000);
+
     toast(
-      seq > 1 ? `พิมพ์ซ้ำครั้งที่ ${seq - 1}` : "ส่งไปยังเครื่องพิมพ์แล้ว",
-      `${config.titleEN} ${code} · ${job.totalPages} หน้า`,
+      seq > 1
+        ? `${channel === "pdf" ? "ส่งออก PDF" : "พิมพ์"}ซ้ำครั้งที่ ${seq - 1}`
+        : channel === "pdf"
+          ? "บันทึกเป็น PDF"
+          : "ส่งไปยังเครื่องพิมพ์แล้ว",
+      channel === "pdf"
+        ? `เลือกปลายทางเป็น "Save as PDF" หรือ "Microsoft Print to PDF" — ไฟล์จะชื่อ ${document.title}.pdf`
+        : `${config.titleEN} ${code} · ${job.totalPages} หน้า`,
       seq > 1 ? "warning" : "success",
     );
-    window.print();
+
+    /* A browser with no print dialog (or one that refuses) must not take the
+       preview down with it — the sheets on screen are still correct. */
+    try {
+      window.print();
+    } catch {
+      restore();
+    }
   };
 
-  const exportPdf = () =>
-    toast(
-      "ส่งออก PDF",
-      "ยังไม่มีตัวสร้าง PDF ฝั่งเซิร์ฟเวอร์ — ใช้ Print แล้วเลือก Save as PDF ได้ทันที",
-      "info",
-    );
+  issueRef.current = issue;
+
+  const doPrint = () => issue("print");
+  const exportPdf = () => issue("pdf");
+
+  const fitWidth = useCallback(() => setZoom(fitWidthZoom()), []);
 
   const zoomStep = (dir: 1 | -1) => {
     const i = ZOOMS.indexOf(zoom);
@@ -207,7 +281,7 @@ export function PrintPreview({
             <Button size="sm" iconOnly aria-label="Zoom in" onClick={() => zoomStep(1)}>
               <Icon name="plus" size={15} />
             </Button>
-            <Button size="sm" onClick={() => setZoom(0.8)}>
+            <Button size="sm" onClick={fitWidth}>
               Fit Width
             </Button>
           </div>
@@ -246,6 +320,22 @@ export function PrintPreview({
           </Button>
         </div>
       </header>
+
+      {/* ---------- Sheets that will not fit ---------- */}
+      {overflowing.length > 0 && (
+        <div
+          data-testid="preview-overflow"
+          className="no-print border-b border-warning/30 bg-warning-soft px-5 py-3 text-warning-text max-md:px-3"
+        >
+          <p className="flex items-center gap-2 text-[13px] font-semibold">
+            <Icon name="alert" size={16} />
+            หน้า {overflowing.join(", ")} ยาวเกินกระดาษ A4 — เนื้อหาจะไหลไปหน้าถัดไปตอนพิมพ์
+          </p>
+          <p className="mt-1 text-cap">
+            ลดจำนวนบรรทัดต่อหน้าของเอกสารนี้ได้ที่ Administration → Document Templates
+          </p>
+        </div>
+      )}
 
       {/* ---------- Validation banner ---------- */}
       {(blocking.length > 0 || warnings.length > 0) && (

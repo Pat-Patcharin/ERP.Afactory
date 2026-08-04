@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { COMPANY_BANKS } from "@/data/admin";
+import { COMPANY, COMPANY_BANKS } from "@/data/admin";
 import {
   COPY_TYPES,
   PRINT_CONFIGS,
@@ -117,7 +117,19 @@ export default function DocumentTemplatesPage() {
             <Row label="Template Version" value={TEMPLATE_VERSION} />
             <Row label="Title (EN)" value={config.titleEN} />
             <Row label="Title (TH)" value={config.titleTH} />
-            <Row label="Company Logo" value="A-Factory mark (SVG, embedded)" />
+            <Row
+              label="Company Logo"
+              value={
+                COMPANY.logoUrl ? (
+                  COMPANY.logoUrl
+                ) : (
+                  <span className="text-ink-2">
+                    ยังไม่ได้ตั้งไฟล์โลโก้ — ใช้ตราสัญลักษณ์เวกเตอร์ในระบบ (ตั้งได้ที่ Company Settings)
+                  </span>
+                )
+              }
+            />
+            <Row label="Letterhead Footer" value={`${COMPANY.tagline} · ${COMPANY.website}`} />
             <Row label="Paper" value="A4 Portrait · 210 × 297 mm · margin 8 mm" />
             <Row label="Status" value={<Badge tone="success">Active</Badge>} />
           </div>

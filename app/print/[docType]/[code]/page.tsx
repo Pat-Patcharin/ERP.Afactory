@@ -34,5 +34,12 @@ export default function PrintRoute() {
     );
   }
 
-  return <PrintPreview docType={docType as PrintDocType} code={code} initialCopy={copy} />;
+  return (
+    <PrintPreview
+      docType={docType as PrintDocType}
+      code={code}
+      initialCopy={copy}
+      autoPdf={search.get("pdf") === "1"}
+    />
+  );
 }

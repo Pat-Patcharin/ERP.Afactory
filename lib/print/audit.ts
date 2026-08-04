@@ -26,32 +26,53 @@ export const printCount = (docType: string, code: string): number =>
 export const isReprint = (docType: string, code: string): boolean =>
   printCount(docType, code) > 0;
 
+/** How the document left the system. A PDF can be presented like paper. */
+export type PrintChannel = "print" | "pdf";
+
 /**
  * Record a print. Returns the sequence: 1 for the original, 2+ for reprints.
  * Called when the user actually prints, not when the preview opens — opening
  * a preview is reading, not issuing.
+ *
+ * A PDF export counts the same way and against the same counter: a saved PDF
+ * of a delivery note can be sent to the customer exactly as a printed one
+ * can, so treating it as a lesser act would leave a hole in the control.
  */
 export function recordPrint(
   config: PrintConfig,
   code: string,
   copyType: CopyType,
   pages: number,
+  channel: PrintChannel = "print",
 ): number {
   const k = key(config.documentType, code);
   const seq = (printCounts.get(k) ?? 0) + 1;
   printCounts.set(k, seq);
 
+  const verb = channel === "pdf" ? "ส่งออก PDF" : "พิมพ์";
   const reprint = seq > 1;
   audit(
     "Print",
     config.entity,
     reprint
-      ? `พิมพ์ซ้ำครั้งที่ ${seq - 1} — ${config.titleEN} (${copyType}) ${pages} หน้า`
-      : `พิมพ์ ${config.titleEN} (${copyType}) ${pages} หน้า`,
+      ? `${verb}ซ้ำครั้งที่ ${seq - 1} — ${config.titleEN} (${copyType}) ${pages} หน้า`
+      : `${verb} ${config.titleEN} (${copyType}) ${pages} หน้า`,
     code,
   );
 
   return seq;
+}
+
+/**
+ * Filename the browser offers when the user chooses Save as PDF — it takes
+ * the document title, so setting that before printing is what turns
+ * "document.pdf" into "DELIVERY-ORDER_DO2507-0006_ORIGINAL.pdf".
+ */
+export function pdfFilename(config: PrintConfig, code: string, copyType: CopyType): string {
+  return [config.titleEN, code, copyType]
+    .join("_")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-");
 }
 
 /** Preview opening is a read, logged separately so it cannot be mistaken for issuing. */

@@ -50,6 +50,7 @@ const str = (v: unknown) => String(v ?? "").trim();
 export function printCompany(): PrintCompany {
   return {
     logo: COMPANY.logo,
+    logoUrl: COMPANY.logoUrl,
     nameTH: COMPANY.nameTh,
     nameEN: COMPANY.nameEn,
     address: COMPANY.address,
@@ -59,6 +60,9 @@ export function printCompany(): PrintCompany {
     phone: COMPANY.phone,
     email: COMPANY.email,
     website: COMPANY.website,
+    line: COMPANY.line,
+    facebook: COMPANY.facebook,
+    tagline: COMPANY.tagline,
   };
 }
 
