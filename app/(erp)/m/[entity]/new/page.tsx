@@ -11,6 +11,9 @@ export default function EntityCreatePage() {
   const schemas = getSchemas(entity);
   if (!schemas) notFound();
 
+  /* A document with its own editor is edited as the document. */
+  if (schemas.editor) return schemas.editor({});
+
   /* An entity registered without a form schema degrades to a named
      placeholder rather than a broken screen. */
   if (!schemas.form) {

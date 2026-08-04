@@ -265,6 +265,12 @@ export interface PrintJob {
   totalPages: number;
   /** Blocking problems found before printing. Non-empty means do not print. */
   issues: PrintIssue[];
+  /**
+   * Diagonal stamp across every sheet. A reprint sets it automatically; an
+   * unissued document sets it to DRAFT, so a preview can never be mistaken
+   * for the real thing once it is on paper.
+   */
+  watermark?: string;
 }
 
 export interface PrintIssue {

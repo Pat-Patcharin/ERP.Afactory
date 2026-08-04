@@ -10,6 +10,12 @@ afterEach(() => {
 /** Workspace navigation goes through next/navigation; capture the pushes. */
 export const routerPush = vi.fn();
 
+/**
+ * Route params a test can set before rendering a generic /m/[entity] page.
+ * Mutated rather than re-mocked, because vi.mock is hoisted per file.
+ */
+export const routeParams: Record<string, string> = { entity: "quotation" };
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: routerPush,
@@ -20,4 +26,8 @@ vi.mock("next/navigation", () => ({
   }),
   usePathname: () => "/inventory",
   useSearchParams: () => new URLSearchParams(),
+  useParams: () => routeParams,
+  notFound: () => {
+    throw new Error("notFound");
+  },
 }));

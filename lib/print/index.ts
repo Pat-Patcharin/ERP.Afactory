@@ -4,7 +4,7 @@ import { paginate } from "./pagination";
 import { allowedCopyTypes, applyPrintPermissions, canPrint, printedBy } from "./permissions";
 import { isReprint, printCount } from "./audit";
 import { validatePrint } from "./validate";
-import type { CopyType, PrintDocType, PrintJob } from "./types";
+import type { CopyType, PrintDoc, PrintDocType, PrintJob } from "./types";
 
 /* ============================================================
    THE ENGINE
@@ -23,6 +23,16 @@ export interface BuildOptions {
   /** Override the billing/delivery address chosen for a multi-address partner. */
   billToAddress?: string;
   shipToAddress?: string;
+  /**
+   * Print something that is not in the store yet.
+   *
+   * The quotation editor previews what the salesperson has typed, before it
+   * has been saved — so the job is built from a document the caller mapped,
+   * rather than from a record looked up by code.
+   */
+  document?: PrintDoc;
+  /** Diagonal stamp for an unissued document. */
+  watermark?: string;
 }
 
 export function buildPrintJob(
@@ -33,7 +43,7 @@ export function buildPrintJob(
   const config = getPrintConfig(docType);
   if (!config) return null;
 
-  const mapped = mapDocument({ entity: config.entity, code }, config);
+  const mapped = options.document ?? mapDocument({ entity: config.entity, code }, config);
   if (!mapped) return null;
 
   /* A document already printed is a reprint even if ORIGINAL was asked for —
@@ -65,6 +75,7 @@ export function buildPrintJob(
     pages,
     totalPages: pages.length,
     issues: validatePrint(doc, config, copyType),
+    watermark: options.watermark ?? (reprintOf > 0 ? "REPRINT" : undefined),
   };
 }
 

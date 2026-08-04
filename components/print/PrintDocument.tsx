@@ -616,7 +616,7 @@ function Footer({ job, page }: { job: PrintJob; page: PrintPage }) {
 export function PrintPageView({ job, page }: { job: PrintJob; page: PrintPage }) {
   const { config } = job;
   const multi = job.totalPages > 1;
-  const watermark = job.reprintOf > 0 ? "REPRINT" : "";
+  const watermark = job.watermark ?? (job.reprintOf > 0 ? "REPRINT" : "");
 
   return (
     <section className="a4-page" data-testid={`print-page-${page.page}`} data-page={page.page}>

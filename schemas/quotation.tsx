@@ -14,7 +14,7 @@ import {
 } from "@/lib/workflows-outbound";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
-import { QT_FORM } from "./forms/quotation";
+import { QuotationEditor } from "@/components/quotation/QuotationEditor";
 
 /* ============================================================
    QUOTATION — optional. The price offer that may precede a Sales
@@ -406,5 +406,9 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
 export const qtSchemas: EntitySchemas<QtRow> = {
   list: QT_LIST,
   detail: QT_DETAIL,
-  form: QT_FORM,
+  /* No `form`: a quotation is created and edited as the document itself.
+     The three-step wizard is gone, and with it the schema that described it —
+     its validation and save now live in lib/domain/quotation-draft.ts, which
+     the editor and the print preview both read. */
+  editor: ({ record }) => <QuotationEditor record={record} />,
 };

@@ -15,6 +15,11 @@ export default function EntityEditPage() {
   const schemas = getSchemas(entity);
   if (!schemas) notFound();
 
+  if (schemas.editor) {
+    const found = findRecord(entity, code);
+    if (found) return schemas.editor({ record: found });
+  }
+
   if (!schemas.form) {
     return (
       <FormPlaceholder

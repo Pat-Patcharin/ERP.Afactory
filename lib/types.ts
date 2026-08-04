@@ -685,4 +685,13 @@ export interface EntitySchemas<T extends RecordBase = RecordBase> {
   list: ListSchema<T>;
   detail: DetailSchema<T>;
   form?: FormSchema<T>;
+  /**
+   * A purpose-built create/edit screen, used instead of the generic form.
+   *
+   * Most documents are served perfectly well by the schema-driven form. A few
+   * are the document — a quotation is what the customer receives, so it is
+   * edited as the printed sheet rather than as a set of cards. When this is
+   * present the form routes render it and ignore `form`.
+   */
+  editor?: (props: { record?: T }) => ReactNode;
 }
