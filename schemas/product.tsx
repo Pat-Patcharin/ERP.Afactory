@@ -1,4 +1,10 @@
 import { PRODUCTS, getProduct, productStock, stockStatus, type ProductRow } from "@/lib/domain/product";
+import {
+  productGoodsReceipts,
+  productPurchaseByYear,
+  productPurchaseKpi,
+  productPurchaseOrders,
+} from "@/lib/domain/product-analytics";
 import { REG_TONE, STATUS_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt, money } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
@@ -210,7 +216,6 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
       label: "Overview",
       aside: (p) => {
         const reg = p.detail.regRows[0];
-        const days = reg ? daysUntil(reg.exp) : null;
         const mainWh = p.detail.whRows.length
           ? [...p.detail.whRows].sort((a, b) => b.onHand - a.onHand)[0].wh
           : null;
@@ -233,29 +238,9 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
                   value: "ยังไม่ขึ้นทะเบียน",
                   muted: true,
                 },
-            ...(reg
-              ? [
-                  {
-                    icon: "clock" as const,
-                    label: "Expiry Date",
-                    value: (
-                      <>
-                        {reg.exp}
-                        {days !== null && (
-                          <span
-                            className={
-                              days <= 90 ? "font-semibold text-warning-text" : "text-ink-2"
-                            }
-                          >
-                            {" "}
-                            (อีก {days} วัน)
-                          </span>
-                        )}
-                      </>
-                    ),
-                  },
-                ]
-              : []),
+            /* Expiry lives on the Registration & Warranty tab, which is where
+               someone acting on it is already looking. The rail carries the
+               facts a reader needs on every tab, not the ones one tab owns. */
             {
               icon: "box",
               label: "Main Warehouse",
@@ -315,91 +300,66 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
               { label: "Manufacturer", value: c.maker },
             ],
           },
+          /* ---- Units & Barcode, folded in from the tab it used to own.
+             A base unit and a barcode are things a reader wants while they
+             are still reading the header, not after a tab switch. ---- */
           {
-            type: "flags",
-            title: "Transaction Roles",
-            cols: 2,
+            type: "cards",
+            title: "Base Unit",
+            cols: 3,
             items: [
-              { label: "Inventory Item", value: c.inv },
-              { label: "Purchase Item", value: c.buy },
-              { label: "Sales Item", value: c.sell },
+              { label: "Base Unit", value: p.unit, tone: "accent" },
+              { label: "Weight", value: p.weight },
+              { label: "Dimension", value: p.dim },
+            ],
+          },
+          {
+            type: "table",
+            title: "Alternative Units",
+            rows: p.detail.units,
+            empty: "มีเฉพาะหน่วยนับหลัก",
+            cols: [
+              { key: "unit", label: "Unit" },
+              { key: "type", label: "Unit Type", muted: true },
+              { key: "conv", label: "Conversion" },
+              {
+                key: "barcode",
+                label: "Barcode",
+                cell: (r) => <span className="tnum">{r.barcode}</span>,
+              },
+              {
+                key: "active",
+                label: "Active",
+                cell: (r) => (
+                  <Badge tone={r.active ? "success" : "neutral"}>
+                    {r.active ? "Active" : "Inactive"}
+                  </Badge>
+                ),
+              },
             ],
           },
           {
             type: "fields",
-            title: "System Information",
+            title: "Identification",
             cols: 2,
             items: [
-              { label: "Created Date", value: p.created, muted: true },
-              { label: "Created By", value: p.createdBy, muted: true },
-              { label: "Last Updated Date", value: p.updated, muted: true },
-              { label: "Last Updated By", value: p.updatedBy, muted: true },
+              {
+                label: "Primary Barcode",
+                value: <span className="tnum">{p.barcode}</span>,
+              },
+              { label: "QR Code", value: <span className="tnum">{p.barcode}</span> },
             ],
+          },
+          {
+            type: "planned",
+            title: "RFID",
+            label: "RFID Tagging",
+            message: "Planned for future phase — ยังไม่เปิดใช้งานในระยะนี้",
           },
         ];
       },
     },
 
-    /* ---------- 2. UNITS & BARCODE ---------- */
-    {
-      key: "units",
-      label: "Units & Barcode",
-      blocks: (p) => [
-        {
-          type: "cards",
-          title: "Base Unit",
-          cols: 3,
-          items: [
-            { label: "Base Unit", value: p.unit, tone: "accent" },
-            { label: "Weight", value: p.weight },
-            { label: "Dimension", value: p.dim },
-          ],
-        },
-        {
-          type: "table",
-          title: "Alternative Units",
-          rows: p.detail.units,
-          empty: "มีเฉพาะหน่วยนับหลัก",
-          cols: [
-            { key: "unit", label: "Unit" },
-            { key: "type", label: "Unit Type", muted: true },
-            { key: "conv", label: "Conversion" },
-            {
-              key: "barcode",
-              label: "Barcode",
-              cell: (r) => <span className="tnum">{r.barcode}</span>,
-            },
-            {
-              key: "active",
-              label: "Active",
-              cell: (r) => (
-                <Badge tone={r.active ? "success" : "neutral"}>
-                  {r.active ? "Active" : "Inactive"}
-                </Badge>
-              ),
-            },
-          ],
-        },
-        {
-          type: "fields",
-          title: "Identification",
-          cols: 2,
-          items: [
-            {
-              label: "Primary Barcode",
-              value: <span className="tnum">{p.barcode}</span>,
-            },
-            { label: "QR Code", value: <span className="tnum">{p.barcode}</span> },
-          ],
-        },
-        {
-          type: "planned",
-          title: "RFID",
-          label: "RFID Tagging",
-          message: "Planned for future phase — ยังไม่เปิดใช้งานในระยะนี้",
-        },
-      ],
-    },
 
     /* ---------- 3. PRICE ---------- */
     {
@@ -980,13 +940,140 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
       },
     },
 
-    /* ---------- 8. HISTORY ---------- */
+    /* ---------- 8. PURCHASE HISTORY ----------
+       Was the audit trail. What a buyer opening a product actually asks is
+       "what have we paid for this, and to whom" — the field-change log
+       belongs to Administration › Audit Log, which owns it for every module. */
     {
       key: "history",
-      label: "History",
-      blocks: (p) => [
-        { type: "audit", title: "Audit Trail", items: p.detail.audit },
-      ],
+      label: "Purchase History",
+      blocks: (p, ctx) => {
+        const kpi = productPurchaseKpi(p);
+        const lines = productPurchaseOrders(p);
+        const receipts = productGoodsReceipts(p);
+        const year = productPurchaseByYear(p)[0];
+        const canCost = checkPermission("canViewCost");
+
+        if (!lines.length && !receipts.length) {
+          return [
+            {
+              type: "empty",
+              heading: "ยังไม่มีประวัติการสั่งซื้อ",
+              message: "สินค้านี้ยังไม่เคยถูกสั่งซื้อผ่านใบสั่งซื้อในระบบ",
+              icon: "purchaseOrder",
+            },
+          ];
+        }
+
+        return [
+          {
+            type: "cards",
+            title: "Purchase Summary",
+            cols: 3,
+            items: [
+              canCost && {
+                label: "Total Purchase",
+                value: money(year?.spend ?? kpi.spend),
+                unit: p.pricing.currency,
+                sub: year ? `ปี ${year.year}` : "",
+                tone: "accent",
+              },
+              canCost && {
+                label: "Average Cost",
+                value: money(kpi.avgPrice),
+                unit: `${p.pricing.currency} / ${p.unit}`,
+                sub: "ถ่วงน้ำหนักตามจำนวน",
+              },
+              {
+                label: "Purchase Orders",
+                value: fmt(year?.orders ?? kpi.orders),
+                sub: year ? `ปี ${year.year}` : "",
+              },
+            ],
+          },
+
+          {
+            type: "table",
+            title: `Purchase Orders (${lines.length})`,
+            rows: lines,
+            empty: "ยังไม่มีใบสั่งซื้อ",
+            cols: [
+              {
+                key: "doc",
+                label: "PO No.",
+                cell: (l) => (
+                  <LinkButton onClick={() => ctx.openEntity("purchase-order", l.doc)}>
+                    {l.doc}
+                  </LinkButton>
+                ),
+              },
+              { key: "date", label: "Date", muted: true },
+              { key: "supplier", label: "Supplier" },
+              { key: "qty", label: "Qty", align: "right", cell: (l) => `${fmt(l.qty)} ${l.unit}` },
+              ...(canCost
+                ? ([
+                    {
+                      key: "price",
+                      label: "Unit Cost",
+                      align: "right",
+                      cell: (l: (typeof lines)[number]) => money(l.price),
+                    },
+                    {
+                      key: "amount",
+                      label: "Amount",
+                      align: "right",
+                      cell: (l: (typeof lines)[number]) => money(l.amount),
+                    },
+                  ] as const)
+                : []),
+              { key: "buyer", label: "ผู้สั่งซื้อ", muted: true, cell: (l) => l.buyer || DASH },
+              {
+                key: "status",
+                label: "Status",
+                cell: (l) => <Badge tone="neutral">{l.status}</Badge>,
+              },
+            ],
+          },
+
+          {
+            type: "table",
+            title: `Goods Receipts (${receipts.length})`,
+            rows: receipts,
+            empty: "ยังไม่มีการรับสินค้า",
+            cols: [
+              {
+                key: "doc",
+                label: "GR No.",
+                cell: (r) => (
+                  <LinkButton onClick={() => ctx.openEntity("goods-receipt", r.doc)}>
+                    {r.doc}
+                  </LinkButton>
+                ),
+              },
+              { key: "date", label: "Receipt Date", muted: true },
+              { key: "supplier", label: "Supplier", muted: true },
+              { key: "warehouse", label: "Warehouse", muted: true },
+              { key: "accepted", label: "Accepted", align: "right", cell: (r) => fmt(r.accepted) },
+              {
+                key: "rejected",
+                label: "Rejected",
+                align: "right",
+                cell: (r) =>
+                  r.rejected ? (
+                    <span className="font-semibold text-danger-text">{fmt(r.rejected)}</span>
+                  ) : (
+                    <span className="text-ink-3">{DASH}</span>
+                  ),
+              },
+              {
+                key: "status",
+                label: "Status",
+                cell: (r) => <Badge tone="neutral">{r.status}</Badge>,
+              },
+            ],
+          },
+        ];
+      },
     },
   ],
 
