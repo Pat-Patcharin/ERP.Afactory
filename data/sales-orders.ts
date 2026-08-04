@@ -8,6 +8,8 @@
  * Mock dataset; mutating these arrays is how the prototype persists changes.
  */
 
+import { BULK_ORDER_ITEMS } from "./bulk-order";
+
 export interface SoLine {
   code: string;
   name: string;
@@ -245,5 +247,51 @@ export const SALES_ORDERS: SalesOrder[] = [
     createdBy: "Somchai S.",
     updated: "01/07/2569 09:15",
     updatedBy: "Somchai S.",
+  },
+  {
+    /* The annual stock-up order — 38 lines, which is what makes it useful:
+       it is the only document in the mock set that cannot be printed on a
+       single page. See data/bulk-order.ts. */
+    code: "SO2506-0009",
+    customer: "ห้างหุ้นส่วนจำกัด เดนทัล แม็กซ์ ดีลเลอร์",
+    customerCode: "BP000120",
+    salesRep: "SALE001 - Patcharin Thiengkaew",
+    orderDate: "26/06/2569",
+    deliveryDate: "08/07/2569",
+    warehouse: "WH-BKK Bangkok Main Warehouse",
+    currency: "THB",
+    fx: 1,
+    payTerm: "เครดิต 30 วัน",
+    incoterm: "DAP",
+    shipTo: "45/7 ถนนพระราม 2 บางขุนเทียน กรุงเทพมหานคร 10150",
+    status: "Partially Delivered",
+    priority: "High",
+    channel: "Dealer",
+    srRef: "",
+    customerPo: "DMX-PO-2569-0442",
+    remark: "คำสั่งซื้อประจำไตรมาส ขอให้ส่งครบทุกรายการในรอบเดียว",
+    creditApproved: true,
+    creditNote: "อนุมัติเกินวงเงินชั่วคราวโดยผู้จัดการฝ่ายขาย",
+    items: BULK_ORDER_ITEMS.map((it) => ({
+      code: it.code,
+      name: it.name,
+      unit: it.unit,
+      qty: it.qty,
+      price: it.price,
+      disc: it.disc,
+      tax: it.tax,
+      picked: it.qty,
+      delivered: 0,
+      note: it.note,
+    })),
+    history: [
+      { t: "Partially Delivered", d: "ส่งงวดแรกตาม DO2507-0006", u: "Pimlada P.", when: "06/07/2569 09:30", kind: "info" },
+      { t: "Confirmed", d: "ยืนยันคำสั่งขาย 38 รายการ", u: "Patcharin T.", when: "26/06/2569 14:20", kind: "primary" },
+      { t: "Created", d: "สร้างใบสั่งขายจากใบสั่งซื้อของลูกค้า", u: "Patcharin T.", when: "26/06/2569 13:55", kind: "" },
+    ],
+    created: "26/06/2569 13:55",
+    createdBy: "Patcharin T.",
+    updated: "06/07/2569 09:30",
+    updatedBy: "Pimlada P.",
   },
 ];

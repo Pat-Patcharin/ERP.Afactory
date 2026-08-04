@@ -1,3 +1,4 @@
+import { printActions } from "@/lib/print/actions";
 import {
   SALES_REQUESTS,
   availabilityFor,
@@ -510,6 +511,9 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
       acts.push({ sep: true });
       acts.push({ label: "Cancel Request", icon: "circleSlash", danger: true, run: () => srCancel(sr, ctx) });
     }
+    /* Print Preview and every copy type this role may produce — built from
+       lib/print config, so a new copy type reaches all ten modules at once. */
+    acts.push(...printActions("sales-request", sr, ctx));
     return acts;
   },
 };

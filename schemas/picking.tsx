@@ -1,3 +1,4 @@
+import { printActions } from "@/lib/print/actions";
 import { PICKING_TASKS, getSO, pickShortLines, type PickRow } from "@/lib/domain/outbound";
 import { PICK_STATUS } from "@/data/picking";
 import { PICK_LINE_TONE, PICK_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
@@ -401,6 +402,9 @@ export const PICK_DETAIL: DetailSchema<PickRow> = {
       acts.push({ sep: true });
       acts.push({ label: "Cancel Task", icon: "circleSlash", danger: true, run: () => pickCancel(t, ctx) });
     }
+    /* Print Preview and every copy type this role may produce — built from
+       lib/print config, so a new copy type reaches all ten modules at once. */
+    acts.push(...printActions("picking", t, ctx));
     return acts;
   },
 };

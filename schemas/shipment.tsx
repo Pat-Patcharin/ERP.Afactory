@@ -1,3 +1,4 @@
+import { printActions } from "@/lib/print/actions";
 import {
   SHIPMENTS,
   dispatchReadiness,
@@ -1174,6 +1175,9 @@ export const SHP_DETAIL: DetailSchema<ShpRow> = {
       acts.push({ label: "Cancel Shipment", icon: "circleSlash", danger: true, run: () => shpCancel(s, ctx) });
     }
 
+    /* Print Preview and every copy type this role may produce — built from
+       lib/print config, so a new copy type reaches all ten modules at once. */
+    acts.push(...printActions("shipment", s, ctx));
     return acts;
   },
 };

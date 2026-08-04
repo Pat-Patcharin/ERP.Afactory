@@ -188,6 +188,7 @@ export const NAV: NavGroup[] = [
       { label: "Number Series", href: "/m/admin-series", icon: "tag" },
       { label: "Company Settings", href: "/admin/company", icon: "company" },
       { label: "Notification Settings", href: "/admin/notifications", icon: "bell" },
+      { label: "Document Templates", href: "/admin/templates", icon: "printer" },
       { label: "Audit Log", href: "/m/admin-audit", icon: "file" },
     ],
   },

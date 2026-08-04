@@ -1,3 +1,4 @@
+import { printActions } from "@/lib/print/actions";
 import {
   SALES_INVOICES,
   billingWarnings,
@@ -996,6 +997,9 @@ export const INV_DETAIL: DetailSchema<InvRow> = {
     if (["Issued", "Partially Paid", "Overdue"].includes(inv.status))
       acts.push({ label: "Void Invoice", icon: "xCircle", danger: true, run: () => invVoid(inv, ctx) });
 
+    /* Print Preview and every copy type this role may produce — built from
+       lib/print config, so a new copy type reaches all ten modules at once. */
+    acts.push(...printActions("sales-invoice", inv, ctx));
     return acts;
   },
 };

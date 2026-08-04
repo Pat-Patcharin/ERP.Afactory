@@ -93,6 +93,7 @@ export const MODULES: ModuleDef[] = [
   { key: "admin-series", label: "Number Series", group: "Administration", href: "/m/admin-series" },
   { key: "admin-company", label: "Company Settings", group: "Administration", href: "/admin/company", actions: ["view", "edit"] },
   { key: "admin-notification", label: "Notification Settings", group: "Administration", href: "/admin/notifications", actions: ["view", "edit"] },
+  { key: "admin-template", label: "Document Templates", group: "Administration", href: "/admin/templates", actions: ["view", "edit"] },
   { key: "admin-audit", label: "Audit Log", group: "Administration", href: "/m/admin-audit", actions: RO },
 ];
 
@@ -887,6 +888,48 @@ export const COMPANY = {
   decimals: 2,
   language: "ไทย / English",
 };
+
+/**
+ * Company bank accounts. Printed documents quote the default one, so this
+ * belongs to Company Settings rather than to any print template — changing
+ * the account must change every document at once.
+ */
+export interface CompanyBank {
+  code: string;
+  bank: string;
+  branch: string;
+  accountNo: string;
+  accountName: string;
+  accountType: string;
+  currency: string;
+  isDefault: boolean;
+  status: string;
+}
+
+export const COMPANY_BANKS: CompanyBank[] = [
+  {
+    code: "CB-01",
+    bank: "ธนาคารกสิกรไทย",
+    branch: "สาขาบางเสาธง",
+    accountNo: "064-1-36363-5",
+    accountName: "บริษัท เอ-แฟคทอรี่ จำกัด",
+    accountType: "กระแสรายวัน",
+    currency: "THB",
+    isDefault: true,
+    status: "Active",
+  },
+  {
+    code: "CB-02",
+    bank: "ธนาคารกรุงเทพ",
+    branch: "สาขาบางเสาธง",
+    accountNo: "268-0-04714-2",
+    accountName: "บริษัท เอ-แฟคทอรี่ จำกัด",
+    accountType: "กระแสรายวัน",
+    currency: "THB",
+    isDefault: false,
+    status: "Active",
+  },
+];
 
 /* ---------- Notification settings ---------- */
 

@@ -1,3 +1,4 @@
+import { printActions } from "@/lib/print/actions";
 import { PACKING_TASKS, getSO, type PackRow } from "@/lib/domain/outbound";
 import { PACK_STATUS } from "@/data/packing";
 import { PACK_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
@@ -381,6 +382,9 @@ export const PACK_DETAIL: DetailSchema<PackRow> = {
       acts.push({ sep: true });
       acts.push({ label: "Cancel Task", icon: "circleSlash", danger: true, run: () => packCancel(t, ctx) });
     }
+    /* Print Preview and every copy type this role may produce — built from
+       lib/print config, so a new copy type reaches all ten modules at once. */
+    acts.push(...printActions("packing", t, ctx));
     return acts;
   },
 };

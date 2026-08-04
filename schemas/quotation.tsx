@@ -1,3 +1,4 @@
+import { printActions } from "@/lib/print/actions";
 import { QUOTATIONS, creditCheck, getCustomer, type QtRow } from "@/lib/domain/outbound";
 import { docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
 import { QT_STATUS } from "@/data/quotations";
@@ -395,6 +396,9 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
       acts.push({ sep: true });
       acts.push({ label: "Cancel Quotation", icon: "circleSlash", danger: true, run: () => qtCancel(qt, ctx) });
     }
+    /* Print Preview and every copy type this role may produce — built from
+       lib/print config, so a new copy type reaches all ten modules at once. */
+    acts.push(...printActions("quotation", qt, ctx));
     return acts;
   },
 };

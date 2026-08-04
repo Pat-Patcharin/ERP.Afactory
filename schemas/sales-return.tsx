@@ -1,3 +1,4 @@
+import { printActions } from "@/lib/print/actions";
 import {
   SALES_RETURNS,
   duplicateSerials,
@@ -1307,6 +1308,9 @@ export const RTN_DETAIL: DetailSchema<RtnRow> = {
       acts.push({ label: "Cancel Return", icon: "circleSlash", danger: true, run: () => rtnCancel(r, ctx) });
     }
 
+    /* Print Preview and every copy type this role may produce — built from
+       lib/print config, so a new copy type reaches all ten modules at once. */
+    acts.push(...printActions("sales-return", r, ctx));
     return acts;
   },
 };

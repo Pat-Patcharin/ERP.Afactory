@@ -510,7 +510,7 @@ describe("Administration — workspace rollups", () => {
    ============================================================ */
 
 describe("Administration — sidebar and routing", () => {
-  it("registers the Administration group with the ten screens the spec lists", () => {
+  it("registers the Administration group with every configuration screen", () => {
     const group = NAV.find((g) => g.label === "Administration")!;
     expect(group).toBeDefined();
     expect(group.items.map((i) => i.label)).toEqual([
@@ -523,6 +523,9 @@ describe("Administration — sidebar and routing", () => {
       "Number Series",
       "Company Settings",
       "Notification Settings",
+      /* Added with the Outbound print framework — the print templates are
+         system configuration, so they live here. */
+      "Document Templates",
       "Audit Log",
     ]);
     /* Built, not placeholders. */

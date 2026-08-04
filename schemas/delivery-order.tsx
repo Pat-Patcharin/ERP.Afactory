@@ -1,3 +1,4 @@
+import { printActions } from "@/lib/print/actions";
 import { DELIVERY_ORDERS, getSO, type DoRow } from "@/lib/domain/outbound";
 import { DO_STATUS } from "@/data/delivery-orders";
 import { DO_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
@@ -449,6 +450,9 @@ export const DO_DETAIL: DetailSchema<DoRow> = {
       acts.push({ sep: true });
       acts.push({ label: "Cancel DO", icon: "circleSlash", danger: true, run: () => doCancel(d, ctx) });
     }
+    /* Print Preview and every copy type this role may produce — built from
+       lib/print config, so a new copy type reaches all ten modules at once. */
+    acts.push(...printActions("delivery-order", d, ctx));
     return acts;
   },
 };

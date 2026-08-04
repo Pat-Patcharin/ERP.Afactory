@@ -8,6 +8,8 @@
  * Mock dataset; mutating these arrays is how the prototype persists changes.
  */
 
+import { BULK_ORDER_ITEMS } from "./bulk-order";
+
 export interface DoLine {
   line: number;
   code: string;
@@ -17,6 +19,10 @@ export interface DoLine {
   delivered: number;
   box: string;
   note: string;
+  /** Traceability, carried onto the printed delivery note. Empty when the
+   *  item is not lot- or serial-controlled. */
+  lot?: string;
+  serial?: string;
 }
 
 export interface DeliveryOrder {
@@ -297,5 +303,57 @@ export const DELIVERY_ORDERS: DeliveryOrder[] = [
     createdBy: "Somchai S.",
     updated: "02/07/2569 15:30",
     updatedBy: "Flash Express",
+  },
+  {
+    /* The 38-line delivery against SO2506-0009 — the multi-page print
+       fixture. It is the only document here that spills onto continuation
+       pages, so the pagination rules are exercised by real data rather than
+       only by the test suite. */
+    code: "DO2507-0006",
+    soRef: "SO2506-0009",
+    packRef: "",
+    customer: "ห้างหุ้นส่วนจำกัด เดนทัล แม็กซ์ ดีลเลอร์",
+    customerCode: "BP000120",
+    shipTo: "45/7 ถนนพระราม 2 บางขุนเทียน กรุงเทพมหานคร 10150",
+    contact: "คุณธนา แม็กซ์",
+    phone: "086-321-9988",
+    warehouse: "WH-BKK Bangkok Main Warehouse",
+    carrier: "A-Factory Fleet",
+    service: "Standard",
+    driver: "Teerapat K.",
+    vehicle: "3คค-9012",
+    trackingNo: "AFT-2507-000140",
+    deliveryDate: "06/07/2569",
+    deliveryTime: "09:00 - 11:00",
+    status: "Shipped",
+    priority: "High",
+    packages: 14,
+    weight: 486.5,
+    codAmount: 0,
+    receivedBy: "",
+    receivedDate: "",
+    failReason: "",
+    remark: "ของ 38 รายการ 14 หีบห่อ กรุณาตรวจนับให้ครบก่อนลงนามรับ",
+    items: BULK_ORDER_ITEMS.map((it, i) => ({
+      line: i + 1,
+      code: it.code,
+      name: it.name,
+      unit: it.unit,
+      qty: it.qty,
+      delivered: 0,
+      box: it.box,
+      note: it.note,
+      lot: it.lot,
+      serial: it.serial,
+    })),
+    history: [
+      { t: "Shipped", d: "ออกจากคลัง 14 หีบห่อ น้ำหนักรวม 486.5 กก.", u: "Teerapat K.", when: "06/07/2569 08:20", kind: "info" },
+      { t: "Ready to ship", d: "จัดของขึ้นรถครบ 38 รายการ", u: "Pimlada P.", when: "05/07/2569 17:10", kind: "info" },
+      { t: "Created from SO2506-0009", d: "สร้างใบส่งของจากใบสั่งขาย 38 รายการ", u: "Pimlada P.", when: "05/07/2569 16:40", kind: "" },
+    ],
+    created: "05/07/2569 16:40",
+    createdBy: "Pimlada P.",
+    updated: "06/07/2569 08:20",
+    updatedBy: "Teerapat K.",
   },
 ];

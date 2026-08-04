@@ -1,3 +1,4 @@
+import { printActions } from "@/lib/print/actions";
 import {
   CREDIT_NOTES,
   approvalTriggers,
@@ -893,6 +894,9 @@ export const CN_DETAIL: DetailSchema<CnRow> = {
     if (c.canVoid)
       acts.push({ label: "Void Credit Note", icon: "xCircle", danger: true, run: () => cnVoid(c, ctx) });
 
+    /* Print Preview and every copy type this role may produce — built from
+       lib/print config, so a new copy type reaches all ten modules at once. */
+    acts.push(...printActions("credit-note", c, ctx));
     return acts;
   },
 };

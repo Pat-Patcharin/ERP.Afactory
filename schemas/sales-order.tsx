@@ -1,3 +1,4 @@
+import { printActions } from "@/lib/print/actions";
 import {
   SALES_ORDERS,
   creditCheck,
@@ -541,6 +542,9 @@ export const SO_DETAIL: DetailSchema<SoRow> = {
       acts.push({ sep: true });
       acts.push({ label: "Cancel Order", icon: "circleSlash", danger: true, run: () => soCancel(so, ctx) });
     }
+    /* Print Preview and every copy type this role may produce — built from
+       lib/print config, so a new copy type reaches all ten modules at once. */
+    acts.push(...printActions("sales-order", so, ctx));
     return acts;
   },
 };

@@ -1,0 +1,213 @@
+/* ============================================================
+   OUTBOUND PRINT — A4 sheet styles.
+
+   Loaded only by the print route, so nothing here can reach the
+   application shell.
+
+   Sizes are in mm because the output is a physical sheet: a page
+   measured in px changes size with the print DPI, and a tax
+   document that shifts by a few millimetres between printers
+   stops lining up with pre-printed stationery.
+   ============================================================ */
+
+@page {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+.a4-root {
+  /* Brand tokens, restated locally so the sheet does not depend on the app
+     theme being loaded — a printed page must look the same either way. */
+  --pr-orange: #f26522;
+  --pr-orange-soft: #fff3ec;
+  --pr-ink: #1f2937;
+  --pr-ink-2: #4b5563;
+  --pr-ink-3: #9ca3af;
+  --pr-line: #e5e7eb;
+  --pr-line-strong: #d1d5db;
+  --pr-head: #2f3542;
+
+  font-family: "Inter", "Noto Sans Thai", system-ui, sans-serif;
+  color: var(--pr-ink);
+  font-size: 8.2pt;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One physical sheet. */
+.a4-page {
+  position: relative;
+  box-sizing: border-box;
+  width: 194mm;          /* 210mm − 8mm margins */
+  min-height: 281mm;     /* 297mm − 8mm margins */
+  background: #fff;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Screen-only preview chrome ---------- */
+@media screen {
+  .a4-canvas {
+    background: #e9ecef;
+    padding: 24px 0 48px;
+  }
+  .a4-page {
+    margin: 0 auto 20px;
+    box-shadow: 0 6px 24px rgba(16, 24, 40, 0.16);
+    border-radius: 2px;
+  }
+}
+
+/* ---------- Print ---------- */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Orange headers and dark table bars must survive the driver's
+     "save ink" default, or the document stops looking issued. */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .a4-canvas {
+    background: #fff;
+    padding: 0;
+  }
+
+  .a4-page {
+    margin: 0;
+    box-shadow: none;
+    border-radius: 0;
+    width: auto;
+    min-height: auto;
+    /* Each planned page is its own sheet. The engine decided where the
+       breaks fall; the browser only honours them. */
+    page-break-after: always;
+    break-after: page;
+  }
+  .a4-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  /* Anything that belongs to the preview, not the document. */
+  .no-print {
+    display: none !important;
+  }
+
+  /* An item row must never be cut in half by the browser. */
+  .a4-row {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+}
+
+/* ---------- Document primitives ---------- */
+
+.a4-title {
+  font-size: 17pt;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.a4-docno {
+  font-size: 13pt;
+  font-weight: 700;
+  color: var(--pr-orange);
+  letter-spacing: 0.01em;
+}
+
+.a4-label {
+  font-size: 6.6pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pr-ink-3);
+}
+
+.a4-panel {
+  border: 0.3mm solid var(--pr-line);
+  border-radius: 1.5mm;
+  padding: 2.5mm 3mm;
+}
+
+/* Item table */
+.a4-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.a4-table thead th {
+  background: var(--pr-head);
+  color: #fff;
+  font-size: 7pt;
+  font-weight: 600;
+  padding: 1.6mm 1.5mm;
+  text-align: left;
+  border-right: 0.2mm solid rgba(255, 255, 255, 0.14);
+}
+.a4-table thead th:last-child {
+  border-right: 0;
+}
+
+.a4-table tbody td {
+  padding: 1.3mm 1.5mm;
+  border-bottom: 0.2mm solid var(--pr-line);
+  vertical-align: top;
+  word-break: break-word;
+}
+
+/* Blank rows keep a short page the same height as a full one. They carry
+   no data and must never look like an input line. */
+.a4-filler td {
+  height: 5.2mm;
+  border-bottom: 0.2mm solid var(--pr-line);
+}
+
+.a4-right { text-align: right; }
+.a4-center { text-align: center; }
+.a4-muted { color: var(--pr-ink-2); }
+.a4-dim { color: var(--pr-ink-3); }
+
+/* Totals */
+.a4-grand {
+  background: var(--pr-orange);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* The reprint watermark sits behind the content and must not obscure it. */
+.a4-watermark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 0;
+}
+.a4-watermark span {
+  font-size: 52pt;
+  font-weight: 800;
+  color: rgba(242, 101, 34, 0.09);
+  transform: rotate(-24deg);
+  letter-spacing: 0.08em;
+}
+.a4-layer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
