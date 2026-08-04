@@ -229,6 +229,73 @@ export function bpLastPurchase(bp: BusinessPartner): LastPurchase {
   return EMPTY_PURCHASE;
 }
 
+/* ---------- Yearly rollups ---------- */
+
+/** The calendar year a dd/mm/yyyy date falls in, normalised to BE. */
+function yearOf(v: string): number {
+  const y = Number(String(v ?? "").split("/")[2]);
+  if (!y) return 0;
+  return y > 2400 ? y : y + 543;
+}
+
+/* ---------- Sales by year ---------- */
+
+export interface SalesYear {
+  /** Buddhist year, as every document in the app displays it. */
+  year: number;
+  orders: number;
+  revenue: number;
+  invoices: number;
+}
+
+/**
+ * Sales totals grouped by year, newest first.
+ *
+ * Revenue and order count come from sales orders; the invoice count is
+ * counted separately because an order and its invoice can fall on either
+ * side of a year end.
+ */
+export function bpSalesByYear(bp: BusinessPartner): SalesYear[] {
+  const matched = bpSalesOrders(bp);
+  const orderRows = matched.length
+    ? matched.map((s) => ({ date: s.orderDate, amount: s.total }))
+    : (bp.txn?.so ?? []).map((s) => ({ date: s.date, amount: s.amount }));
+
+  const matchedInv = bpInvoices(bp);
+  const invoiceRows = matchedInv.length
+    ? matchedInv.map((i) => ({ date: i.invoiceDate }))
+    : (bp.txn?.inv ?? []).map((i) => ({ date: i.date }));
+
+  const byYear = new Map<number, SalesYear>();
+  const slot = (year: number) => {
+    let s = byYear.get(year);
+    if (!s) {
+      s = { year, orders: 0, revenue: 0, invoices: 0 };
+      byYear.set(year, s);
+    }
+    return s;
+  };
+
+  for (const r of orderRows) {
+    const year = yearOf(r.date);
+    if (!year) continue;
+    const s = slot(year);
+    s.orders += 1;
+    s.revenue += r.amount || 0;
+  }
+  for (const r of invoiceRows) {
+    const year = yearOf(r.date);
+    if (!year) continue;
+    slot(year).invoices += 1;
+  }
+
+  return [...byYear.values()].sort((a, b) => b.year - a.year);
+}
+
+/** The most recent year the customer traded in. */
+export const bpLatestSalesYear = (bp: BusinessPartner): SalesYear | null =>
+  bpSalesByYear(bp)[0] ?? null;
+
 /* ---------- Purchase by year ---------- */
 
 export interface PurchaseYear {
@@ -236,13 +303,6 @@ export interface PurchaseYear {
   year: number;
   orders: number;
   spend: number;
-}
-
-/** The calendar year a dd/mm/yyyy date falls in, normalised to BE. */
-function yearOf(v: string): number {
-  const y = Number(String(v ?? "").split("/")[2]);
-  if (!y) return 0;
-  return y > 2400 ? y : y + 543;
 }
 
 /**

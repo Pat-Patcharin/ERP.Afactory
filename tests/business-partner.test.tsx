@@ -60,7 +60,9 @@ import {
   bpCustomerKpi,
   bpLastPurchase,
   bpLatestPurchaseYear,
+  bpLatestSalesYear,
   bpPurchaseByYear,
+  bpSalesByYear,
   bpPurchaseKpi,
   bpSalesOrders,
   bpTopProducts,
@@ -979,8 +981,7 @@ describe("BP Master — detail tabs", () => {
     );
 
     expect(sales).toContain("Customer Summary");
-    expect(sales.some((t) => t?.startsWith("Recent Sales Orders"))).toBe(true);
-    expect(sales).toContain("Top Products Sold");
+    expect(sales.some((t) => t?.startsWith("Invoices"))).toBe(true);
     /* Nothing about what we buy from them. */
     expect(sales).not.toContain("Supplier Summary");
     expect(sales).not.toContain("Top Products Purchased");
@@ -989,6 +990,62 @@ describe("BP Master — detail tabs", () => {
     expect(purchase.some((t) => t?.startsWith("Recent Purchase Orders"))).toBe(true);
     expect(purchase).not.toContain("Customer Summary");
     expect(purchase).not.toContain("Top Products Sold");
+  });
+
+  it("keeps the customer history to invoices and nothing else", () => {
+    /* Sales orders and the product breakdown were cut: this tab answers
+       "what have we billed them", and the order screens own the rest. */
+    const sales = titlesOf(
+      detail.tabs.find((t) => t.key === "sales-history")!.blocks(bp(BOTH), makeCtx()),
+    );
+
+    expect(sales.some((t) => t?.startsWith("Recent Sales Orders"))).toBe(false);
+    expect(sales).not.toContain("Top Products Sold");
+  });
+
+  it("summarises the customer on three yearly figures", () => {
+    const cards = detail.tabs
+      .find((t) => t.key === "sales-history")!
+      .blocks(bp(BOTH), makeCtx())
+      .find((b) => b && (b as { title?: string }).title === "Customer Summary") as {
+      items: { label: string }[];
+    };
+
+    expect(cards.items.map((i) => i.label)).toEqual([
+      "Total Sales",
+      "Average Order",
+      "Invoices",
+    ]);
+  });
+
+  it("reports sales totals per year, not for all time", () => {
+    const years = bpSalesByYear(bp(BOTH));
+    expect(years.length).toBeGreaterThan(0);
+    expect(years.map((y) => y.year)).toEqual([...years.map((y) => y.year)].sort((a, c) => c - a));
+
+    const latest = bpLatestSalesYear(bp(BOTH))!;
+    expect(latest.year).toBe(years[0].year);
+    expect(latest.year).toBeGreaterThan(2500);
+    /* Orders and invoices are counted from their own dates — an order and
+       its invoice can land either side of a year end. */
+    expect(latest.orders).toBeGreaterThan(0);
+  });
+
+  it("names the sales rep on each invoice", () => {
+    const table = detail.tabs
+      .find((t) => t.key === "sales-history")!
+      .blocks(bp(BOTH), makeCtx())
+      .find((b) => b && (b as { title?: string }).title?.startsWith("Invoices")) as {
+      cols: { key: string; label: string }[];
+    };
+
+    expect(table.cols.map((c) => c.label)).toEqual([
+      "Invoice No.",
+      "Date",
+      "Amount",
+      "Sales Rep",
+      "Status",
+    ]);
   });
 
   it("keeps the supplier history to purchase orders and nothing else", () => {

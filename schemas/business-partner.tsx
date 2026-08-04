@@ -22,7 +22,9 @@ import {
   bpCustomerKpi,
   bpGoodsReceipts,
   bpLastPurchase,
+  bpInvoices,
   bpLatestPurchaseYear,
+  bpLatestSalesYear,
   bpPurchaseKpi,
   bpPurchaseOrders,
   bpSalesOrders,
@@ -1285,124 +1287,96 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
       key: "sales-history",
       label: "Customer Purchase History",
       when: (b) => Boolean(b.customer),
-      blocks: (b, ctx) => {
+      blocks: (b) => {
         const kpi = bpCustomerKpi(b);
-        const orders = bpSalesOrders(b);
-        const top = bpTopProducts(b);
+        const year = bpLatestSalesYear(b);
+        const invoices = bpInvoices(b);
+        const recordedInv = b.txn?.inv ?? [];
 
         return [
+          /* Three figures, mirroring the supplier tab: what they buy from us
+             a year, on how many orders, and how many invoices that became.
+             Order counts and outstanding belong to the screens that chase
+             them. */
           {
             type: "cards",
             title: "Customer Summary",
             cols: 3,
             items: [
               {
-                label: "Sales Orders",
-                value: fmt(b.txn.so.length),
-                tone: "accent",
-              },
-              { label: "Invoices", value: fmt(b.txn.inv.length) },
-              { label: "Open Orders", value: fmt(kpi.openOrders) },
-              {
                 label: "Total Sales",
-                value: money0(kpi.revenue),
+                value: money0(year?.revenue ?? kpi.revenue),
                 unit: "THB",
+                sub: year ? `ปี ${year.year}` : "ยังไม่มีใบสั่งขาย",
                 tone: "accent",
               },
               {
                 label: "Average Order",
-                value: money0(kpi.avgOrder),
-                unit: "THB",
-              },
-              {
-                label: "Outstanding",
-                value: money0(kpi.outstanding),
-                unit: "THB",
-                tone: kpi.overdue > 0 ? "warn" : undefined,
-                sub: kpi.overdue > 0 ? `เกินกำหนด ${kpi.overdue} ใบ` : "",
-              },
-            ],
-          },
-
-          {
-            type: "table",
-            title: `Recent Sales Orders (${orders.length})`,
-            rows: orders.slice(0, 8),
-            empty: "ยังไม่มีใบสั่งขาย",
-            cols: [
-              {
-                key: "code",
-                label: "SO No.",
-                cell: (s) => (
-                  <button
-                    onClick={() => ctx.openEntity("sales-order", s.code)}
-                    className="font-medium text-info hover:underline"
-                  >
-                    {s.code}
-                  </button>
+                value: money0(
+                  year && year.orders ? Math.round(year.revenue / year.orders) : kpi.avgOrder,
                 ),
-              },
-              { key: "orderDate", label: "Order Date", muted: true },
-              { key: "itemCount", label: "Items", align: "right" },
-              {
-                key: "total",
-                label: "Amount",
-                align: "right",
-                cell: (s) => money0(s.total),
+                unit: "THB",
+                sub: year ? `ต่อใบ · ปี ${year.year}` : "",
               },
               {
-                key: "status",
-                label: "Status",
-                cell: (s) => <Badge tone="neutral">{s.status}</Badge>,
+                label: "Invoices",
+                value: fmt(year?.invoices ?? (invoices.length || recordedInv.length)),
+                sub: year ? `ปี ${year.year}` : "",
               },
             ],
           },
 
           {
             type: "table",
-            title: `Invoices (${b.txn.inv.length})`,
-            rows: b.txn.inv,
+            title: `Invoices (${invoices.length || recordedInv.length})`,
+            rows: invoices.length ? invoices.slice(0, 12) : recordedInv,
             empty: "ไม่มีใบแจ้งหนี้",
-            cols: [
-              { key: "no", label: "Invoice No." },
-              { key: "date", label: "Date", muted: true },
-              {
-                key: "amount",
-                label: "Amount",
-                align: "right",
-                cell: (r) => money0(r.amount),
-              },
-              {
-                key: "status",
-                label: "Status",
-                cell: (r) => (
-                  <Badge tone={r.status === "Overdue" ? "danger" : "neutral"}>{r.status}</Badge>
-                ),
-              },
-            ],
-          },
-
-          {
-            type: "table",
-            title: "Top Products Sold",
-            rows: top,
-            empty: "ยังไม่มีประวัติการซื้อสินค้า",
-            cols: [
-              { key: "code", label: "Product" },
-              { key: "name", label: "Product Name", muted: true },
-              {
-                key: "qty",
-                label: "Qty",
-                align: "right",
-                cell: (t) => fmt(t.qty),
-              },
-              {
-                key: "amount",
-                label: "Amount",
-                align: "right",
-                cell: (t) => money0(t.amount),
-              },
-            ],
+            cols: invoices.length
+              ? [
+                  { key: "code", label: "Invoice No." },
+                  { key: "invoiceDate", label: "Date", muted: true },
+                  {
+                    key: "grandTotal",
+                    label: "Amount",
+                    align: "right",
+                    cell: (i) => money0(i.grandTotal),
+                  },
+                  { key: "salesRep", label: "Sales Rep", cell: (i) => i.salesRep || DASH },
+                  {
+                    key: "status",
+                    label: "Status",
+                    cell: (i) => (
+                      <Badge tone={i.isOverdue ? "danger" : "neutral"}>
+                        {i.paymentStatus || i.status}
+                      </Badge>
+                    ),
+                  },
+                ]
+              : [
+                  { key: "no", label: "Invoice No." },
+                  { key: "date", label: "Date", muted: true },
+                  {
+                    key: "amount",
+                    label: "Amount",
+                    align: "right",
+                    cell: (r) => money0(r.amount),
+                  },
+                  {
+                    /* These rows carry no rep of their own, so this is the rep
+                       assigned to the customer, not a per-document fact. */
+                    key: "salesRep",
+                    label: "Sales Rep",
+                    muted: true,
+                    cell: () => b.salesRep,
+                  },
+                  {
+                    key: "status",
+                    label: "Status",
+                    cell: (r) => (
+                      <Badge tone={r.status === "Overdue" ? "danger" : "neutral"}>{r.status}</Badge>
+                    ),
+                  },
+                ],
           },
 
           {
