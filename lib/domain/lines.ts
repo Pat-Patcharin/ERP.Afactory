@@ -17,6 +17,49 @@ export interface DocLine {
   tax?: number;
 }
 
+/* ============================================================
+   WHAT A LINE IS CALLED
+
+   A salesperson can rename a line for the customer — "ชุดวัสดุอุดฟัน
+   สำหรับคลินิกสาขาใหม่" instead of the catalogue name — and can add a
+   note under it. Both travel with the line all the way to the invoice.
+
+   Two rules hold everywhere:
+
+     - A blank custom name falls back to the catalogue name. Nothing may
+       ever print an empty description, so nothing reads `customName`
+       directly; everything goes through `displayName`.
+     - The product code is printed regardless. If the name on the bill
+       does not match what turned up, the code is what makes the line
+       traceable back to the item.
+   ============================================================ */
+
+export interface NamedLine {
+  code?: string;
+  name?: string;
+  /** What the salesperson wants the customer to read. Blank = use `name`. */
+  customName?: string;
+  /** Whether the custom name and note reach customer-facing paperwork. */
+  showOnBill?: boolean;
+}
+
+/** The single source of what a line is called. Never read `customName` directly. */
+export const displayName = (l: NamedLine): string =>
+  String(l.customName ?? "").trim() || String(l.name ?? "");
+
+/**
+ * Whether this line's custom name and note belong on customer-facing paper.
+ *
+ * `undefined` means yes. Every line written before the flag existed has no
+ * value, and reading those as "hide" would quietly strip notes that are
+ * printing on bills today.
+ */
+export const billShows = (l: NamedLine): boolean => l.showOnBill !== false;
+
+/** The name to print on a bill: the custom one only when it is allowed out. */
+export const billName = (l: NamedLine): string =>
+  billShows(l) ? displayName(l) : String(l.name ?? "");
+
 export const lineBase = (it: DocLine) => (Number(it.qty) || 0) * (Number(it.price) || 0);
 
 export const lineDisc = (it: DocLine) => lineBase(it) * ((Number(it.disc) || 0) / 100);

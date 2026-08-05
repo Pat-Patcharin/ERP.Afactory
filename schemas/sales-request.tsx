@@ -8,7 +8,7 @@ import {
   getQT,
   type SrRow,
 } from "@/lib/domain/outbound";
-import { docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
+import { displayName, docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
 import { SR_STATUS } from "@/data/sales-requests";
 import { PRIORITY_TONE, QT_TONE, SRQ_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money0 } from "@/lib/format";
@@ -426,7 +426,13 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
           empty: "ไม่มีรายการสินค้า",
           cols: [
             { key: "code", label: "Product Code", cell: (r) => <span className="tnum">{r.code}</span> },
-            { key: "name", label: "Product Name" },
+            {
+              key: "name",
+              label: "Product Name",
+              /* Always the salesperson's wording on screen, whatever showOnBill says:
+                 the people handling the order need to see what the customer was told. */
+              cell: (it) => displayName(it),
+            },
             { key: "qty", label: "Qty", align: "right", cell: (r) => fmt(r.qty) },
             { key: "unit", label: "UOM", muted: true },
             {

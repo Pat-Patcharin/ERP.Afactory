@@ -12,7 +12,14 @@ import { SALES_INVOICES, invoiceTotals } from "@/lib/domain/invoice";
 import { SHIPMENTS } from "@/lib/domain/shipment";
 import { SALES_RETURNS } from "@/lib/domain/sales-return";
 import { CREDIT_NOTES } from "@/lib/domain/credit-note";
-import { docDiscTotal, docGrandTotal, docSubtotal, docTaxTotal } from "@/lib/domain/lines";
+import {
+  billShows,
+  displayName,
+  docDiscTotal,
+  docGrandTotal,
+  docSubtotal,
+  docTaxTotal,
+} from "@/lib/domain/lines";
 import { DASH } from "@/lib/format";
 import type { BadgeTone } from "@/lib/types";
 import { META_LABELS } from "./config";
@@ -258,18 +265,38 @@ const extraFrom = (note: string): string[] =>
 
 type Source = { entity: string; code: string };
 
-/** A priced sell-side line: quotation, sales request, sales order. */
+/**
+ * A priced sell-side line: quotation, sales request, sales order.
+ *
+ * `bill` says whether this sheet goes to the customer. On one that does, the
+ * line's `showOnBill` flag decides whether the salesperson's own wording and
+ * note travel with it. On an internal sheet they always show — the people
+ * picking and packing need to see what the customer was promised.
+ */
 function priceLine(
-  it: { code: string; name: string; unit: string; qty: number; price: number; disc: number; tax: number; note?: string },
+  it: {
+    code: string;
+    name: string;
+    unit: string;
+    qty: number;
+    price: number;
+    disc: number;
+    tax: number;
+    note?: string;
+    customName?: string;
+    showOnBill?: boolean;
+  },
   no: number,
+  bill = false,
 ): PrintLine {
   const base = num(it.qty) * num(it.price);
   const disc = base * (num(it.disc) / 100);
+  const hidden = bill && !billShows(it);
   return {
     ...blankLine(no),
     code: it.code,
-    description: it.name,
-    extraLines: extraFrom(it.note ?? ""),
+    description: hidden ? it.name : displayName(it),
+    extraLines: hidden ? [] : extraFrom(it.note ?? ""),
     qty: num(it.qty),
     uom: it.unit,
     unitPrice: num(it.price),
@@ -309,7 +336,7 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
           approvedBy: d.approvedBy,
           approvedAt: d.approvedAt,
         }),
-        lines: (d.items ?? []).map((it, i) => priceLine(it, i + 1)),
+        lines: (d.items ?? []).map((it, i) => priceLine(it, i + 1, true)),
         totals: makeTotals(
           {
             subtotal: docSubtotal(d),
@@ -421,7 +448,7 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
         lines: (d.items ?? []).map((it, i) => ({
           ...blankLine(i + 1),
           code: it.code,
-          description: it.name,
+          description: displayName(it),
           extraLines: extraFrom(it.note),
           warehouse: d.warehouse,
           bin: it.bin,
@@ -462,7 +489,7 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
         lines: (d.items ?? []).map((it, i) => ({
           ...blankLine(i + 1),
           code: it.code,
-          description: it.name,
+          description: displayName(it),
           extraLines: extraFrom(it.note),
           packageNo: it.box,
           weight: boxWeight.get(it.box) ?? 0,
@@ -495,8 +522,8 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
         return {
           ...blankLine(i + 1),
           code: it.code,
-          description: it.name,
-          extraLines: extraFrom(it.note),
+          description: billShows(it) ? displayName(it) : it.name,
+          extraLines: billShows(it) ? extraFrom(it.note) : [],
           packageNo: it.box,
           lot: str(it.lot),
           serial: str(it.serial),
@@ -595,8 +622,10 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
           return {
             ...blankLine(i + 1),
             code: it.code,
-            description: it.name,
-            extraLines: extraFrom([it.desc, it.note].filter(Boolean).join(" | ")),
+            description: billShows(it) ? displayName(it) : it.name,
+            extraLines: billShows(it)
+              ? extraFrom([it.desc, it.note].filter(Boolean).join(" | "))
+              : extraFrom(it.desc),
             warehouse: it.warehouse,
             lot: it.lotSerial,
             qty,
@@ -844,7 +873,7 @@ export function mapQuotationRevision(
       approvedBy: snap.approvedBy,
       approvedAt: snap.approvedAt,
     }),
-    lines: (snap.items ?? []).map((it, i) => priceLine(it, i + 1)),
+    lines: (snap.items ?? []).map((it, i) => priceLine(it, i + 1, true)),
     totals: makeTotals(
       {
         subtotal: snap.totals.subtotal,

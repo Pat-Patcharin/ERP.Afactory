@@ -211,6 +211,8 @@ export function draftFromQuotation(q: Quotation): QuotationDraft {
       disc: it.disc,
       tax: it.tax,
       note: it.note ?? "",
+      customName: it.customName ?? "",
+      showOnBill: it.showOnBill !== false,
     })),
   };
   if (!draft.items.length) draft.items = [blankLine()];
@@ -459,6 +461,8 @@ export function saveQuotationDraft(
       /* The customer-facing line note. The internal note stays out of the
          record entirely, so it can never reach the printed sheet. */
       note: str(l.note),
+      customName: str(l.customName),
+      showOnBill: l.showOnBill !== false,
     }));
 
   const patch = {

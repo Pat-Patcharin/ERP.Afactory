@@ -1,4 +1,5 @@
 import { printActions } from "@/lib/print/actions";
+import { displayName } from "@/lib/domain/lines";
 import { DELIVERY_ORDERS, getSO, type DoRow } from "@/lib/domain/outbound";
 import { DO_STATUS } from "@/data/delivery-orders";
 import { DO_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
@@ -376,7 +377,13 @@ export const DO_DETAIL: DetailSchema<DoRow> = {
           cols: [
             { key: "line", label: "#", align: "right", muted: true },
             { key: "code", label: "Product Code", cell: (r) => <span className="tnum">{r.code}</span> },
-            { key: "name", label: "Product Name" },
+            {
+              key: "name",
+              label: "Product Name",
+              /* Always the salesperson's wording on screen, whatever showOnBill says:
+                 the people handling the order need to see what the customer was told. */
+              cell: (it) => displayName(it),
+            },
             { key: "qty", label: "Shipped", align: "right", cell: (r) => fmt(r.qty) },
             { key: "delivered", label: "Received", align: "right", cell: (r) => fmt(r.delivered) },
             {

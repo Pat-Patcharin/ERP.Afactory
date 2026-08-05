@@ -1,4 +1,5 @@
 import { printActions } from "@/lib/print/actions";
+import { displayName } from "@/lib/domain/lines";
 import {
   SALES_INVOICES,
   billingWarnings,
@@ -589,7 +590,13 @@ export const INV_DETAIL: DetailSchema<InvRow> = {
             cols: [
               { key: "line", label: "#", align: "right", muted: true },
               { key: "code", label: "Product Code", cell: (r) => <span className="tnum">{r.code}</span> },
-              { key: "name", label: "Product Name" },
+              {
+                key: "name",
+                label: "Product Name",
+                /* Always the salesperson's wording on screen, whatever showOnBill says:
+                   the people handling the order need to see what the customer was told. */
+                cell: (it) => displayName(it),
+              },
               { key: "sourceLine", label: "Source Line", align: "right", muted: true },
               { key: "orderedQty", label: "Ordered", align: "right", muted: true, cell: (r) => fmt(r.orderedQty) },
               { key: "deliveredQty", label: "Delivered", align: "right", muted: true, cell: (r) => fmt(r.deliveredQty) },

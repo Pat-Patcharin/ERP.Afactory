@@ -23,6 +23,11 @@ export interface SrLine {
   disc: number;
   tax: number;
   note: string;
+  /** Salesperson's own name for the line. Blank falls back to `name` —
+   *  read it through displayName(), never directly. */
+  customName?: string;
+  /** Whether customName and note reach customer-facing paper. Undefined = yes. */
+  showOnBill?: boolean;
 }
 
 export interface SalesRequest {

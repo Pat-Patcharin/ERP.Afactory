@@ -8,7 +8,7 @@ import {
   type SoRow,
 } from "@/lib/domain/outbound";
 import { tierNotices } from "@/lib/domain/price-tier";
-import { docDiscTotal, docSubtotal, docTaxTotal, lineNet, pctOf } from "@/lib/domain/lines";
+import { displayName, docDiscTotal, docSubtotal, docTaxTotal, lineNet, pctOf } from "@/lib/domain/lines";
 import { SO_STATUS } from "@/data/sales-orders";
 import { PICK_TONE, PRIORITY_TONE, SO_TONE, DO_TONE, PACK_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money0 } from "@/lib/format";
@@ -389,7 +389,13 @@ export const SO_DETAIL: DetailSchema<SoRow> = {
           empty: "ไม่มีรายการสินค้า",
           cols: [
             { key: "code", label: "Product Code", cell: (r) => <span className="tnum">{r.code}</span> },
-            { key: "name", label: "Product Name" },
+            {
+              key: "name",
+              label: "Product Name",
+              /* Always the salesperson's wording on screen, whatever showOnBill says:
+                 the people handling the order need to see what the customer was told. */
+              cell: (it) => displayName(it),
+            },
             { key: "qty", label: "Ordered", align: "right", cell: (r) => fmt(r.qty) },
             { key: "picked", label: "Picked", align: "right", muted: true, cell: (r) => fmt(r.picked) },
             { key: "delivered", label: "Delivered", align: "right", cell: (r) => fmt(r.delivered) },

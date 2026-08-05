@@ -37,6 +37,11 @@ export interface InvLine {
   /** Set when the biller overrode the price that came from the source. */
   priceOverride: boolean;
   overrideReason: string;
+  /** Salesperson's own name for the line. Blank falls back to `name` —
+   *  read it through displayName(), never directly. */
+  customName?: string;
+  /** Whether customName and note reach customer-facing paper. Undefined = yes. */
+  showOnBill?: boolean;
 }
 
 export interface SalesInvoice {

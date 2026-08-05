@@ -43,6 +43,10 @@ export interface DraftLine {
   lot: string;
   serial: string;
   note: string;
+  /** Salesperson's own name for the line. Blank falls back to `name`. */
+  customName: string;
+  /** Whether customName and note reach customer-facing paper. */
+  showOnBill: boolean;
 }
 
 let rowSeq = 0;
@@ -61,6 +65,10 @@ export const blankLine = (): DraftLine => ({
   lot: "",
   serial: "",
   note: "",
+  customName: "",
+  /* On by default: a salesperson who bothers to rename a line means the
+     customer to read it. Hiding it is the deliberate act. */
+  showOnBill: true,
 });
 
 /** Above this, a line discount needs a second look — a warning, never a block. */

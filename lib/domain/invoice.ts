@@ -394,9 +394,14 @@ export function billableLinesFrom(sourceType: string, sourceDoc: string): InvLin
         taxRate: num(soLine?.tax) || 7,
         warehouse: dobj.warehouse,
         lotSerial: "",
-        note: "",
+        /* The wording agreed with the customer, carried from the order the
+           same way the price is. `it` is the delivery line, `soLine` the
+           order line it came from. */
+        note: it.note || soLine?.note || "",
         priceOverride: false,
         overrideReason: "",
+        customName: it.customName || soLine?.customName || "",
+        showOnBill: (it.showOnBill ?? soLine?.showOnBill) !== false,
       });
     }
   }

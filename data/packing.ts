@@ -19,6 +19,9 @@ export interface PackLine {
   /** Which box on this task the line went into. */
   box: string;
   note: string;
+  /** The name the customer was given, so the floor picks what was promised.
+   *  Read it through displayName(), never directly. */
+  customName?: string;
 }
 
 export interface PackBox {

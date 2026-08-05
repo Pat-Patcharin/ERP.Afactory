@@ -185,6 +185,8 @@ export function draftFromSalesRequest(r: SalesRequest): SalesRequestDraft {
       disc: it.disc,
       tax: it.tax,
       note: it.note ?? "",
+      customName: it.customName ?? "",
+      showOnBill: it.showOnBill !== false,
     })),
   };
   if (!draft.items.length) draft.items = [blankLine()];
@@ -237,6 +239,8 @@ export function applyQuotation(draft: SalesRequestDraft, quotationRef: string): 
       disc: it.disc,
       tax: it.tax,
       note: it.note ?? "",
+      customName: it.customName ?? "",
+      showOnBill: it.showOnBill !== false,
     })),
   };
   if (!next.items.length) next.items = [blankLine()];
@@ -458,6 +462,8 @@ export function saveSalesRequestDraft(
       disc: num(l.disc),
       tax: num(l.tax),
       note: str(l.note),
+      customName: str(l.customName),
+      showOnBill: l.showOnBill !== false,
     }));
 
   const patch = {

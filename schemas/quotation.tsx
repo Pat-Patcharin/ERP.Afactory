@@ -1,6 +1,6 @@
 import { printActions } from "@/lib/print/actions";
 import { QUOTATIONS, creditCheck, getCustomer, type QtRow } from "@/lib/domain/outbound";
-import { docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
+import { displayName, docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
 import { QT_APPROVAL_STATUS, QT_STATUS } from "@/data/quotations";
 import { QT_APPROVAL_TONE, QT_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money0 } from "@/lib/format";
@@ -456,7 +456,13 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
           empty: "ไม่มีรายการสินค้า",
           cols: [
             { key: "code", label: "Product Code", cell: (r) => <span className="tnum">{r.code}</span> },
-            { key: "name", label: "Product Name" },
+            {
+              key: "name",
+              label: "Product Name",
+              /* Always the salesperson's wording on screen, whatever showOnBill says:
+                 the people handling the order need to see what the customer was told. */
+              cell: (it) => displayName(it),
+            },
             { key: "qty", label: "Qty", align: "right", cell: (r) => fmt(r.qty) },
             { key: "unit", label: "UOM", muted: true },
             { key: "price", label: "Unit Price", align: "right", cell: (r) => money0(r.price) },

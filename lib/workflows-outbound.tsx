@@ -704,6 +704,8 @@ interface SoDraft {
     disc: number;
     tax: number;
     note: string;
+    customName?: string;
+    showOnBill?: boolean;
   }[];
 }
 
@@ -792,6 +794,10 @@ function createSalesOrderFrom(
       picked: 0,
       delivered: 0,
       note: it.note,
+      /* What the customer was told this line is stays with the line all the
+         way to the invoice. */
+      customName: it.customName ?? "",
+      showOnBill: it.showOnBill !== false,
     })),
     history: [
       {
@@ -1028,7 +1034,13 @@ export function soCreatePick(so: SoRow, ctx: ActionCtx) {
           picked: 0,
           bin: "",
           status: "Pending",
-          note: "",
+          /* The salesperson's note used to stop here — it was hard-coded
+             empty, so anything written when the order was taken never
+             reached the floor. The picker needs it: "รับประกัน 2 ปี" changes
+             which box comes off the shelf. */
+          note: it.note ?? "",
+          /* And the name the customer was given, for the same reason. */
+          customName: it.customName ?? "",
         })),
         packRef: "",
         history: [
@@ -1224,7 +1236,8 @@ export function pickCreatePack(task: PickRow, ctx: ActionCtx) {
             qty: Number(it.picked),
             packedQty: 0,
             box: "",
-            note: "",
+            note: it.note ?? "",
+            customName: it.customName ?? "",
           })),
         packages: [],
         doRef: "",
@@ -1342,16 +1355,33 @@ export function packCreateDelivery(task: PackRow, ctx: ActionCtx) {
         receivedDate: "",
         failReason: "",
         remark: `สร้างจากงานแพ็ค ${task.code}`,
-        items: (task.items ?? []).map((it, i) => ({
-          line: i + 1,
-          code: it.code,
-          name: it.name,
-          unit: it.unit,
-          qty: Number(it.packedQty) || Number(it.qty),
-          delivered: 0,
-          box: it.box,
-          note: "",
-        })),
+        /**
+         * Customer-facing wording is read from the SALES ORDER, not carried
+         * through the pick and pack tasks — please do not "tidy" this into
+         * the chain for consistency.
+         *
+         * The delivery note is a document to the customer, so its wording
+         * must be whatever the order says today. Pick and pack are warehouse
+         * jobs whose lines get filtered, split across boxes and renumbered;
+         * anything routed through them arrives reordered and, for a line
+         * picked short and dropped, not at all. Matching on product code
+         * against the order is both shorter and correct.
+         */
+        items: (task.items ?? []).map((it, i) => {
+          const src = (so?.items ?? []).find((s) => s.code === it.code);
+          return {
+            line: i + 1,
+            code: it.code,
+            name: it.name,
+            unit: it.unit,
+            qty: Number(it.packedQty) || Number(it.qty),
+            delivered: 0,
+            box: it.box,
+            note: src?.note ?? it.note ?? "",
+            customName: src?.customName ?? "",
+            showOnBill: src?.showOnBill !== false,
+          };
+        }),
         history: [
           {
             t: `Created from ${task.code}`,
