@@ -1,4 +1,5 @@
 import { actingUserName, can, currentRole } from "./domain/admin";
+import { useState } from "react";
 import { fmt, money0, stamp } from "./format";
 import type { ActionCtx } from "./types";
 import {
@@ -82,13 +83,220 @@ function denied(ctx: ActionCtx, moduleKey: string, right: Right, what: string): 
   return true;
 }
 
+/* ---------- Modal fields ---------- */
+
+/**
+ * Same control the adjustment and credit-note workflows use. Each of those
+ * files carries its own copy rather than sharing one, so this follows suit
+ * instead of hoisting a component out of three unrelated modules.
+ */
+function TextField({
+  label,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  placeholder?: string;
+  onChange: (v: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-cap font-medium text-ink-2">{label}</span>
+      <input
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => {
+          setValue(e.target.value);
+          onChange(e.target.value);
+        }}
+        className="h-10 rounded-btn border border-line bg-card px-3 text-body outline-none focus:border-primary"
+      />
+    </label>
+  );
+}
+
 /* ============================================================
    QUOTATION — optional price offer. Nothing here touches stock
    or commits the company to anything.
+
+   Two dimensions move independently:
+     status         — where the document has got to
+     approvalStatus — whether it cleared internal approval
+
+   They part company in two places. A quote sent back for edits
+   returns to Draft while approvalStatus remembers it was bounced,
+   and a quote the customer turns down keeps approvalStatus
+   "Approved" — the approver said yes, the customer said no.
    ============================================================ */
 
+/** Draft → Pending Approval. The rep's own act, so it needs only `edit`. */
+export function qtSubmit(qt: QtRow, ctx: ActionCtx) {
+  if (denied(ctx, "quotation", "edit", "ส่งขออนุมัติไม่ได้")) return;
+  if (qt.status !== "Draft") {
+    ctx.toast(
+      "ส่งขออนุมัติไม่ได้",
+      `${qt.code} อยู่ในสถานะ ${qt.status} — ส่งขออนุมัติได้เฉพาะใบที่เป็นร่าง`,
+      "warning",
+    );
+    return;
+  }
+  if (!(qt.items ?? []).length) {
+    ctx.toast("ยังไม่มีรายการสินค้า", "เพิ่มรายการอย่างน้อย 1 บรรทัดก่อนส่งขออนุมัติ", "warning");
+    return;
+  }
+  qt.status = "Pending Approval";
+  qt.approvalStatus = "Pending Approval";
+  qt.updated = stamp();
+  qt.updatedBy = USER();
+  log(qt, "Submitted for approval", "ส่งขออนุมัติภายใน", "info");
+  commit(ctx, "ส่งขออนุมัติแล้ว", `${qt.code} — รอผู้จัดการฝ่ายขายอนุมัติ`);
+}
+
+/** Pending Approval → Approved. From here the quote may be sent out. */
+export function qtApprove(qt: QtRow, ctx: ActionCtx) {
+  if (denied(ctx, "quotation", "approve", "อนุมัติใบเสนอราคาไม่ได้")) return;
+  if (qt.status !== "Pending Approval") {
+    ctx.toast(
+      "อนุมัติไม่ได้",
+      `${qt.code} อยู่ในสถานะ ${qt.status} — อนุมัติได้เฉพาะใบที่รออนุมัติ`,
+      "warning",
+    );
+    return;
+  }
+
+  ctx.confirm({
+    title: "Approve this quotation?",
+    message: (
+      <>
+        อนุมัติ <strong>{qt.code}</strong> — {qt.customer}
+        <br />
+        มูลค่า {money0(qt.amount)} บาท
+        <br />
+        <span className="text-ink-2">อนุมัติแล้วจึงส่งให้ลูกค้าได้</span>
+      </>
+    ),
+    confirmText: "Approve quotation",
+    tone: "primary",
+    onConfirm: () => {
+      qt.status = "Approved";
+      qt.approvalStatus = "Approved";
+      qt.updated = stamp();
+      qt.updatedBy = USER();
+      log(qt, "Approved", `อนุมัติภายในโดย ${USER()}`);
+      commit(ctx, "อนุมัติใบเสนอราคาแล้ว", `${qt.code} — พร้อมส่งให้ลูกค้า`);
+    },
+  });
+}
+
+/**
+ * Pending Approval → Rejected by the APPROVER. Distinct from `qtReject`
+ * below, which records the customer turning the offer down: that one leaves
+ * approvalStatus alone, because internally the quote was fine.
+ */
+export function qtRejectApproval(qt: QtRow, ctx: ActionCtx) {
+  if (denied(ctx, "quotation", "approve", "ไม่อนุมัติใบเสนอราคาไม่ได้")) return;
+  if (qt.status !== "Pending Approval") {
+    ctx.toast(
+      "ไม่อนุมัติไม่ได้",
+      `${qt.code} อยู่ในสถานะ ${qt.status} — ตัดสินได้เฉพาะใบที่รออนุมัติ`,
+      "warning",
+    );
+    return;
+  }
+  let note = "";
+
+  ctx.formModal({
+    title: "ไม่อนุมัติใบเสนอราคา",
+    body: () => (
+      <div className="flex flex-col gap-4">
+        <p className="text-body text-ink-2">ปิด {qt.code} เป็น Rejected</p>
+        <TextField
+          label="เหตุผลที่ไม่อนุมัติ"
+          placeholder="เช่น ส่วนลดเกินเพดานที่อนุมัติได้"
+          onChange={(v) => (note = v)}
+        />
+      </div>
+    ),
+    confirmText: "ไม่อนุมัติ",
+    onConfirm: () => {
+      if (!note.trim()) {
+        ctx.toast("ต้องระบุเหตุผล", "พนักงานขายต้องรู้ว่าทำไมถึงไม่ผ่าน", "danger");
+        return false;
+      }
+      qt.status = "Rejected";
+      qt.approvalStatus = "Rejected";
+      qt.rejectReason = note;
+      qt.updated = stamp();
+      qt.updatedBy = USER();
+      log(qt, "Rejected", `ไม่อนุมัติ: ${note}`, "warn");
+      commit(ctx, "ไม่อนุมัติใบเสนอราคา", `${qt.code} — ${note}`, "danger");
+    },
+  });
+}
+
+/**
+ * Pending Approval → back to Draft for edits, with approvalStatus holding on
+ * to the fact that it was bounced. Without that second field a returned quote
+ * would be indistinguishable from one nobody had submitted yet. Same shape as
+ * the credit-note and invoice workflows.
+ */
+export function qtRequestRevision(qt: QtRow, ctx: ActionCtx) {
+  if (denied(ctx, "quotation", "approve", "ส่งใบเสนอราคากลับให้แก้ไขไม่ได้")) return;
+  if (qt.status !== "Pending Approval") {
+    ctx.toast(
+      "ขอให้แก้ไขไม่ได้",
+      `${qt.code} อยู่ในสถานะ ${qt.status} — ส่งกลับได้เฉพาะใบที่รออนุมัติ`,
+      "warning",
+    );
+    return;
+  }
+  let note = "";
+
+  ctx.formModal({
+    title: "ขอให้แก้ไขใบเสนอราคา",
+    body: () => (
+      <div className="flex flex-col gap-4">
+        <p className="text-body text-ink-2">ส่ง {qt.code} กลับให้พนักงานขายแก้ไข</p>
+        <TextField
+          label="สิ่งที่ต้องแก้ไข"
+          placeholder="เช่น ปรับส่วนลดบรรทัดที่ 2 ให้ไม่เกิน 15%"
+          onChange={(v) => (note = v)}
+        />
+      </div>
+    ),
+    confirmText: "ขอให้แก้ไข",
+    onConfirm: () => {
+      if (!note.trim()) {
+        ctx.toast("ต้องระบุสิ่งที่ต้องแก้ไข", "พนักงานขายต้องรู้ว่าต้องแก้อะไร", "danger");
+        return false;
+      }
+      qt.status = "Draft";
+      qt.approvalStatus = "Revision Requested";
+      qt.rejectReason = note;
+      qt.updated = stamp();
+      qt.updatedBy = USER();
+      log(qt, "Revision requested", note, "warn");
+      commit(ctx, "ส่งกลับให้แก้ไขแล้ว", `${qt.code} — ${note}`, "warning");
+    },
+  });
+}
+
+/**
+ * Approved → Sent. The button is hidden everywhere else, but the check lives
+ * here too: a hidden button is a courtesy, and this is what holds when the
+ * call arrives from a page left open since before the quote was approved.
+ */
 export function qtSend(qt: QtRow, ctx: ActionCtx) {
   if (denied(ctx, "quotation", "edit", "ส่งใบเสนอราคาไม่ได้")) return;
+  if (qt.status !== "Approved") {
+    ctx.toast(
+      "ส่งใบเสนอราคาไม่ได้",
+      `${qt.code} อยู่ในสถานะ ${qt.status} — ต้องผ่านการอนุมัติก่อนจึงจะส่งให้ลูกค้าได้`,
+      "warning",
+    );
+    return;
+  }
   qt.status = "Sent";
   qt.updated = stamp();
   qt.updatedBy = USER();
@@ -105,6 +313,11 @@ export function qtAccept(qt: QtRow, ctx: ActionCtx) {
   commit(ctx, "ลูกค้ายอมรับแล้ว", `${qt.code} — พร้อมแปลงเป็นคำขอขาย`);
 }
 
+/**
+ * The CUSTOMER turned the offer down — recording their answer, not an
+ * approval decision, which is why it needs only `edit` and leaves
+ * `approvalStatus` untouched. The approver's refusal is `qtRejectApproval`.
+ */
 export function qtReject(qt: QtRow, ctx: ActionCtx) {
   if (denied(ctx, "quotation", "edit", "บันทึกผลใบเสนอราคาไม่ได้")) return;
   ctx.confirm({

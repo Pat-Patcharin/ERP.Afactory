@@ -6,11 +6,15 @@ import { QT_APPROVAL_TONE, QT_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money0 } from "@/lib/format";
 import {
   qtAccept,
+  qtApprove,
   qtCancel,
   qtConvert,
   qtDelete,
   qtReject,
+  qtRejectApproval,
+  qtRequestRevision,
   qtSend,
+  qtSubmit,
 } from "@/lib/workflows-outbound";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
@@ -173,6 +177,23 @@ export const QT_LIST: ListSchema<QtRow> = {
     acts.push({ sep: true });
 
     if (qt.status === "Draft")
+      acts.push({ label: "Submit for Approval", icon: "upload", run: (r) => qtSubmit(r, ctx) });
+
+    /* The approver's three answers. Only ever offered together, and only
+       while the quote is actually waiting on one. */
+    if (qt.status === "Pending Approval") {
+      acts.push({ label: "Approve", icon: "checkCircle", run: (r) => qtApprove(r, ctx) });
+      acts.push({ label: "Request Revision", icon: "edit", run: (r) => qtRequestRevision(r, ctx) });
+      acts.push({
+        label: "Reject",
+        icon: "xCircle",
+        danger: true,
+        run: (r) => qtRejectApproval(r, ctx),
+      });
+    }
+
+    /* Only an approved quote may go out — see qtSend. */
+    if (qt.status === "Approved")
       acts.push({ label: "Send to Customer", icon: "send", run: (r) => qtSend(r, ctx) });
 
     if (qt.status === "Sent") {
@@ -400,7 +421,9 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
 
   actions: (qt, ctx) => {
     const acts: RowAction<QtRow>[] = [];
-    if (qt.status === "Draft") acts.push({ label: "Send to Customer", icon: "send", run: () => qtSend(qt, ctx) });
+    /* Same rule as the list — an approved quote and nothing else. */
+    if (qt.status === "Approved")
+      acts.push({ label: "Send to Customer", icon: "send", run: () => qtSend(qt, ctx) });
     if (qt.status === "Sent") {
       acts.push({ label: "Mark Accepted", icon: "checkCircle", run: () => qtAccept(qt, ctx) });
       acts.push({ label: "Mark Rejected", icon: "xCircle", danger: true, run: () => qtReject(qt, ctx) });
