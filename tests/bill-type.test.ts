@@ -5,11 +5,12 @@ import { BILL_TYPES } from "@/data/partners";
 import { BUSINESS_PARTNERS } from "@/lib/domain/partner";
 import { QUOTATIONS, SALES_ORDERS, SALES_REQUESTS } from "@/lib/domain/outbound";
 import { billableLinesFrom } from "@/lib/domain/invoice";
-import { zeroTaxIfNonVat } from "@/lib/domain/doc-draft";
+import { applyBillType, planBillTypeChange, zeroTaxIfNonVat } from "@/lib/domain/doc-draft";
 import {
   applyCustomer,
   blankDraft,
   blankLine,
+  draftFromQuotation,
   saveQuotationDraft,
 } from "@/lib/domain/quotation-draft";
 
@@ -150,5 +151,142 @@ describe("Billing an order — the tax rate that reaches the invoice", () => {
     const line = billableLinesFrom("Sales Order", so.code).find((l) => l.code === so.items[0].code)!;
     expect(line.taxRate).toBe(7);
     expect(line.taxCode).toBe("VAT7");
+  });
+});
+
+/* ============================================================
+   CHANGING THE BILL TYPE (step 8b)
+
+   One plan, three surfaces. These test the plan, because if it
+   is right the quotation editor, the sales request editor and
+   the sales order form are all right — none of them computes
+   anything of its own.
+   ============================================================ */
+
+describe("planBillTypeChange", () => {
+  const charges = { headerDisc: 0, freight: 0, otherCharges: 0 } as const;
+  const line = (code: string, tax: number, qty = 10, price = 100) => ({
+    code,
+    name: `name-${code}`,
+    qty,
+    price,
+    disc: 0,
+    tax,
+  });
+
+  it("says there is nothing to decide when the value is unchanged", () => {
+    const doc = { ...charges, billType: "VAT", items: [line("A", 7)] };
+    expect(planBillTypeChange(doc, "VAT")).toBeNull();
+  });
+
+  it("says there is nothing to decide when no line is priced yet", () => {
+    const doc = { ...charges, billType: "VAT", items: [{ code: "", tax: 7 }] };
+    expect(planBillTypeChange(doc, "Non VAT")).toBeNull();
+  });
+
+  it("shows the money leaving the document on the way to Non VAT", () => {
+    const doc = { ...charges, billType: "VAT", items: [line("A", 7)] };
+    const plan = planBillTypeChange(doc, "Non VAT")!;
+
+    expect(plan.before.grandTotal).toBe(1070);
+    expect(plan.after.grandTotal).toBe(1000);
+    expect(plan.delta).toBe(-70);
+    expect(plan.lineCount).toBe(1);
+  });
+
+  it("shows the money arriving on the way back to VAT", () => {
+    const doc = { ...charges, billType: "Non VAT", items: [line("A", 0)] };
+    const plan = planBillTypeChange(doc, "VAT")!;
+
+    expect(plan.before.grandTotal).toBe(1000);
+    expect(plan.after.grandTotal).toBe(1070);
+    expect(plan.delta).toBe(70);
+  });
+
+  it("names every line whose deliberate rate would be overwritten", () => {
+    /* B is exempt on purpose and C is on a reduced rate; both vanish under a
+       blanket switch to 7%, which is the whole reason the dialog exists. */
+    const doc = {
+      ...charges,
+      billType: "Non VAT",
+      items: [line("A", 0), line("B", 0), line("C", 3)],
+    };
+    const plan = planBillTypeChange(doc, "VAT")!;
+
+    expect(plan.lineCount).toBe(3);
+    expect(plan.overwritten.map((l) => l.code)).toEqual(["C"]);
+    expect(plan.overwritten[0]).toMatchObject({ from: 3, to: 7, name: "name-C" });
+  });
+
+  it("does not call a line overwritten when it already sits on the target", () => {
+    const doc = { ...charges, billType: "VAT", items: [line("A", 7), line("B", 0)] };
+    const plan = planBillTypeChange(doc, "Non VAT")!;
+    /* B is already 0, which is where the switch is heading. */
+    expect(plan.overwritten).toEqual([]);
+  });
+
+  it("counts a line as overwritten only when its rate actually changes", () => {
+    /* On a VAT document, A is standard and B is exempt. Switching to Non VAT
+       moves both to 0 — B was already there, so only A moves, and A is not a
+       deliberate exception. Nothing to warn about. */
+    const toNonVat = planBillTypeChange(
+      { ...charges, billType: "VAT", items: [line("A", 7), line("B", 0)] },
+      "Non VAT",
+    )!;
+    expect(toNonVat.overwritten).toEqual([]);
+
+    /* A reduced rate is the case that matters: it is neither where the
+       document sits nor where it is going, so somebody chose it. */
+    const reduced = planBillTypeChange(
+      { ...charges, billType: "VAT", items: [line("A", 7), line("B", 3)] },
+      "Non VAT",
+    )!;
+    expect(reduced.overwritten.map((l) => l.code)).toEqual(["B"]);
+    expect(reduced.overwritten[0]).toMatchObject({ from: 3, to: 0 });
+  });
+});
+
+describe("applyBillType", () => {
+  const draft = () => ({
+    billType: "VAT",
+    items: [
+      { ...blankLine(), code: "A", qty: 1, price: 100, tax: 7 },
+      { ...blankLine(), code: "B", qty: 1, price: 100, tax: 3 },
+      { ...blankLine(), code: "", tax: 7 },
+    ],
+  });
+
+  it("retaxes every priced line on the way to Non VAT", () => {
+    const next = applyBillType(draft(), "Non VAT");
+    expect(next.billType).toBe("Non VAT");
+    expect(next.items.filter((l) => l.code).map((l) => l.tax)).toEqual([0, 0]);
+  });
+
+  it("puts every priced line back on the standard rate on the way to VAT", () => {
+    const next = applyBillType({ ...draft(), billType: "Non VAT" }, "VAT");
+    expect(next.items.filter((l) => l.code).map((l) => l.tax)).toEqual([7, 7]);
+  });
+
+  it("leaves a blank line alone", () => {
+    /* Rewriting an empty row would make an untouched one look edited. */
+    const before = draft().items[2];
+    const next = applyBillType(draft(), "Non VAT");
+    expect(next.items[2].tax).toBe(before.tax);
+  });
+});
+
+describe("A sealed quotation refuses a bill type change too", () => {
+  it("blocks at the write, not merely by hiding the control", () => {
+    const q = QUOTATIONS.find((x) => x.code === "QT2507-0006")!;
+    q.status = "Sent";
+    const was = q.billType;
+
+    const draft = draftFromQuotation(q);
+    const res = saveQuotationDraft(applyBillType(draft, was === "VAT" ? "Non VAT" : "VAT"), {
+      issue: true,
+    });
+
+    expect(res.blocked).toBeTruthy();
+    expect(QUOTATIONS.find((x) => x.code === "QT2507-0006")!.billType).toBe(was);
   });
 });

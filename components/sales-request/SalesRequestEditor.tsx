@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PRODUCTS } from "@/lib/domain/product";
 import { actingUserName, can } from "@/lib/domain/admin";
 import {
+  applyBillType,
   applyCustomer,
+  planBillTypeChange,
   applyProduct,
   applyQuotation,
   applyShipTo,
@@ -52,7 +54,12 @@ import {
   type MetaRow,
 } from "@/components/document/parts";
 import { SR_CHANNELS, SR_PRICE_LISTS, SR_PRIORITY } from "@/data/sales-requests";
-import { PAY_TERMS } from "@/data/partners";
+import { BILL_TYPES, PAY_TERMS } from "@/data/partners";
+import {
+  BillTypeNotice,
+  billTypeConfirmText,
+  billTypeDialogTitle,
+} from "@/components/document/BillTypeNotice";
 import { PO_CURRENCIES } from "@/data/purchase-orders";
 import { warehouseOptions, salesRepOptions } from "@/lib/domain/outbound";
 import { toDisplayDate } from "@/lib/format";
@@ -122,6 +129,8 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
       /* The whole reason a quotation exists: the customer agreed a price, so
          the request carries those exact lines rather than being retyped. */
       if ("quotationRef" in patch) return applyQuotation(d, String(patch.quotationRef ?? ""));
+      /* Changing the bill type retaxes every line — see applyBillType. */
+      if ("billType" in patch) return applyBillType(d, String(patch.billType ?? ""));
       return { ...d, ...patch };
     });
   }, []);
@@ -276,6 +285,37 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
     el.querySelector<HTMLElement>("input,select,textarea")?.focus();
   }, []);
 
+  /**
+   * Switching VAT ⇄ Non VAT rewrites the tax on every line, so it is shown
+   * before it happens. The plan is built by doc-draft.ts — the same one the
+   * quotation editor and the sales order form read, so the figures cannot
+   * differ between the three screens. Nothing is worked out here.
+   */
+  const askBillType = useCallback(
+    (next: string) => {
+      const plan = planBillTypeChange(draft, next);
+      if (!plan) {
+        set({ billType: next });
+        return;
+      }
+      ctx.confirm({
+        title: billTypeDialogTitle(plan),
+        message: (
+          <>
+            <p className="mb-3 text-ink-2">
+              {draft.code} · {draft.customer}
+            </p>
+            <BillTypeNotice plan={plan} />
+          </>
+        ),
+        confirmText: billTypeConfirmText(plan),
+        tone: plan.overwritten.length ? "danger" : "primary",
+        onConfirm: () => set({ billType: next }),
+      });
+    },
+    [ctx, draft, set],
+  );
+
   const saveDraftNow = useCallback(() => {
     const res = saveSalesRequestDraft(draft, { submit: false, user: FORM_USER() });
     clearDraft(storeKey);
@@ -408,6 +448,20 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
       { field: "currency", label: "Currency", required: true, control: sel("currency", "Currency", PO_CURRENCIES), read: draft.currency },
       { field: "payTerm", label: "Payment Term", control: sel("payTerm", "Payment Term", PAY_TERMS), read: draft.payTerm },
       { field: "channel", label: "Sales Channel", control: sel("channel", "Sales Channel", SR_CHANNELS), read: draft.channel },
+      {
+        field: "billType",
+        label: "Bill Type",
+        /* Not `sel()`: this one asks before it writes. See askBillType. */
+        control: (
+          <MetaSelect
+            label="Bill Type"
+            value={draft.billType}
+            options={BILL_TYPES}
+            onChange={askBillType}
+          />
+        ),
+        read: draft.billType,
+      },
       { field: "internalRef", label: "Internal Reference", control: txt("internalRef", "Internal Reference"), read: draft.internalRef },
     ];
   }, [draft, set]);

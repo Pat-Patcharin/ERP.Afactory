@@ -1,8 +1,14 @@
 import { SO_CHANNELS, SO_INCOTERMS, SO_PRIORITY } from "@/data/sales-orders";
-import { PAY_TERMS } from "@/data/partners";
+import { BILL_TYPES, PAY_TERMS } from "@/data/partners";
 import { PO_CURRENCIES } from "@/data/purchase-orders";
 import { PRODUCTS, productStock } from "@/lib/domain/product";
 import { docGrandTotal, docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
+import { STANDARD_VAT_RATE, planBillTypeChange } from "@/lib/domain/doc-draft";
+import {
+  BillTypeNotice,
+  billTypeConfirmText,
+  billTypeDialogTitle,
+} from "@/components/document/BillTypeNotice";
 import {
   SALES_ORDERS,
   SALES_REQUESTS,
@@ -63,6 +69,7 @@ export const SO_FORM: FormSchema<SoRow> = {
   blank: () => ({
     _mode: "create",
     code: nextSOCode(),
+    billType: "VAT",
     customerPick: "",
     customer: "",
     customerCode: "",
@@ -87,6 +94,7 @@ export const SO_FORM: FormSchema<SoRow> = {
   toState: (so) => ({
     _mode: "edit",
     code: so.code,
+    billType: so.billType,
     customerPick: `${so.customerCode} - ${so.customer}`,
     customer: so.customer,
     customerCode: so.customerCode,
@@ -194,6 +202,13 @@ export const SO_FORM: FormSchema<SoRow> = {
             { type: "number", path: "fx", label: "Exchange Rate", required: true, min: 0, step: "0.0001", hint: "THB = 1" },
             { type: "select", path: "payTerm", label: "Payment Term", options: opts(PAY_TERMS) },
             { type: "select", path: "channel", label: "Sales Channel", options: opts(SO_CHANNELS) },
+            {
+              type: "select",
+              path: "billType",
+              label: "Bill Type",
+              options: opts(BILL_TYPES),
+              hint: "เปลี่ยนแล้วภาษีทุกบรรทัดจะถูกคำนวณใหม่ — ดูผลกระทบในแผงด้านขวา",
+            },
           ],
         },
       ],
@@ -404,8 +419,27 @@ export const SO_FORM: FormSchema<SoRow> = {
       if (bp.sales?.payTerm) s.payTerm = bp.sales.payTerm;
       if (bp.sales?.rep) s.salesRep = bp.sales.rep;
       if (bp.cls?.channel) s.channel = bp.cls.channel;
+      if (bp.billType) s.billType = bp.billType;
       const addresses = shipToOptions(String(s.customerPick));
       s.shipTo = addresses[0] ?? "";
+      return;
+    }
+
+    /**
+     * Switching VAT ⇄ Non VAT retaxes every line.
+     *
+     * The engine's onChange carries no `ctx`, so this surface cannot raise a
+     * dialog at the moment of the change the way the two document editors do.
+     * Instead the lines are retaxed immediately, the right rail shows exactly
+     * what the editors' dialog shows — from the same plan — and `save`, which
+     * does have `ctx`, asks before it writes. Same figures, same words, one
+     * beat later.
+     */
+    if (path === "billType") {
+      const to = String(s.billType ?? "") === "Non VAT" ? 0 : STANDARD_VAT_RATE;
+      for (const r of (s.items ?? []) as GridRow[]) {
+        if (String(r.code ?? "").trim()) r.tax = to;
+      }
       return;
     }
 
@@ -490,7 +524,29 @@ export const SO_FORM: FormSchema<SoRow> = {
 
     const blocked = !credit.withinLimit || short.length > 0;
 
+    /* What flipping the bill type would do, measured against the SAVED order:
+       the lines on screen have already been retaxed by onChange, so the
+       document as it stands is the only honest "before". Same plan, same
+       component, same figures as the dialog in the two document editors. */
+    const original = SALES_ORDERS.find((x) => x.code === String(s.code ?? ""));
+    const billPlan =
+      original && String(s.billType ?? "") !== original.billType
+        ? planBillTypeChange(
+            { items: original.items ?? [], billType: original.billType, headerDisc: 0, freight: 0, otherCharges: 0 },
+            String(s.billType ?? ""),
+          )
+        : null;
+
     return (
+      <>
+        {billPlan && (
+          <RailCard icon="pricing" title="เปลี่ยนประเภทใบกำกับ" tone="warn">
+            <BillTypeNotice plan={billPlan} />
+            <p className="mt-3 text-cap leading-relaxed text-ink-2">
+              ระบบจะถามยืนยันอีกครั้งตอนกดบันทึก
+            </p>
+          </RailCard>
+        )}
       <RailCard icon="shield" title="Credit & Stock Check" tone={blocked ? "warn" : "default"}>
         <RailRow label="สถานะเครดิต" value={credit.status} />
         <RailRow
@@ -524,6 +580,7 @@ export const SO_FORM: FormSchema<SoRow> = {
           </p>
         )}
       </RailCard>
+      </>
     );
   },
 
@@ -569,6 +626,46 @@ export const SO_FORM: FormSchema<SoRow> = {
     const code = String(s.code ?? "").trim();
     const existing = SALES_ORDERS.find((x) => x.code === code);
 
+    /* The bill type moved since this order was last saved. `save` is the
+       first point on this surface that has a ctx, so this is where the
+       question gets asked — with the same plan, the same component and the
+       same wording as the dialog in the two document editors. */
+    const billPlan = existing
+      ? planBillTypeChange(
+          {
+            items: existing.items ?? [],
+            billType: existing.billType,
+            headerDisc: 0,
+            freight: 0,
+            otherCharges: 0,
+          },
+          String(s.billType ?? ""),
+        )
+      : null;
+
+    if (billPlan) {
+      ctx.confirm({
+        title: billTypeDialogTitle(billPlan),
+        message: (
+          <>
+            <p className="mb-3 text-ink-2">
+              {code} · {String(s.customer ?? "")}
+            </p>
+            <BillTypeNotice plan={billPlan} />
+          </>
+        ),
+        confirmText: billTypeConfirmText(billPlan),
+        tone: billPlan.overwritten.length ? "danger" : "primary",
+        /* Re-enter with the question answered. `existing.billType` now
+           matches, so planBillTypeChange returns null and the save runs. */
+        onConfirm: () => {
+          existing!.billType = String(s.billType ?? "");
+          SO_FORM.save(s, ctx);
+        },
+      });
+      return;
+    }
+
     const items = ((s.items ?? []) as GridRow[])
       .filter((r) => String(r.code ?? "").trim())
       .map((r) => ({
@@ -602,6 +699,7 @@ export const SO_FORM: FormSchema<SoRow> = {
       shipTo: String(s.shipTo ?? ""),
       priority: String(s.priority ?? "Normal"),
       channel: String(s.channel ?? ""),
+      billType: String(s.billType ?? "VAT"),
       srRef: String(s.srRef ?? ""),
       customerPo: String(s.customerPo ?? ""),
       remark: String(s.remark ?? ""),

@@ -1,3 +1,4 @@
+import { COMPANY } from "@/data/admin";
 import { PAY_TERMS } from "@/data/partners";
 import { QT_CHANNELS, QT_PRICE_LISTS } from "@/data/quotations";
 import { PRODUCTS, productStock } from "./product";
@@ -229,6 +230,138 @@ export function zeroTaxIfNonVat<T extends { tax?: number | "" }>(
 ): T[] {
   if (billType !== "Non VAT") return lines;
   return lines.map((l) => ({ ...l, tax: 0 }));
+}
+
+/* ============================================================
+   CHANGING HOW A DOCUMENT IS BILLED
+
+   Flipping VAT ⇄ Non VAT rewrites the tax on every line, so it
+   is never done silently. Everything needed to warn about it —
+   which lines change, by how much, and what the total becomes —
+   is computed here, once.
+
+   No surface may work any of this out for itself. The quotation
+   editor, the sales request editor and the sales order form each
+   read the same plan, so the figures a salesperson is shown
+   before they commit cannot differ between the three screens.
+   ============================================================ */
+
+/** The rate a taxable line carries unless someone deliberately changed it. */
+export const STANDARD_VAT_RATE = COMPANY.vatRate;
+
+/** One line whose tax the change would overwrite. */
+export interface BillTypeLineChange {
+  code: string;
+  name: string;
+  from: number;
+  to: number;
+}
+
+export interface BillTypeChangePlan {
+  from: string;
+  to: string;
+  /** Priced lines on the document — the count the confirm button quotes. */
+  lineCount: number;
+  /**
+   * Lines carrying a rate that is neither the standard one nor the one the
+   * change is heading for. These are the dangerous ones: a product set to 0%
+   * because it is tax-exempt looks identical to one nobody has touched, and
+   * switching to VAT would quietly start charging it.
+   */
+  overwritten: BillTypeLineChange[];
+  before: DocTotals;
+  after: DocTotals;
+  /** after − before. Negative when the change makes the document cheaper. */
+  delta: number;
+}
+
+/**
+ * The little a line has to expose to be planned over.
+ *
+ * Deliberately looser than `DraftLine`: the sales order form holds grid rows
+ * and the stored record holds `SoLine`, and both must be able to ask the same
+ * question without first converting into an editor's shape.
+ */
+export interface PlanLine {
+  code?: string;
+  name?: string;
+  qty?: number | "";
+  price?: number | "";
+  disc?: number | "";
+  tax?: number | "";
+}
+
+/** Whatever shape came in, as the lines the shared totals maths expects. */
+const asDraftLines = (items: readonly PlanLine[]): DraftLine[] =>
+  items.map((l) => ({
+    ...blankLine(),
+    code: str(l.code),
+    name: str(l.name),
+    qty: num(l.qty),
+    price: num(l.price),
+    disc: num(l.disc),
+    tax: num(l.tax),
+  }));
+
+/**
+ * What flipping a document's bill type would do.
+ *
+ * Returns null when there is nothing to decide — the value is unchanged, or
+ * there are no priced lines yet, in which case the switch is free and asking
+ * would be noise.
+ */
+export function planBillTypeChange(
+  doc: ChargeFields & { items: readonly PlanLine[]; billType: string },
+  to: string,
+): BillTypeChangePlan | null {
+  const from = str(doc.billType) || "VAT";
+  if (to === from) return null;
+
+  const priced = asDraftLines(doc.items.filter((l) => str(l.code)));
+  if (!priced.length) return null;
+
+  const target = to === "Non VAT" ? 0 : STANDARD_VAT_RATE;
+  const next = priced.map((l) => ({ ...l, tax: target }));
+
+  /* A line already sitting on the target rate is not being overwritten, and
+     neither is one on the rate this document is supposed to carry. What is
+     left is the deliberate exception. */
+  const expected = from === "Non VAT" ? 0 : STANDARD_VAT_RATE;
+  const overwritten = priced
+    .filter((l) => num(l.tax) !== expected && num(l.tax) !== target)
+    .map((l) => ({ code: str(l.code), name: str(l.name), from: num(l.tax), to: target }));
+
+  const before = docTotals(priced, doc);
+  const after = docTotals(next, doc);
+
+  return {
+    from,
+    to,
+    lineCount: priced.length,
+    overwritten,
+    before,
+    after,
+    delta: after.grandTotal - before.grandTotal,
+  };
+}
+
+/**
+ * Apply the change. Every priced line takes the new document's rate.
+ *
+ * Blank lines keep whatever they hold — they carry no money and rewriting
+ * them would only make an untouched row look edited.
+ */
+export function applyBillType<T extends { items: DraftLine[]; billType: string }>(
+  draft: T,
+  to: string,
+): T {
+  const next = str(to) || "VAT";
+  const rate = next === "Non VAT" ? 0 : STANDARD_VAT_RATE;
+  return {
+    ...draft,
+    billType: next,
+    items: draft.items.map((l) => (str(l.code) ? { ...l, tax: rate } : l)),
+  };
 }
 
 /** Pick one of the customer's other addresses without leaving the page. */

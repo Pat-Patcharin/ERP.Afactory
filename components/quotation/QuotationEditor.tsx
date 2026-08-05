@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PRODUCTS } from "@/lib/domain/product";
 import { actingUserName, can } from "@/lib/domain/admin";
 import {
+  applyBillType,
   applyCustomer,
+  planBillTypeChange,
   applyProduct,
   applyShipTo,
   blankDraft,
@@ -50,7 +52,12 @@ import {
   type MetaRow,
 } from "@/components/document/parts";
 import { QT_CHANNELS, QT_PRICE_LISTS } from "@/data/quotations";
-import { PAY_TERMS } from "@/data/partners";
+import { BILL_TYPES, PAY_TERMS } from "@/data/partners";
+import {
+  BillTypeNotice,
+  billTypeConfirmText,
+  billTypeDialogTitle,
+} from "@/components/document/BillTypeNotice";
 import { PO_CURRENCIES } from "@/data/purchase-orders";
 import { warehouseOptions, salesRepOptions } from "@/lib/domain/outbound";
 import { toDisplayDate } from "@/lib/format";
@@ -116,6 +123,8 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
          rather than only writing the field. */
       if ("customerPick" in patch) return applyCustomer(d, String(patch.customerPick ?? ""));
       if ("shipAddressPick" in patch) return applyShipTo(d, String(patch.shipAddressPick ?? ""));
+      /* Changing the bill type retaxes every line — see applyBillType. */
+      if ("billType" in patch) return applyBillType(d, String(patch.billType ?? ""));
       return { ...d, ...patch };
     });
   }, []);
@@ -270,6 +279,40 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
     el.querySelector<HTMLElement>("input,select,textarea")?.focus();
   }, []);
 
+  /**
+   * Switching VAT ⇄ Non VAT rewrites the tax on every line, so it is shown
+   * before it happens. The plan — which lines change, by how much, what the
+   * total becomes — is built by doc-draft.ts, the same one the sales request
+   * editor and the sales order form read. Nothing is worked out here.
+   *
+   * No plan means there is nothing to decide: same value, or no priced lines
+   * yet. Then the write goes straight through.
+   */
+  const askBillType = useCallback(
+    (next: string) => {
+      const plan = planBillTypeChange(draft, next);
+      if (!plan) {
+        set({ billType: next });
+        return;
+      }
+      ctx.confirm({
+        title: billTypeDialogTitle(plan),
+        message: (
+          <>
+            <p className="mb-3 text-ink-2">
+              {draft.code} · {draft.customer}
+            </p>
+            <BillTypeNotice plan={plan} />
+          </>
+        ),
+        confirmText: billTypeConfirmText(plan),
+        tone: plan.overwritten.length ? "danger" : "primary",
+        onConfirm: () => set({ billType: next }),
+      });
+    },
+    [ctx, draft, set],
+  );
+
   const saveDraftNow = useCallback(() => {
     const res = saveQuotationDraft(draft, { issue: false, user: FORM_USER() });
     /* The store decides whether the write was allowed; this only reports it.
@@ -397,6 +440,20 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
       { field: "currency", label: "Currency", required: true, control: sel("currency", "Currency", PO_CURRENCIES), read: draft.currency },
       { field: "payTerm", label: "Payment Term", control: sel("payTerm", "Payment Term", PAY_TERMS), read: draft.payTerm },
       { field: "channel", label: "Sales Channel", control: sel("channel", "Sales Channel", QT_CHANNELS), read: draft.channel },
+      {
+        field: "billType",
+        label: "Bill Type",
+        /* Not `sel()`: this one asks before it writes. See askBillType. */
+        control: (
+          <MetaSelect
+            label="Bill Type"
+            value={draft.billType}
+            options={BILL_TYPES}
+            onChange={askBillType}
+          />
+        ),
+        read: draft.billType,
+      },
       { field: "deliveryDate", label: "Delivery Date", control: txt("deliveryDate", "Delivery Date", "date"), read: toDisplayDate(draft.deliveryDate) },
       { field: "warehouse", label: "Warehouse", control: sel("warehouse", "Warehouse", warehouseOptions(), "— ยังไม่ระบุ —"), read: draft.warehouse },
       { field: "internalRef", label: "Internal Reference", control: txt("internalRef", "Internal Reference"), read: draft.internalRef },

@@ -50,7 +50,10 @@ const str = (v: unknown) => String(v ?? "").trim();
    so a caller reads one module rather than two. */
 export {
   DISCOUNT_THRESHOLD,
+  applyBillType,
   applyProduct,
+  planBillTypeChange,
+  type BillTypeChangePlan,
   blankLine,
   blockingIssues,
   lineAvailability,
