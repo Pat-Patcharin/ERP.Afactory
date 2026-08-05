@@ -339,6 +339,20 @@ export function sourceOptions(sourceType: string): SourceDocOption[] {
  * Pull billable lines off a source document, already netted against whatever
  * previous invoices took. This is what stops the same goods being billed twice.
  */
+/**
+ * The tax rate a billed line carries.
+ *
+ * `?? 7`, never `|| 7`. A line deliberately set to 0 — an exempt item, or any
+ * line on a Non VAT order — is a real value, and `0 || 7` turns it into 7.
+ * That was a live hole: an exempt product was charged 7% the moment it reached
+ * an invoice, silently, on a document with legal weight.
+ *
+ * A Non VAT order overrides the line outright, because the whole document
+ * carries no tax whatever the individual lines happen to say.
+ */
+const billedTaxRate = (billType: string, lineTax: number | undefined): number =>
+  billType === "Non VAT" ? 0 : (lineTax ?? 7);
+
 export function billableLinesFrom(sourceType: string, sourceDoc: string): InvLine[] {
   const base: Omit<InvLine, "line" | "sourceLine">[] = [];
 
@@ -359,8 +373,8 @@ export function billableLinesFrom(sourceType: string, sourceDoc: string): InvLin
         unitPrice: num(it.price),
         discType: num(it.disc) ? "Percent" : "None",
         disc: num(it.disc),
-        taxCode: "VAT7",
-        taxRate: num(it.tax) || 7,
+        taxCode: so.billType === "Non VAT" ? "NONE" : "VAT7",
+        taxRate: billedTaxRate(so.billType, it.tax),
         warehouse: so.warehouse,
         lotSerial: "",
         note: "",
@@ -390,8 +404,8 @@ export function billableLinesFrom(sourceType: string, sourceDoc: string): InvLin
         unitPrice: num(soLine?.price),
         discType: num(soLine?.disc) ? "Percent" : "None",
         disc: num(soLine?.disc),
-        taxCode: "VAT7",
-        taxRate: num(soLine?.tax) || 7,
+        taxCode: so?.billType === "Non VAT" ? "NONE" : "VAT7",
+        taxRate: billedTaxRate(so?.billType ?? "VAT", soLine?.tax),
         warehouse: dobj.warehouse,
         lotSerial: "",
         /* The wording agreed with the customer, carried from the order the
@@ -422,6 +436,10 @@ export function headerFromSource(sourceType: string, sourceDoc: string) {
       currency: so.currency,
       payTerm: "30 Days",
       channel: so.channel,
+      /* What the order says, so the invoice bills the way the customer was
+         quoted. Kept beside taxMode, which answers a different question:
+         whether the prices already include the tax. */
+      billType: so.billType,
       soRef: so.code,
     };
   }

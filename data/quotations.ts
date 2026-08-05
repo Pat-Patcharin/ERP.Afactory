@@ -78,6 +78,17 @@ export interface Quotation {
   validUntil: string;
   /** Where the document has got to — see QT_STATUS. */
   status: string;
+  /**
+   * Whether this document is billed with VAT. Defaulted from the customer's
+   * `billType` when the document is created.
+   *
+   * "Non VAT" means every line carries tax 0 — the rule is enforced where the
+   * document is written, not left to whoever types the lines.
+   *
+   * There is no way to change it after creation yet; the toggle, the recalc
+   * and the warning dialog are step 8b.
+   */
+  billType: string;
   /** Whether it cleared internal approval — see QT_APPROVAL_STATUS. */
   approvalStatus: string;
   /**
@@ -218,6 +229,7 @@ export const QUOTATIONS: Quotation[] = [
     salesRep: "SALE001 - Patcharin Thiengkaew",
     quoteDate: "22/06/2569",
     validUntil: "22/07/2569",
+    billType: "VAT",
     status: "Converted",
     approvalStatus: "Approved",
     revision: 1,
@@ -259,6 +271,7 @@ export const QUOTATIONS: Quotation[] = [
     salesRep: "SALE003 - Narin Chaiyawat",
     quoteDate: "24/06/2569",
     validUntil: "24/07/2569",
+    billType: "Non VAT",
     status: "Converted",
     approvalStatus: "Approved",
     revision: 1,
@@ -274,8 +287,8 @@ export const QUOTATIONS: Quotation[] = [
     rejectReason: "",
     note: "งานประมูลโรงพยาบาล ต้องแนบใบรับรอง อย. ทุกรายการ",
     items: [
-      { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 7, note: "ราคาประมูล" },
-      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 7, note: "" },
+      { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "ราคาประมูล" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
     ],
     soRef: "",
     srRef: "SR2506-0002",
@@ -299,6 +312,7 @@ export const QUOTATIONS: Quotation[] = [
     salesRep: "SALE002 - Somchai Srisuk",
     quoteDate: "25/06/2569",
     validUntil: "09/07/2569",
+    billType: "VAT",
     status: "Converted",
     approvalStatus: "Approved",
     revision: 1,
@@ -340,6 +354,7 @@ export const QUOTATIONS: Quotation[] = [
     salesRep: "SALE002 - Somchai Srisuk",
     quoteDate: "18/06/2569",
     validUntil: "25/06/2569",
+    billType: "Non VAT",
     status: "Rejected",
     approvalStatus: "Approved",
     revision: 1,
@@ -355,7 +370,7 @@ export const QUOTATIONS: Quotation[] = [
     rejectReason: "ราคาสูงเกินไป",
     note: "ลูกค้าแจ้งว่าราคาสูงกว่าคู่แข่ง",
     items: [
-      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 0, tax: 7, note: "" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 0, tax: 0, note: "" },
     ],
     soRef: "",
     srRef: "",
@@ -378,6 +393,7 @@ export const QUOTATIONS: Quotation[] = [
     salesRep: "SALE004 - Supavita Yothapun",
     quoteDate: "02/07/2569",
     validUntil: "09/07/2569",
+    billType: "VAT",
     status: "Sent",
     approvalStatus: "Approved",
     revision: 1,
@@ -416,6 +432,7 @@ export const QUOTATIONS: Quotation[] = [
     salesRep: "SALE001 - Patcharin Thiengkaew",
     quoteDate: "03/07/2569",
     validUntil: "02/08/2569",
+    billType: "VAT",
     status: "Draft",
     approvalStatus: "Not Submitted",
     revision: 1,
@@ -455,6 +472,7 @@ export const QUOTATIONS: Quotation[] = [
     salesRep: "SALE002 - Somchai Srisuk",
     quoteDate: "01/07/2569",
     validUntil: "31/07/2569",
+    billType: "Non VAT",
     status: "Converted",
     approvalStatus: "Approved",
     revision: 1,
@@ -470,8 +488,8 @@ export const QUOTATIONS: Quotation[] = [
     rejectReason: "",
     note: "ลูกค้ากลับมาสั่งใหม่หลังต่อรองราคารอบก่อนไม่สำเร็จ",
     items: [
-      { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 48, price: 120, disc: 3, tax: 7, note: "" },
-      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 3, tax: 7, note: "" },
+      { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 48, price: 120, disc: 3, tax: 0, note: "" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 3, tax: 0, note: "" },
     ],
     soRef: "SO2506-0005",
     srRef: "",

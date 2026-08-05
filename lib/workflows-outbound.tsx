@@ -409,6 +409,7 @@ export function qtConvert(qt: QtRow, ctx: ActionCtx) {
           priority: "Normal",
           channel: qt.channel,
           customerPo: qt.customerRef,
+          billType: qt.billType,
           items: qt.items ?? [],
         },
         { code: qt.code, field: "quotationRef", noun: "ใบเสนอราคา" },
@@ -695,6 +696,8 @@ interface SoDraft {
   priority: string;
   channel: string;
   customerPo: string;
+  /** "VAT" or "Non VAT" — carried from the document that produced the order. */
+  billType: string;
   items: readonly {
     code: string;
     name: string;
@@ -775,6 +778,10 @@ function createSalesOrderFrom(
     status: credit.withinLimit ? "Confirmed" : "On Hold",
     priority: draft.priority,
     channel: draft.channel,
+    /* How the order is billed follows the document it came from, not the
+       customer master — the customer may have registered for VAT since the
+       quotation was agreed, and the agreed figures are what stand. */
+    billType: draft.billType || "VAT",
     srRef: origin.field === "srRef" ? origin.code : "",
     quotationRef: origin.field === "quotationRef" ? origin.code : "",
     customerPo: draft.customerPo,
@@ -883,6 +890,7 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
           priority: sr.priority,
           channel: sr.channel,
           customerPo: sr.customerRef,
+          billType: sr.billType,
           items: sr.items ?? [],
         },
         { code: sr.code, field: "srRef", noun: "คำขอขาย" },

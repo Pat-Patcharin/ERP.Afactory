@@ -38,6 +38,17 @@ export interface SalesRequest {
   requestDate: string;
   /** When the customer needs the goods — drives the Sales Order delivery date. */
   requiredDate: string;
+  /**
+   * Whether this document is billed with VAT. Defaulted from the customer's
+   * `billType` when the document is created.
+   *
+   * "Non VAT" means every line carries tax 0 — the rule is enforced where the
+   * document is written, not left to whoever types the lines.
+   *
+   * There is no way to change it after creation yet; the toggle, the recalc
+   * and the warning dialog are step 8b.
+   */
+  billType: string;
   status: string;
   priority: string;
   warehouse: string;
@@ -113,6 +124,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     salesRep: "SALE001 - Patcharin Thiengkaew",
     requestDate: "24/06/2569",
     requiredDate: "02/07/2569",
+    billType: "VAT",
     status: "Converted",
     priority: "High",
     warehouse: "WH-BKK Bangkok Main Warehouse",
@@ -150,6 +162,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     salesRep: "SALE003 - Narin Chaiyawat",
     requestDate: "26/06/2569",
     requiredDate: "08/07/2569",
+    billType: "Non VAT",
     status: "Submitted",
     priority: "Critical",
     warehouse: "WH-BKK Bangkok Main Warehouse",
@@ -161,8 +174,8 @@ export const SALES_REQUESTS: SalesRequest[] = [
     quotationRef: "QT2506-0002",
     note: "ได้งานประมูลแล้ว รอฝ่ายบัญชีตรวจวงเงินเครดิตก่อนอนุมัติ",
     items: [
-      { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 7, note: "ราคาประมูล" },
-      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 7, note: "" },
+      { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "ราคาประมูล" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
     ],
     approvedBy: "",
     approvedDate: "",
@@ -184,6 +197,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     salesRep: "SALE002 - Somchai Srisuk",
     requestDate: "27/06/2569",
     requiredDate: "05/07/2569",
+    billType: "VAT",
     status: "Converted",
     priority: "Normal",
     warehouse: "WH-BKK Bangkok Main Warehouse",
@@ -221,6 +235,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     salesRep: "SALE004 - Supavita Yothapun",
     requestDate: "01/07/2569",
     requiredDate: "10/07/2569",
+    billType: "VAT",
     status: "Draft",
     priority: "Normal",
     warehouse: "WH-CNX Chiang Mai Warehouse",
@@ -254,6 +269,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     salesRep: "SALE002 - Somchai Srisuk",
     requestDate: "02/07/2569",
     requiredDate: "12/07/2569",
+    billType: "Non VAT",
     status: "Rejected",
     priority: "Low",
     warehouse: "WH-BKK Bangkok Main Warehouse",
@@ -265,7 +281,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     quotationRef: "",
     note: "ลูกค้าขอส่วนลดเกินเกณฑ์ที่พนักงานขายอนุมัติได้",
     items: [
-      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 25, tax: 7, note: "ขอส่วนลด 25%" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 25, tax: 0, note: "ขอส่วนลด 25%" },
     ],
     approvedBy: "Pimpaka S.",
     approvedDate: "",

@@ -15,6 +15,7 @@ import {
   docInsight,
   docTotals,
   validateLines,
+  zeroTaxIfNonVat,
   validateParty,
   type DocInsight,
   type DocTotals,
@@ -101,6 +102,8 @@ export interface QuotationDraft {
   currency: string;
   payTerm: string;
   channel: string;
+  /** "VAT" or "Non VAT", from the customer. Editable in step 8b, not before. */
+  billType: string;
   deliveryDate: string;
   warehouse: string;
   internalRef: string;
@@ -161,6 +164,8 @@ export function blankDraft(): QuotationDraft {
     currency: "THB",
     payTerm: PAY_TERMS[0] ?? "เครดิต 30 วัน",
     channel: "Direct",
+    /* Replaced by the customer's own billType as soon as one is picked. */
+    billType: "VAT",
     deliveryDate: "",
     warehouse: "",
     internalRef: "",
@@ -199,6 +204,7 @@ export function draftFromQuotation(q: Quotation): QuotationDraft {
     currency: q.currency,
     payTerm: q.payTerm,
     channel: q.channel,
+    billType: q.billType,
     remarks: q.note || DEFAULT_REMARKS,
     internalNote: "",
     items: (q.items ?? []).map((it) => ({
@@ -448,7 +454,10 @@ export function saveQuotationDraft(
     };
   }
 
-  const items = draft.items
+  /* A Non VAT quotation carries no tax on any line, whoever typed them and
+     whichever document they came from. Enforced here, at the write. */
+  const billType = str(draft.billType) || "VAT";
+  const items = zeroTaxIfNonVat(billType, draft.items)
     .filter((l) => str(l.code))
     .map((l) => ({
       code: str(l.code),
@@ -475,6 +484,7 @@ export function saveQuotationDraft(
     payTerm: str(draft.payTerm),
     priceList: str(draft.priceList),
     channel: str(draft.channel),
+    billType,
     customerRef: str(draft.customerRef),
     note: str(draft.remarks),
     items,

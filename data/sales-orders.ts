@@ -43,6 +43,18 @@ export interface SalesOrder {
   payTerm: string;
   incoterm: string;
   shipTo: string;
+  /**
+   * Whether this document is billed with VAT. Defaulted from the customer's
+   * `billType` when the document is created, and carried from the quotation
+   * or sales request it converted from.
+   *
+   * "Non VAT" means every line carries tax 0 — the rule is enforced where the
+   * document is written, not left to whoever types the lines.
+   *
+   * There is no way to change it after creation yet; the toggle, the recalc
+   * and the warning dialog are step 8b.
+   */
+  billType: string;
   status: string;
   priority: string;
   channel: string;
@@ -97,6 +109,7 @@ export const SALES_ORDERS: SalesOrder[] = [
     payTerm: "เครดิต 30 วัน",
     incoterm: "DDP",
     shipTo: "119/25 อาคารเดนทัลทาวเวอร์ ชั้น 8 คลองเตย กรุงเทพมหานคร 10110",
+    billType: "VAT",
     status: "Partially Delivered",
     priority: "High",
     channel: "Direct",
@@ -134,6 +147,7 @@ export const SALES_ORDERS: SalesOrder[] = [
     payTerm: "เครดิต 45 วัน",
     incoterm: "DAP",
     shipTo: "45/7 ถนนพระราม 2 บางขุนเทียน กรุงเทพมหานคร 10150",
+    billType: "VAT",
     status: "Picking",
     priority: "Normal",
     channel: "Dealer",
@@ -170,6 +184,7 @@ export const SALES_ORDERS: SalesOrder[] = [
     payTerm: "เครดิต 60 วัน",
     incoterm: "DDP",
     shipTo: "88 หมู่ 4 ถนนติวานนท์ เมืองนนทบุรี นนทบุรี 11000",
+    billType: "Non VAT",
     status: "On Hold",
     priority: "Critical",
     channel: "Government",
@@ -179,8 +194,8 @@ export const SALES_ORDERS: SalesOrder[] = [
     creditApproved: false,
     creditNote: "ยอดสั่งซื้อทำให้เกินวงเงินเครดิตที่อนุมัติไว้",
     items: [
-      { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 7, picked: 0, delivered: 0, note: "" },
-      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 7, picked: 0, delivered: 0, note: "" },
+      { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, picked: 0, delivered: 0, note: "" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, picked: 0, delivered: 0, note: "" },
     ],
     history: [
       { t: "Put on credit hold", d: "ยอดรวมเกินวงเงินเครดิตคงเหลือ", u: "ระบบ", when: "29/06/2569 14:05", kind: "warn" },
@@ -204,6 +219,7 @@ export const SALES_ORDERS: SalesOrder[] = [
     payTerm: "เงินสด",
     incoterm: "EXW",
     shipTo: "212/9 ถนนนิมมานเหมินท์ เมืองเชียงใหม่ เชียงใหม่ 50200",
+    billType: "VAT",
     status: "Completed",
     priority: "Normal",
     channel: "Direct",
@@ -239,6 +255,7 @@ export const SALES_ORDERS: SalesOrder[] = [
     payTerm: "เครดิต 15 วัน",
     incoterm: "DAP",
     shipTo: "9/12 ถนนเพชรเกษม หาดใหญ่ สงขลา 90110",
+    billType: "Non VAT",
     status: "Confirmed",
     priority: "Normal",
     channel: "Direct",
@@ -250,8 +267,8 @@ export const SALES_ORDERS: SalesOrder[] = [
     creditApproved: true,
     creditNote: "อยู่ในวงเงิน",
     items: [
-      { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 48, price: 120, disc: 3, tax: 7, picked: 0, delivered: 0, note: "" },
-      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 3, tax: 7, picked: 0, delivered: 0, note: "" },
+      { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 48, price: 120, disc: 3, tax: 0, picked: 0, delivered: 0, note: "" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 3, tax: 0, picked: 0, delivered: 0, note: "" },
     ],
     history: [
       { t: "Confirmed", d: "ยืนยันคำสั่งขาย รอจัดของ", u: "Somchai S.", when: "01/07/2569 09:15", kind: "primary" },
@@ -278,6 +295,7 @@ export const SALES_ORDERS: SalesOrder[] = [
     payTerm: "เครดิต 30 วัน",
     incoterm: "DAP",
     shipTo: "45/7 ถนนพระราม 2 บางขุนเทียน กรุงเทพมหานคร 10150",
+    billType: "VAT",
     status: "Partially Delivered",
     priority: "High",
     channel: "Dealer",

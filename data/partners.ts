@@ -422,6 +422,14 @@ export const BP_STATUS = ["Active", "Inactive", "On Hold", "Blocked"] as const;
  *  a partner with both flags is "Both", never two records. */
 export const BP_TYPE_MODES = ["Customer", "Supplier", "Both"] as const;
 
+/**
+ * What kind of bill this partner gets. A quotation, sales request and sales
+ * order each carry a `billType` of their own, defaulted from here.
+ *
+ * NOT the same axis as `OPT.vat` in data/options.ts, which describes how a
+ * product's catalogue price is quoted ("VAT 7% (exclusive)" and so on). The
+ * two are never compared and the spellings deliberately differ.
+ */
 export const BILL_TYPES = ["VAT", "Non VAT"] as const;
 
 /** Credit term in days, plus the cash-only case. */

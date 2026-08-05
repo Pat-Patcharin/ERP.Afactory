@@ -56,6 +56,16 @@ export const OPT: ProductOptions = {
     "Shandong Huge Dental",
   ],
   currency: ["THB", "USD", "EUR", "CNY"],
+  /**
+   * How a PRODUCT's catalogue price is quoted — whether the number in the
+   * product master already includes tax.
+   *
+   * NOT the same axis as `BILL_TYPES` in data/partners.ts, which says what
+   * kind of bill a customer gets ("VAT" / "Non VAT"). Never compare a value
+   * from this list with a `billType`: they answer different questions, the
+   * spelling differs on purpose, and a match would be meaningless even if the
+   * strings happened to line up.
+   */
   vat: ["VAT 7% (exclusive)", "VAT 7% (inclusive)", "Non-VAT"],
   regType: ["Thai FDA", "ISO 13485", "CE Marking", "มอก."],
   regStatus: ["Active", "Pending", "Expiring", "Expired"],

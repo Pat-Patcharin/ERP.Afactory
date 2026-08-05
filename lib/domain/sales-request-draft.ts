@@ -21,6 +21,7 @@ import {
   docInsight,
   docTotals,
   validateLines,
+  zeroTaxIfNonVat,
   validateParty,
   type DocInsight,
   type DocTotals,
@@ -137,6 +138,8 @@ export function blankSrDraft(): SalesRequestDraft {
     currency: "THB",
     payTerm: PAY_TERMS[0] ?? "เครดิต 30 วัน",
     channel: "Direct",
+    /* Replaced by the customer's own billType as soon as one is picked. */
+    billType: "VAT",
     internalRef: "",
     items: [blankLine()],
     headerDisc: 0,
@@ -174,6 +177,7 @@ export function draftFromSalesRequest(r: SalesRequest): SalesRequestDraft {
     currency: r.currency,
     payTerm: r.payTerm,
     channel: r.channel,
+    billType: r.billType,
     remarks: r.note || DEFAULT_SR_REMARKS,
     items: (r.items ?? []).map((it) => ({
       ...blankLine(),
@@ -226,6 +230,9 @@ export function applyQuotation(draft: SalesRequestDraft, quotationRef: string): 
     payTerm: qt.payTerm,
     priceList: qt.priceList,
     channel: qt.channel,
+    /* The quotation decides how it is billed; the request inherits it rather
+       than re-deriving from the customer, who may have changed since. */
+    billType: qt.billType,
     customerRef: qt.customerRef,
     /* The customer wanted the goods by the day the price stops standing. */
     requiredDate: toInputDate(qt.validUntil),
@@ -451,7 +458,10 @@ export function saveSalesRequestDraft(
   const code = str(draft.code);
   const existing = SALES_REQUESTS.find((x) => x.code === code);
 
-  const items = draft.items
+  /* A Non VAT request carries no tax on any line — same rule as the
+     quotation, enforced at the write rather than in the form. */
+  const billType = str(draft.billType) || "VAT";
+  const items = zeroTaxIfNonVat(billType, draft.items)
     .filter((l) => str(l.code))
     .map((l) => ({
       code: str(l.code),
@@ -479,6 +489,7 @@ export function saveSalesRequestDraft(
     payTerm: str(draft.payTerm),
     priceList: str(draft.priceList),
     channel: str(draft.channel),
+    billType,
     customerRef: str(draft.customerRef),
     note: str(draft.remarks),
     items,

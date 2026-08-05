@@ -101,6 +101,11 @@ export interface TermFields {
   priceList: string;
   payTerm: string;
   channel: string;
+  /**
+   * "VAT" or "Non VAT", defaulted from the customer. Not editable on the
+   * document yet — the toggle and its recalculation are step 8b.
+   */
+  billType: string;
 }
 
 export const blankParty = (): PartyFields => ({
@@ -196,7 +201,34 @@ export function applyCustomerTo<T extends PartyFields & TermFields>(
     next.channel = bp.cls.channel;
   }
 
+  /**
+   * How this customer is billed. Unlike the terms above there is no older
+   * value space to guard against — `billType` is derived on the partner
+   * itself from `tax.vatReg`, so it is always one of the two the document
+   * understands.
+   *
+   * A customer who is not VAT registered gets a document with no tax on any
+   * line; `zeroTaxIfNonVat` below is what enforces that, so a line typed with
+   * tax 7 cannot survive onto a Non VAT document.
+   */
+  if (bp.billType) next.billType = bp.billType;
+
   return next;
+}
+
+/**
+ * Flatten the tax on every line of a Non VAT document.
+ *
+ * Called wherever a document's lines are written, rather than trusted to the
+ * form: the rule is about what the document IS, and a line arriving from a
+ * conversion or an import never passed through a form at all.
+ */
+export function zeroTaxIfNonVat<T extends { tax?: number | "" }>(
+  billType: string,
+  lines: T[],
+): T[] {
+  if (billType !== "Non VAT") return lines;
+  return lines.map((l) => ({ ...l, tax: 0 }));
 }
 
 /** Pick one of the customer's other addresses without leaving the page. */
