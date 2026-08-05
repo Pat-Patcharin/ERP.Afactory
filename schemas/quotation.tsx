@@ -16,7 +16,13 @@ import {
   qtSend,
   qtSubmit,
 } from "@/lib/workflows-outbound";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  ActionCtx,
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { QuotationEditor } from "@/components/quotation/QuotationEditor";
 
@@ -25,6 +31,57 @@ import { QuotationEditor } from "@/components/quotation/QuotationEditor";
    Request. Nothing here reserves stock or commits the company.
    Draft → Sent → Accepted → Converted / Rejected / Expired
    ============================================================ */
+
+/**
+ * The state-machine buttons, built once for both surfaces.
+ *
+ * The list and the detail page each had their own copy of these conditions,
+ * and they had already drifted — Send stayed on Draft in one place after being
+ * moved in the other. One function means an approver sees the same choices
+ * wherever they are standing, and a new transition cannot be added to half
+ * the app.
+ *
+ * Only transitions live here. View, Edit, Delete and the print menu differ
+ * legitimately between a row and a page, so they stay where they are.
+ *
+ * Both surfaces pass the record into `run` — the list through ListView, the
+ * detail through Menu — so these read the row they are given rather than
+ * closing over one.
+ */
+function qtWorkflowActions(qt: QtRow, ctx: ActionCtx): RowAction<QtRow>[] {
+  const acts: RowAction<QtRow>[] = [];
+
+  if (qt.status === "Draft")
+    acts.push({ label: "Submit for Approval", icon: "upload", run: (r) => qtSubmit(r, ctx) });
+
+  /* The approver's three answers. Only ever offered together, and only
+     while the quote is actually waiting on one. */
+  if (qt.status === "Pending Approval") {
+    acts.push({ label: "Approve", icon: "checkCircle", run: (r) => qtApprove(r, ctx) });
+    acts.push({ label: "Request Revision", icon: "edit", run: (r) => qtRequestRevision(r, ctx) });
+    acts.push({
+      label: "Reject",
+      icon: "xCircle",
+      danger: true,
+      run: (r) => qtRejectApproval(r, ctx),
+    });
+  }
+
+  /* Only an approved quote may go out — see qtSend. */
+  if (qt.status === "Approved")
+    acts.push({ label: "Send to Customer", icon: "send", run: (r) => qtSend(r, ctx) });
+
+  /* The customer's answer, which is not an approval decision. */
+  if (qt.status === "Sent") {
+    acts.push({ label: "Mark Accepted", icon: "checkCircle", run: (r) => qtAccept(r, ctx) });
+    acts.push({ label: "Mark Rejected", icon: "xCircle", danger: true, run: (r) => qtReject(r, ctx) });
+  }
+
+  if (qt.status === "Accepted")
+    acts.push({ label: "Convert to Sales Request", icon: "salesRequest", run: (r) => qtConvert(r, ctx) });
+
+  return acts;
+}
 
 export const QT_LIST: ListSchema<QtRow> = {
   key: "quotation",
@@ -176,33 +233,7 @@ export const QT_LIST: ListSchema<QtRow> = {
 
     acts.push({ sep: true });
 
-    if (qt.status === "Draft")
-      acts.push({ label: "Submit for Approval", icon: "upload", run: (r) => qtSubmit(r, ctx) });
-
-    /* The approver's three answers. Only ever offered together, and only
-       while the quote is actually waiting on one. */
-    if (qt.status === "Pending Approval") {
-      acts.push({ label: "Approve", icon: "checkCircle", run: (r) => qtApprove(r, ctx) });
-      acts.push({ label: "Request Revision", icon: "edit", run: (r) => qtRequestRevision(r, ctx) });
-      acts.push({
-        label: "Reject",
-        icon: "xCircle",
-        danger: true,
-        run: (r) => qtRejectApproval(r, ctx),
-      });
-    }
-
-    /* Only an approved quote may go out — see qtSend. */
-    if (qt.status === "Approved")
-      acts.push({ label: "Send to Customer", icon: "send", run: (r) => qtSend(r, ctx) });
-
-    if (qt.status === "Sent") {
-      acts.push({ label: "Mark Accepted", icon: "checkCircle", run: (r) => qtAccept(r, ctx) });
-      acts.push({ label: "Mark Rejected", icon: "xCircle", danger: true, run: (r) => qtReject(r, ctx) });
-    }
-
-    if (qt.status === "Accepted")
-      acts.push({ label: "Convert to Sales Request", icon: "salesRequest", run: (r) => qtConvert(r, ctx) });
+    acts.push(...qtWorkflowActions(qt, ctx));
 
     if (qt.srRef)
       acts.push({
@@ -420,16 +451,9 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
   ],
 
   actions: (qt, ctx) => {
-    const acts: RowAction<QtRow>[] = [];
-    /* Same rule as the list — an approved quote and nothing else. */
-    if (qt.status === "Approved")
-      acts.push({ label: "Send to Customer", icon: "send", run: () => qtSend(qt, ctx) });
-    if (qt.status === "Sent") {
-      acts.push({ label: "Mark Accepted", icon: "checkCircle", run: () => qtAccept(qt, ctx) });
-      acts.push({ label: "Mark Rejected", icon: "xCircle", danger: true, run: () => qtReject(qt, ctx) });
-    }
-    if (qt.status === "Accepted")
-      acts.push({ label: "Convert to Sales Request", icon: "salesRequest", run: () => qtConvert(qt, ctx) });
+    /* The same transitions the list offers, so an approver can decide on the
+       page where they actually read the quote. */
+    const acts: RowAction<QtRow>[] = [...qtWorkflowActions(qt, ctx)];
     acts.push({
       label: "Print Quotation",
       icon: "printer",
