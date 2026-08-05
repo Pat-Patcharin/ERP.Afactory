@@ -794,8 +794,20 @@ function createSalesOrderFrom(
       picked: 0,
       delivered: 0,
       note: it.note,
-      /* What the customer was told this line is stays with the line all the
-         way to the invoice. */
+      /**
+       * What the customer was told this line is, carried to the invoice.
+       *
+       * Copied RAW — deliberately not through `displayName()`, and please do
+       * not "finish the job" by routing it through the helper. Every place
+       * that DISPLAYS a line goes through `displayName`; every place that
+       * COPIES one keeps the field as it found it.
+       *
+       * The helper's fallback belongs at the moment of reading, not in the
+       * data. Writing `displayName(it)` here would stamp the catalogue name
+       * into `customName` on lines nobody renamed, and from then on nothing
+       * could tell a salesperson's deliberate wording from a fallback the
+       * system filled in — including the check that decides what to print.
+       */
       customName: it.customName ?? "",
       showOnBill: it.showOnBill !== false,
     })),

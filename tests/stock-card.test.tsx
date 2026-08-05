@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ListView } from "@/components/engine/ListView";
@@ -41,6 +41,24 @@ const renderList = () =>
       <QuickViewHost />
     </>,
   );
+
+/**
+ * Put a term in the search box in one change event.
+ *
+ * These two tests used `userEvent.type`, which fires a keystroke per
+ * character. The search box has no per-key behaviour — no debounce, no key
+ * handling, just `onChange → setQuery` — so every extra keystroke bought
+ * nothing and cost a full re-render of a 25-column table: measured at ~120ms
+ * each in jsdom, against 0.68ms for the filtering the app actually does. An
+ * eight-character code therefore spent about a second re-rendering, which
+ * left the 5s limit no headroom once the other test files were competing for
+ * cores. That is what made this file flake.
+ *
+ * Typing is arrangement here, not the behaviour under test. Where an
+ * interaction IS the subject — the row click below — userEvent stays.
+ */
+const search = (box: HTMLElement, term: string) =>
+  fireEvent.change(box, { target: { value: term } });
 
 /** A product with lots, serials and a full document trail. */
 const richProduct =
@@ -325,11 +343,10 @@ describe("Stock Card — search and filters", () => {
     }
   });
 
-  it("finds movements by product code", async () => {
-    const user = userEvent.setup();
+  it("finds movements by product code", () => {
     renderList();
     const box = screen.getByPlaceholderText(list.searchPlaceholder!);
-    await user.type(box, richProduct.code);
+    search(box, richProduct.code);
 
     const expected = MOVEMENTS.filter((m) => m.product === richProduct.code).length;
     expect(expected).toBeGreaterThan(0);
@@ -411,7 +428,8 @@ describe("Stock Card — drawer and movement detail", () => {
   it("opens the quick drawer when a row is clicked", async () => {
     const user = userEvent.setup();
     renderList();
-    await user.type(screen.getByPlaceholderText(list.searchPlaceholder!), sample.code);
+    /* Narrowing the table is arrangement; the click is the test. */
+    search(screen.getByPlaceholderText(list.searchPlaceholder!), sample.code);
     await user.click(screen.getAllByText(sample.code)[0]);
 
     const drawer = await screen.findByRole("dialog", { name: new RegExp(sample.type) });
