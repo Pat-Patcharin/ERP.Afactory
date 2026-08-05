@@ -426,6 +426,78 @@ export function qtConvert(qt: QtRow, ctx: ActionCtx) {
   });
 }
 
+/**
+ * Pull an approved or sent quotation back for editing: status returns to
+ * `Draft`, the revision number goes up, and approval starts from nothing.
+ *
+ * Permission is `edit`, NOT `approve` — and that is deliberate, so please do
+ * not "fix" it to match `srReopen`. The two look alike and are not:
+ *
+ *   srReopen      an approver withdrawing their own approval → approve
+ *   qtRequestEdit the rep taking their own quote back to change it → edit
+ *
+ * Nothing is waved through by allowing this. Resetting `approvalStatus` to
+ * "Not Submitted" means the quote must go round the whole approval loop again
+ * before it can be sent, so the approver still decides — just at the next
+ * submission. Requiring `approve` here would stop a rep from correcting their
+ * own quotation at all, and the workaround is obvious and worse: raise a new
+ * quotation and abandon this one, which destroys the very revision trail this
+ * field exists to keep.
+ */
+export function qtRequestEdit(qt: QtRow, ctx: ActionCtx) {
+  if (denied(ctx, "quotation", "edit", "ขอแก้ไขใบเสนอราคาไม่ได้")) return;
+  if (!["Approved", "Sent"].includes(qt.status)) {
+    ctx.toast(
+      "ขอแก้ไขไม่ได้",
+      `${qt.code} อยู่ในสถานะ ${qt.status} — ขอแก้ไขได้เฉพาะใบที่อนุมัติแล้วหรือส่งให้ลูกค้าแล้ว`,
+      "warning",
+    );
+    return;
+  }
+  let note = "";
+
+  ctx.formModal({
+    title: "ขอแก้ไขใบเสนอราคา",
+    body: () => (
+      <div className="flex flex-col gap-4">
+        <p className="text-body text-ink-2">
+          {qt.code} จะกลับเป็นร่าง เป็นฉบับแก้ไขครั้งที่ {fmt(qt.revision + 1)} และต้องขออนุมัติใหม่ทั้งรอบ
+        </p>
+        <TextField
+          label="เหตุผลที่ขอแก้ไข"
+          placeholder="เช่น ลูกค้าขอเปลี่ยนจำนวนจาก 120 เป็น 150"
+          onChange={(v) => (note = v)}
+        />
+      </div>
+    ),
+    confirmText: "ขอแก้ไข",
+    onConfirm: () => {
+      if (!note.trim()) {
+        ctx.toast("ต้องระบุเหตุผล", "ผู้อนุมัติต้องรู้ว่าทำไมใบนี้ถึงถูกเปิดกลับมา", "danger");
+        return false;
+      }
+      const from = qt.status;
+      qt.status = "Draft";
+      qt.approvalStatus = "Not Submitted";
+      qt.revision += 1;
+      qt.updated = stamp();
+      qt.updatedBy = USER();
+      log(
+        qt,
+        `Edit requested — revision ${qt.revision}`,
+        `เปิดจาก ${from} กลับเป็นร่างเพื่อแก้ไข: ${note}`,
+        "warn",
+      );
+      commit(
+        ctx,
+        "เปิดใบกลับมาแก้ไขแล้ว",
+        `${qt.code} — ฉบับแก้ไขครั้งที่ ${qt.revision} ต้องขออนุมัติใหม่`,
+        "warning",
+      );
+    },
+  });
+}
+
 export function qtCancel(qt: QtRow, ctx: ActionCtx) {
   ctx.confirm({
     title: "Cancel this quotation?",

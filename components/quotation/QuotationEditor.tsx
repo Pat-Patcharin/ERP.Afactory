@@ -272,6 +272,13 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
 
   const saveDraftNow = useCallback(() => {
     const res = saveQuotationDraft(draft, { issue: false, user: FORM_USER() });
+    /* The store decides whether the write was allowed; this only reports it.
+       Nothing is cleared on a refusal — the typing stays where it is. */
+    if (res.blocked) {
+      setAutosave("idle");
+      ctx.toast("บันทึกไม่ได้", res.blocked, "danger");
+      return;
+    }
     clearDraft(storeKey);
     dirty.current = false;
     setSavedAt(Date.now());
@@ -292,6 +299,10 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
       return;
     }
     const res = saveQuotationDraft(draft, { issue: true, user: FORM_USER() });
+    if (res.blocked) {
+      ctx.toast("บันทึกไม่ได้", res.blocked, "danger");
+      return;
+    }
     clearDraft(storeKey);
     dirty.current = false;
     ctx.toast(

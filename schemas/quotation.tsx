@@ -12,6 +12,7 @@ import {
   qtDelete,
   qtReject,
   qtRejectApproval,
+  qtRequestEdit,
   qtRequestRevision,
   qtSend,
   qtSubmit,
@@ -70,6 +71,10 @@ function qtWorkflowActions(qt: QtRow, ctx: ActionCtx): RowAction<QtRow>[] {
   /* Only an approved quote may go out — see qtSend. */
   if (qt.status === "Approved")
     acts.push({ label: "Send to Customer", icon: "send", run: (r) => qtSend(r, ctx) });
+
+  /* The way back into editing once the figures are sealed. */
+  if (["Approved", "Sent"].includes(qt.status))
+    acts.push({ label: "ขอแก้ไข", icon: "edit", run: (r) => qtRequestEdit(r, ctx) });
 
   /* The customer's answer, which is not an approval decision. */
   if (qt.status === "Sent") {
@@ -159,7 +164,12 @@ export const QT_LIST: ListSchema<QtRow> = {
       cell: (q) => (
         <CellMedia>
           <Thumb>{q.icon}</Thumb>
-          <span className="font-medium">{q.code}</span>
+          <span className="flex flex-col leading-tight">
+            <span className="font-medium">{q.code}</span>
+            {/* Only from the second issue onward — "Rev. 1" on every row would
+                be noise, and a revised quote is the one worth spotting. */}
+            {q.revision > 1 && <CellSub>Rev. {q.revision}</CellSub>}
+          </span>
         </CellMedia>
       ),
     },
@@ -246,7 +256,9 @@ export const QT_LIST: ListSchema<QtRow> = {
       { label: "Open Full Detail", icon: "external", run: (r) => ctx.goto(`/m/quotation/${r.code}`) },
     ];
 
-    if (["Draft", "Sent"].includes(qt.status))
+    /* Draft only. Once approved the figures are sealed — see QT_LOCKED_STATUS
+       and the "ขอแก้ไข" action that reopens them. */
+    if (qt.status === "Draft")
       acts.push({ label: "Edit", icon: "edit", run: (r) => ctx.goto(`/m/quotation/${r.code}/edit`) });
 
     acts.push({ sep: true });
@@ -291,6 +303,7 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
     ],
     badges: [
       { text: q.status, tone: tone(QT_TONE, q.status) },
+      ...(q.revision > 1 ? ([{ text: `Rev. ${q.revision}`, tone: "info" }] as const) : []),
       ...(q.isExpired ? ([{ text: "Expired", tone: "danger" }] as const) : []),
       ...(q.isExpiring ? ([{ text: `อีก ${q.daysLeft} วัน`, tone: "warning" }] as const) : []),
     ],
@@ -391,6 +404,15 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
             items: [
               { label: "Quotation No.", value: q.code },
               { label: "Status", value: <Badge tone={tone(QT_TONE, q.status)}>{q.status}</Badge> },
+              {
+                label: "Approval",
+                value: (
+                  <Badge tone={tone(QT_APPROVAL_TONE, q.approvalStatus)}>{q.approvalStatus}</Badge>
+                ),
+              },
+              /* Always shown here, unlike the list: on the document itself the
+                 issue number is part of identifying it. */
+              { label: "Revision", value: `ฉบับที่ ${fmt(q.revision)}` },
               { label: "Sales Rep", value: q.salesRep },
               { label: "Price List", value: q.priceList },
               { label: "Quote Date", value: q.quoteDate },

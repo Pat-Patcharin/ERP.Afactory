@@ -32,6 +32,12 @@ export interface Quotation {
   status: string;
   /** Whether it cleared internal approval — see QT_APPROVAL_STATUS. */
   approvalStatus: string;
+  /**
+   * Which issue of this quotation the customer is looking at. Starts at 1 and
+   * rises each time an approved quote is pulled back for edits, so the number
+   * on a printed sheet identifies exactly which version was agreed.
+   */
+  revision: number;
   currency: string;
   payTerm: string;
   priceList: string;
@@ -98,6 +104,21 @@ export const QT_APPROVAL_STATUS = [
   "Revision Requested",
 ] as const;
 
+/**
+ * Statuses that seal the document. Once a quote has been approved, the figures
+ * on it are what somebody signed off and, from `Sent` onward, what the customer
+ * is holding — editing in place would silently change an agreed offer. Getting
+ * back to editing means `qtRequestEdit`, which returns the quote to `Draft`,
+ * raises the revision and sends it round the approval loop again.
+ *
+ * `Rejected`, `Expired` and `Cancelled` are not listed: those are dead ends
+ * nobody reopens, and the Edit button is already hidden for them.
+ */
+export const QT_LOCKED_STATUS = ["Approved", "Sent", "Accepted", "Converted"] as const;
+
+export const isQuotationLocked = (status: string): boolean =>
+  (QT_LOCKED_STATUS as readonly string[]).includes(status);
+
 export const QT_PRICE_LISTS = [
   "PL-STD-2026 Standard",
   "PL-CLINIC-2026 Clinic",
@@ -129,6 +150,7 @@ export const QUOTATIONS: Quotation[] = [
     validUntil: "22/07/2569",
     status: "Converted",
     approvalStatus: "Approved",
+    revision: 1,
     currency: "THB",
     payTerm: "เครดิต 30 วัน",
     priceList: "PL-CLINIC-2026 Clinic",
@@ -165,6 +187,7 @@ export const QUOTATIONS: Quotation[] = [
     validUntil: "24/07/2569",
     status: "Converted",
     approvalStatus: "Approved",
+    revision: 1,
     currency: "THB",
     payTerm: "เครดิต 60 วัน",
     priceList: "PL-GOV-2026 Government",
@@ -200,6 +223,7 @@ export const QUOTATIONS: Quotation[] = [
     validUntil: "09/07/2569",
     status: "Converted",
     approvalStatus: "Approved",
+    revision: 1,
     currency: "THB",
     payTerm: "เครดิต 45 วัน",
     priceList: "PL-DEALER-2026 Dealer",
@@ -236,6 +260,7 @@ export const QUOTATIONS: Quotation[] = [
     validUntil: "25/06/2569",
     status: "Rejected",
     approvalStatus: "Approved",
+    revision: 1,
     currency: "THB",
     payTerm: "เครดิต 15 วัน",
     priceList: "PL-STD-2026 Standard",
@@ -269,6 +294,7 @@ export const QUOTATIONS: Quotation[] = [
     validUntil: "09/07/2569",
     status: "Sent",
     approvalStatus: "Approved",
+    revision: 1,
     currency: "THB",
     payTerm: "เงินสด",
     priceList: "PL-CLINIC-2026 Clinic",
@@ -302,6 +328,7 @@ export const QUOTATIONS: Quotation[] = [
     validUntil: "02/08/2569",
     status: "Draft",
     approvalStatus: "Not Submitted",
+    revision: 1,
     currency: "THB",
     payTerm: "เครดิต 30 วัน",
     priceList: "PL-CLINIC-2026 Clinic",
@@ -336,6 +363,7 @@ export const QUOTATIONS: Quotation[] = [
     validUntil: "31/07/2569",
     status: "Converted",
     approvalStatus: "Approved",
+    revision: 1,
     currency: "THB",
     payTerm: "เครดิต 15 วัน",
     priceList: "PL-STD-2026 Standard",

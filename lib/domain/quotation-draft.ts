@@ -1,5 +1,10 @@
 import { PAY_TERMS } from "@/data/partners";
-import { QT_PRICE_LISTS, QT_VALIDITY_DAYS, type Quotation } from "@/data/quotations";
+import {
+  QT_PRICE_LISTS,
+  QT_VALIDITY_DAYS,
+  isQuotationLocked,
+  type Quotation,
+} from "@/data/quotations";
 import { docGrandTotal } from "./lines";
 import { QUOTATIONS, decorateQuotations, nextQuotationCode, type QtRow } from "./outbound";
 import {
@@ -404,6 +409,11 @@ export function draftPrintDoc(draft: QuotationDraft, config: PrintConfig): Print
 export interface SaveResult {
   code: string;
   created: boolean;
+  /**
+   * Why the write was refused, when it was. Absent on a successful save, so
+   * existing callers that only read `code` and `created` are unaffected.
+   */
+  blocked?: string;
 }
 
 /**
@@ -412,6 +422,10 @@ export interface SaveResult {
  * `issue: false` parks a draft — same record, same number, status untouched.
  * There is exactly one record per quotation number, so autosave and Save Draft
  * update rather than pile up duplicates.
+ *
+ * A locked quotation is refused here rather than at the button. This is the
+ * only place a quotation is written, so it is the only place the rule holds
+ * for autosave, for a stale tab, and for the API this becomes later.
  */
 export function saveQuotationDraft(
   draft: QuotationDraft,
@@ -420,6 +434,17 @@ export function saveQuotationDraft(
   const now = stamp();
   const code = str(draft.code);
   const existing = QUOTATIONS.find((x) => x.code === code);
+
+  /* Nothing is written past this point for a sealed quote — not the items,
+     not the header, not the autosave. A brand new quotation has no existing
+     record and so can never be blocked. */
+  if (existing && isQuotationLocked(existing.status)) {
+    return {
+      code,
+      created: false,
+      blocked: `${code} อยู่ในสถานะ ${existing.status} — แก้ไขไม่ได้ ต้องกด "ขอแก้ไข" เพื่อเปิดใบกลับเป็นร่างก่อน`,
+    };
+  }
 
   const items = draft.items
     .filter((l) => str(l.code))
@@ -471,6 +496,7 @@ export function saveQuotationDraft(
     ...patch,
     status: "Draft",
     approvalStatus: "Not Submitted",
+    revision: 1,
     rejectReason: "",
     soRef: "",
     srRef: "",

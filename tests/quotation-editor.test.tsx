@@ -685,7 +685,10 @@ describe("Quotation editor — editor and print modes", () => {
    ============================================================ */
 
 describe("Quotation editor — editing a saved quotation", () => {
-  const EXISTING = "QT2506-0001";
+  /* A Draft. It used to be QT2506-0001, which is Converted — editable when
+     this test was written, sealed now that approval locks a quotation. The
+     block below proves the sealed statuses refuse the same write. */
+  const EXISTING = "QT2507-0006";
 
   it("opens the stored quotation into the document", () => {
     const q = QUOTATIONS.find((x) => x.code === EXISTING)!;
@@ -717,6 +720,82 @@ describe("Quotation editor — editing a saved quotation", () => {
 
     expect(QUOTATIONS.length).toBe(before);
     expect(QUOTATIONS.find((x) => x.code === EXISTING)!.customerRef).toBe("RFQ-EDITED");
+  });
+});
+
+/* ============================================================
+   Locked after approval
+
+   The guard sits in saveQuotationDraft rather than on the button,
+   so these call the store directly — the way a stale tab, an
+   autosave or a later API would reach it.
+   ============================================================ */
+
+describe("Quotation editor — a sealed quotation refuses edits", () => {
+  const LOCKED = ["Approved", "Sent", "Accepted", "Converted"];
+
+  /** The Draft fixture, moved into whichever status is under test. */
+  const asStatus = (status: string) => {
+    const q = QUOTATIONS.find((x) => x.code === "QT2507-0006")!;
+    q.status = status;
+    return q;
+  };
+
+  for (const status of LOCKED) {
+    it(`refuses to save over a ${status} quotation`, () => {
+      const q = asStatus(status);
+      const was = q.customerRef;
+
+      const res = saveQuotationDraft(
+        { ...draftFromQuotation(q), customerRef: "RFQ-SHOULD-NOT-STICK" },
+        { issue: true },
+      );
+
+      expect(res.blocked, "the store must say why").toBeTruthy();
+      expect(res.blocked).toContain(status);
+      expect(res.created).toBe(false);
+      expect(QUOTATIONS.find((x) => x.code === "QT2507-0006")!.customerRef).toBe(was);
+    });
+
+    it(`refuses to park a draft over a ${status} quotation`, () => {
+      /* issue: false is the autosave path — it must be blocked too, or the
+         document rewrites itself while the page merely sits open. */
+      const q = asStatus(status);
+      const was = q.note;
+
+      const res = saveQuotationDraft(
+        { ...draftFromQuotation(q), remarks: "autosaved over a sealed quote" },
+        { issue: false },
+      );
+
+      expect(res.blocked).toBeTruthy();
+      expect(QUOTATIONS.find((x) => x.code === "QT2507-0006")!.note).toBe(was);
+    });
+  }
+
+  it("still allows a Draft through", () => {
+    const q = asStatus("Draft");
+    const res = saveQuotationDraft(
+      { ...draftFromQuotation(q), customerRef: "RFQ-OK" },
+      { issue: true },
+    );
+
+    expect(res.blocked).toBeUndefined();
+    expect(QUOTATIONS.find((x) => x.code === "QT2507-0006")!.customerRef).toBe("RFQ-OK");
+  });
+
+  it("hides the Edit action once a quotation is sealed", () => {
+    const list = getSchemas("quotation")!.list;
+    const labels = (status: string) =>
+      list
+        .rowActions!({ ...asStatus(status) } as never, {} as never)
+        .map((a) => a.label)
+        .filter(Boolean);
+
+    expect(labels("Draft")).toContain("Edit");
+    for (const status of LOCKED) {
+      expect(labels(status), `${status} must not offer Edit`).not.toContain("Edit");
+    }
   });
 });
 
