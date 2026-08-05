@@ -1,7 +1,6 @@
 import {
   SR_AREAS,
   SR_CHANNELS,
-  SR_COMM_GROUPS,
   SR_CUST_GROUPS,
   SR_DEPARTMENTS,
   SR_MANAGERS,
@@ -28,6 +27,9 @@ import { FORM_USER, RailCard, RailRow, isCreate, opts, saved } from "./common";
    Targets and authority limits sit in their own steps because they
    are approved by a different person from the one who enters the
    personal details.
+
+   PHASE SCOPE — the form writes master data only. Sales actuals,
+   commission, visit plan and activity history are not captured here.
    ============================================================ */
 
 const num = (v: unknown) => Number(v) || 0;
@@ -83,7 +85,6 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
     region: "",
     custGroup: "",
     channel: "Direct",
-    commGroup: "Standard 3%",
     monthlyTarget: 0,
     quarterTarget: 0,
     annualTarget: 0,
@@ -119,7 +120,6 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
     region: r.region,
     custGroup: r.custGroup,
     channel: r.channel,
-    commGroup: r.commGroup,
     monthlyTarget: r.monthlyTarget,
     quarterTarget: r.quarterTarget,
     annualTarget: r.annualTarget,
@@ -298,12 +298,6 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
               type: "static",
               label: "เป้าปีที่คาดจากเป้าเดือน",
               value: (s) => money0(num(s.monthlyTarget) * 12),
-            },
-            {
-              type: "select",
-              path: "commGroup",
-              label: "Commission Group",
-              options: opts(SR_COMM_GROUPS),
             },
           ],
         },
@@ -484,7 +478,6 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
       region: String(s.region ?? ""),
       custGroup: String(s.custGroup ?? ""),
       channel: String(s.channel ?? ""),
-      commGroup: String(s.commGroup ?? ""),
       monthlyTarget: num(s.monthlyTarget),
       quarterTarget: num(s.quarterTarget),
       annualTarget: num(s.annualTarget),
@@ -498,40 +491,14 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
 
     if (existing) {
       Object.assign(existing, patch);
-      existing.history.unshift({
-        t: "Sales rep updated",
-        d: "แก้ไขข้อมูลพนักงานขายจากฟอร์ม",
-        u: FORM_USER(),
-        when: now,
-        kind: "primary",
-      });
     } else {
       SALES_REPRESENTATIVES.push({
         code,
         ...patch,
-        monthlySales: 0,
-        achievement: 0,
         custCount: 0,
-        openQuo: 0,
-        openOrd: 0,
-        collection: 0,
-        overdue: 0,
-        trend: [0, 0, 0, 0, 0, 0],
-        bonus: 0,
-        commission: 0,
         customers: [],
-        visits: [],
         created: now,
         createdBy: FORM_USER(),
-        history: [
-          {
-            t: "Sales rep created",
-            d: "เพิ่มพนักงานขายเข้าระบบจากฟอร์ม",
-            u: FORM_USER(),
-            when: now,
-            kind: "primary",
-          },
-        ],
       } as unknown as SalesRepRow);
     }
 

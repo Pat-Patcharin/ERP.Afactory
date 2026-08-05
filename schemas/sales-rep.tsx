@@ -8,14 +8,19 @@ import {
   SR_TEAM_COLOR,
 } from "@/data/sales-reps";
 import { SR_TONE, tone } from "@/lib/badges";
-import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
+import { DASH, fmt, money0 } from "@/lib/format";
 import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
-import { Badge, CellMedia, CellSub, Sparkline, UtilBar } from "@/components/ui";
+import { Badge, CellMedia, CellSub } from "@/components/ui";
 import { SALES_REP_FORM } from "./forms/sales-rep";
 
 /* ============================================================
    SALES REPRESENTATIVE — person-centric master. Used by Business
-   Partner, Sales Order, CRM, Commission and the sales dashboard.
+   Partner, Sales Order and CRM.
+
+   PHASE SCOPE — master data only. Sales KPI, commission, visit plan
+   and activity history are deliberately absent: no sales actuals are
+   captured against a rep yet. Targets and authority limits stay, as
+   they are set up here rather than posted from transactions.
    ============================================================ */
 
 /** Avatar tinted by team, so a rep list reads as a set of teams. */
@@ -52,57 +57,47 @@ export const SR_LIST: ListSchema<SalesRepRow> = {
   hero: () => {
     const reps = SALES_REPRESENTATIVES;
     const active = reps.filter((r) => r.status === "Active");
-    const totalSales = active.reduce((s, r) => s + (Number(r.monthlySales) || 0), 0);
-    const totalTarget = active.reduce((s, r) => s + (Number(r.monthlyTarget) || 0), 0);
-    const avgAchv = active.length
-      ? Math.round(active.reduce((s, r) => s + r.achievement, 0) / active.length)
-      : 0;
     const totalCust = reps.reduce((s, r) => s + (Number(r.custCount) || 0), 0);
-    const openQuo = reps.reduce((s, r) => s + (Number(r.openQuo) || 0), 0);
-    const openOrd = reps.reduce((s, r) => s + (Number(r.openOrd) || 0), 0);
+    const totalTarget = active.reduce((s, r) => s + (Number(r.monthlyTarget) || 0), 0);
+    const teams = new Set(reps.map((r) => r.team).filter(Boolean)).size;
+    const areas = new Set(reps.map((r) => r.area).filter(Boolean)).size;
 
     return {
       banner: {
         title: "Sales Team Summary",
         icon: "users",
         items: [
-          `${active.length} active reps`,
-          `${avgAchv}% avg achievement`,
-          `${totalCust} customers`,
-          `${openQuo} open quotations`,
-          `${openOrd} open orders`,
+          `${reps.length} sales reps`,
+          `${active.length} active`,
+          `${teams} teams`,
+          `${areas} areas`,
+          `${totalCust} customers assigned`,
         ],
-        stamp: "Team performance this month",
+        stamp: "Master data — ยังไม่ผูกข้อมูลยอดขาย",
       },
       kpis: [
         {
-          label: "Team Sales",
-          value: `฿${money0(totalSales)}`,
-          sub: "This month",
+          label: "Total Reps",
+          value: fmt(reps.length),
+          sub: "ในฐานข้อมูล",
           tone: "primary",
-          icon: "pricing",
-        },
-        {
-          label: "Avg Achievement",
-          value: `${avgAchv}%`,
-          sub: `Target ฿${money0(totalTarget)}`,
-          tone: avgAchv >= 90 ? "ok" : "warn",
-          icon: "checkCircle",
+          icon: "salesRep",
         },
         {
           label: "Active Reps",
           value: fmt(active.length),
           sub: `of ${reps.length} total`,
+          tone: "ok",
           icon: "users",
           goTab: "active",
         },
-        { label: "Customers", value: fmt(totalCust), sub: "Assigned", tone: "ok", icon: "partner" },
+        { label: "Teams", value: fmt(teams), sub: "ทีมขาย", icon: "layers" },
+        { label: "Areas Covered", value: fmt(areas), sub: "พื้นที่รับผิดชอบ", icon: "mapPin" },
         {
-          label: "Open Pipeline",
-          value: fmt(openQuo + openOrd),
-          sub: `${openQuo} quo · ${openOrd} ord`,
-          tone: "warn",
-          icon: "file",
+          label: "Customers",
+          value: fmt(totalCust),
+          sub: `เป้ารวม ฿${money0(totalTarget)}/เดือน`,
+          icon: "partner",
         },
       ],
     };
@@ -171,17 +166,12 @@ export const SR_LIST: ListSchema<SalesRepRow> = {
       cell: (r) => <Badge tone={tone(SR_TONE, r.status)}>{r.status}</Badge>,
     },
     {
-      key: "achievement",
-      label: "Achievement",
+      key: "custCount",
+      label: "Customers",
       align: "right",
       sortable: true,
-      sortValue: (r) => r.achievement,
-      cell: (r) => (
-        <UtilBar
-          pct={r.achievement}
-          tone={r.achievement >= 100 ? "full" : r.achievement >= 80 ? undefined : "mid"}
-        />
-      ),
+      sortValue: (r) => r.custCount,
+      cell: (r) => <span className="tnum">{fmt(r.custCount)}</span>,
     },
   ],
 
@@ -270,22 +260,19 @@ export const SR_DETAIL: DetailSchema<SalesRepRow> = {
   }),
 
   kpis: (r) => [
+    { icon: "partner", label: "Customers", value: fmt(r.custCount), sub: "ราย", goTab: "customers" },
+    { icon: "mapPin", label: "Territory", value: r.area, sub: r.province, wide: true },
     {
-      icon: "cart",
-      label: "Monthly Sales",
-      value: `฿${money0(r.monthlySales)}`,
-      sub: `Target ฿${money0(r.monthlyTarget)}`,
-      goTab: "kpi",
+      icon: "pricing",
+      label: "Monthly Target",
+      value: `฿${money0(r.monthlyTarget)}`,
+      sub: "เป้าที่ตั้งไว้",
     },
-    { icon: "shield", label: "Achievement", value: `${r.achievement}%`, sub: r.status, goTab: "kpi" },
-    { icon: "box", label: "Customers", value: fmt(r.custCount), sub: "ราย", goTab: "customers" },
     {
-      icon: "file",
-      label: "Open Pipeline",
-      value: fmt(r.openQuo + r.openOrd),
-      sub: `${r.openQuo} quo · ${r.openOrd} ord`,
-      wide: true,
-      goTab: "kpi",
+      icon: "shield",
+      label: "Approval Limit",
+      value: `฿${money0(r.approvalLimit)}`,
+      sub: `ส่วนลดสูงสุด ${r.discountLimit}%`,
     },
   ],
 
@@ -340,7 +327,6 @@ export const SR_DETAIL: DetailSchema<SalesRepRow> = {
             { label: "Region", value: r.region },
             { label: "Customer Group", value: r.custGroup },
             { label: "Sales Channel", value: r.channel },
-            { label: "Commission Group", value: r.commGroup },
             { label: "Monthly Target", value: `฿${money0(r.monthlyTarget)}` },
             { label: "Quarter Target", value: `฿${money0(r.quarterTarget)}` },
             { label: "Annual Target", value: `฿${money0(r.annualTarget)}` },
@@ -375,26 +361,6 @@ export const SR_DETAIL: DetailSchema<SalesRepRow> = {
             { key: "prov", label: "Province", muted: true },
             { key: "group", label: "Customer Group" },
             {
-              key: "lastVisit",
-              label: "Last Visit",
-              muted: true,
-              // A visit older than 60 days is the signal a rep needs to act on.
-              cell: (c) => {
-                const d = daysUntil(c.lastVisit);
-                return d !== null && d < -60 ? (
-                  <span className="font-semibold text-warning-text">{c.lastVisit}</span>
-                ) : (
-                  c.lastVisit
-                );
-              },
-            },
-            {
-              key: "outstanding",
-              label: "Outstanding",
-              align: "right",
-              cell: (c) => `฿${money0(c.outstanding)}`,
-            },
-            {
               key: "status",
               label: "Status",
               cell: (c) => (
@@ -406,116 +372,6 @@ export const SR_DETAIL: DetailSchema<SalesRepRow> = {
       ],
     },
 
-    {
-      key: "kpi",
-      label: "Sales KPI",
-      blocks: (r) => [
-        {
-          type: "cards",
-          title: "KPI",
-          cols: 3,
-          items: [
-            { label: "Monthly Sales", value: `฿${money0(r.monthlySales)}`, tone: "accent" },
-            { label: "Achievement", value: `${r.achievement}%` },
-            { label: "Active Customers", value: fmt(r.custCount) },
-            { label: "Open Quotation", value: fmt(r.openQuo) },
-            { label: "Open Order", value: fmt(r.openOrd) },
-            { label: "Collection", value: `฿${money0(r.collection)}` },
-          ],
-        },
-        {
-          type: "node",
-          title: "Monthly Sales Trend (This Year)",
-          node: (
-            <div className="rounded-btn border border-line bg-surface p-3">
-              <Sparkline points={r.trend} width={520} height={64} className="w-full" />
-              <div className="mt-1 flex justify-between text-[11px] text-ink-3">
-                <span>Jan</span>
-                <span>Jun</span>
-                <span>Dec</span>
-              </div>
-            </div>
-          ),
-        },
-        {
-          type: "fields",
-          title: "Target vs Actual",
-          cols: 2,
-          items: [
-            { label: "Monthly Target", value: `฿${money0(r.monthlyTarget)}` },
-            { label: "Monthly Actual", value: `฿${money0(r.monthlySales)}` },
-            { label: "Achievement", value: <UtilBar pct={r.achievement} /> },
-            {
-              label: "Gap",
-              value: `฿${money0(Math.max(0, r.monthlyTarget - r.monthlySales))}`,
-            },
-          ],
-        },
-      ],
-    },
-
-    {
-      key: "commission",
-      label: "Commission",
-      blocks: (r) => [
-        {
-          type: "fields",
-          title: "Commission",
-          cols: 2,
-          items: [
-            { label: "Commission Group", value: r.commGroup },
-            { label: "Commission Rate", value: r.commGroup.match(/\d+%/)?.[0] ?? DASH },
-            { label: "Current Commission", value: `฿${money0(r.commission)}` },
-            { label: "Bonus", value: `฿${money0(r.bonus)}` },
-          ],
-        },
-      ],
-    },
-
-    {
-      key: "visits",
-      label: "Visit Plan",
-      blocks: (r) => [
-        {
-          type: "table",
-          title: `Visit Plan (${r.visits.length})`,
-          rows: r.visits,
-          empty: "ไม่มีแผนการเยี่ยม",
-          cols: [
-            { key: "date", label: "Visit Date" },
-            { key: "cust", label: "Customer", cell: (v) => <span className="font-medium">{v.cust}</span> },
-            { key: "prov", label: "Province", muted: true },
-            { key: "purpose", label: "Purpose" },
-            {
-              key: "status",
-              label: "Status",
-              cell: (v) => (
-                <Badge tone={v.status === "Completed" ? "success" : "info"}>{v.status}</Badge>
-              ),
-            },
-            { key: "result", label: "Result", muted: true, cell: (v) => v.result || DASH },
-          ],
-        },
-      ],
-    },
-
-    {
-      key: "history",
-      label: "History",
-      blocks: (r) => [
-        {
-          type: "timeline",
-          title: "Activity",
-          items: r.history.map((e) => ({
-            title: e.t,
-            detail: e.d,
-            user: e.u,
-            when: e.when,
-            kind: e.kind,
-          })),
-        },
-      ],
-    },
   ],
 };
 

@@ -6,7 +6,6 @@ export interface SalesRepRow extends SalesRep {
   fullName: string;
   avatar: string;
   icon: string;
-  totalOutstanding: number;
 }
 
 export const SALES_REPRESENTATIVES = RAW as SalesRepRow[];
@@ -17,10 +16,6 @@ export function decorateSRs() {
     r.fullName = `${r.title}${r.first} ${r.last}`;
     r.avatar = initials(`${r.first} ${r.last}`);
     r.icon = "👤";
-    r.totalOutstanding = (r.customers ?? []).reduce(
-      (s, c) => s + (Number(c.outstanding) || 0),
-      0,
-    );
   }
 }
 
