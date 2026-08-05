@@ -141,9 +141,13 @@ export const getQT = (code: string) => QUOTATIONS.find((q) => q.code === code) ?
 export const nextQuotationCode = () =>
   nextSeq(QUOTATIONS.map((q) => q.code), "QT2507-", 4);
 
-/** Quotes the customer accepted that have not become a request yet. */
+/**
+ * Quotes the customer accepted that have not been converted yet — by either
+ * route. Checking only `srRef` would offer a quote that already became an
+ * order straight from here.
+ */
 export const convertibleQuotations = () =>
-  QUOTATIONS.filter((q) => q.status === "Accepted" && !q.srRef);
+  QUOTATIONS.filter((q) => q.status === "Accepted" && !q.srRef && !q.soRef);
 
 /* ============================================================
    SALES REQUEST — required, internal, and deliberately free of

@@ -9,6 +9,7 @@ import {
   QUOTATIONS,
   SALES_ORDERS,
   SALES_REQUESTS,
+  availabilityFor,
   creditCheck,
   decorateOutbound,
   getPack,
@@ -18,7 +19,6 @@ import {
   nextPackCode,
   nextPickCode,
   nextSOCode,
-  nextSalesRequestCode,
   soLinkedDocs,
   type DoRow,
   type PackRow,
@@ -336,72 +336,92 @@ export function qtReject(qt: QtRow, ctx: ActionCtx) {
 }
 
 /**
- * Accepted quotation → a Sales Request. The quote decided the price; the
- * request is what goes through internal approval.
+ * Accepted quotation → a Sales Order, directly.
+ *
+ * The quote already carries an approved price and the customer's yes, so
+ * there is nothing left for a Sales Request to decide. The request route
+ * survives for customers who never asked for a quotation — it is raised from
+ * the Sales Request editor, not from here.
+ *
+ * Availability is read here rather than taken from the screen: the page may
+ * have been open since before someone else's order took the same stock.
  */
 export function qtConvert(qt: QtRow, ctx: ActionCtx) {
-  /* Raising the request is the rep's job — approving it is not. */
-  if (denied(ctx, "sales-request", "create", "เปิดคำขอขายไม่ได้")) return;
+  /* Turning an accepted quote into a real order is what binds the company,
+     so it sits with whoever may raise the order. */
+  if (denied(ctx, "sales-order", "create", "เปิดใบสั่งขายไม่ได้")) return;
+  if (qt.status !== "Accepted") {
+    ctx.toast(
+      "แปลงเป็นใบสั่งขายไม่ได้",
+      `${qt.code} อยู่ในสถานะ ${qt.status} — ต้องให้ลูกค้าตอบรับก่อน`,
+      "warning",
+    );
+    return;
+  }
+
+  const credit = creditCheck(`${qt.customerCode} - ${qt.customer}`, qt.amount);
+
   ctx.confirm({
-    title: "Convert to Sales Request?",
+    title: "Convert to Sales Order?",
     message: (
       <>
-        สร้างคำขอขายจาก <strong>{qt.code}</strong> — ระบบจะออกเลข SR ให้อัตโนมัติ
+        สร้างใบสั่งขายจาก <strong>{qt.code}</strong> — ระบบจะออกเลข SO ให้อัตโนมัติ
         <br />
-        มูลค่า {money0(qt.amount)} บาท · คำขอขายยังไม่จองสต๊อก
+        มูลค่า {money0(qt.amount)} บาท
+        {!credit.withinLimit && (
+          <>
+            <br />
+            <span className="font-semibold text-danger-text">
+              เกินวงเงินเครดิต {money0(credit.overBy)} บาท — ใบสั่งขายจะถูกตั้งเป็น On Hold
+            </span>
+          </>
+        )}
+        <StockNotice items={qt.items ?? []} />
+        <br />
+        <span className="text-ink-2">
+          สต๊อกจะถูกจองเมื่อยืนยันใบสั่งขาย ไม่ใช่ตอนนี้
+        </span>
       </>
     ),
-    confirmText: "Convert to Sales Request",
+    confirmText: "Convert to SO",
     tone: "primary",
     onConfirm: () => {
       const now = stamp();
-      const srCode = nextSalesRequestCode();
-
-      SALES_REQUESTS.unshift({
-        code: srCode,
-        customer: qt.customer,
-        customerCode: qt.customerCode,
-        salesRep: qt.salesRep,
-        requestDate: now.split(" ")[0],
-        requiredDate: qt.validUntil,
-        status: "Draft",
-        priority: "Normal",
-        warehouse: "",
-        currency: qt.currency,
-        payTerm: qt.payTerm,
-        priceList: qt.priceList,
-        channel: qt.channel,
-        customerRef: qt.customerRef,
-        quotationRef: qt.code,
-        note: `สร้างจากใบเสนอราคา ${qt.code}`,
-        items: (qt.items ?? []).map((it) => ({ ...it })),
-        approvedBy: "",
-        approvedDate: "",
-        rejectReason: "",
-        soRef: "",
-        history: [
-          {
-            t: `Created from ${qt.code}`,
-            d: "สร้างคำขอขายจากใบเสนอราคาที่ลูกค้าตอบรับ",
-            u: USER(),
-            when: now,
-            kind: "primary",
-          },
-        ],
-        created: now,
-        createdBy: USER(),
-        updated: now,
-        updatedBy: USER(),
-      } as unknown as SrRow);
+      const soCode = createSalesOrderFrom(
+        {
+          customer: qt.customer,
+          customerCode: qt.customerCode,
+          salesRep: qt.salesRep,
+          /* A quotation has no required date; its validity is the only date
+             the customer agreed to. */
+          deliveryDate: qt.validUntil,
+          warehouse: "",
+          currency: qt.currency,
+          payTerm: qt.payTerm,
+          priority: "Normal",
+          channel: qt.channel,
+          customerPo: qt.customerRef,
+          items: qt.items ?? [],
+        },
+        { code: qt.code, field: "quotationRef", noun: "ใบเสนอราคา" },
+        credit,
+      );
 
       qt.status = "Converted";
-      qt.srRef = srCode;
+      qt.soRef = soCode;
       qt.updated = now;
       qt.updatedBy = USER();
-      log(qt, "Converted to Sales Request", `สร้าง ${srCode} จากใบเสนอราคานี้`);
+      log(qt, "Converted to Sales Order", `สร้าง ${soCode} จากใบเสนอราคานี้`);
 
-      commit(ctx, "แปลงเป็นคำขอขายแล้ว", `${qt.code} → ${srCode}`);
-      ctx.goto(`/m/sales-request/${encodeURIComponent(srCode)}`);
+      commit(
+        ctx,
+        "แปลงเป็นใบสั่งขายแล้ว",
+        credit.withinLimit
+          ? `${qt.code} → ${soCode}`
+          : `${qt.code} → ${soCode} (On Hold — รออนุมัติเครดิต)`,
+        credit.withinLimit ? "success" : "warning",
+      );
+      ctx.goto(`/m/sales-order/${encodeURIComponent(soCode)}`);
     },
   });
 }
@@ -531,6 +551,144 @@ export function srReopen(sr: SrRow, ctx: ActionCtx) {
   commit(ctx, "ส่งกลับเป็นร่างแล้ว", `${sr.code} — แก้ไขได้อีกครั้ง`, "info");
 }
 
+/* ============================================================
+   BUILDING A SALES ORDER
+
+   Two documents produce one: an approved Sales Request, and —
+   since the direct route — an accepted Quotation. The order they
+   build is the same order, so it is built in one place. The two
+   callers differ only in which reference field points home and in
+   the words on their confirm dialog.
+   ============================================================ */
+
+/** What an order needs from whichever document produced it. */
+interface SoDraft {
+  customer: string;
+  customerCode: string;
+  salesRep: string;
+  deliveryDate: string;
+  warehouse: string;
+  currency: string;
+  payTerm: string;
+  priority: string;
+  channel: string;
+  customerPo: string;
+  items: readonly {
+    code: string;
+    name: string;
+    unit: string;
+    qty: number;
+    price: number;
+    disc: number;
+    tax: number;
+    note: string;
+  }[];
+}
+
+/** Where the order came from, and how that reads on the record. */
+interface SoOrigin {
+  code: string;
+  /** The reference field the order carries back to its source. */
+  field: "srRef" | "quotationRef";
+  /** How the source document is named in Thai, for remark and history. */
+  noun: string;
+}
+
+/**
+ * Lines the warehouse cannot cover right now.
+ *
+ * Advisory only. Nothing on this path blocks on stock — not this, not
+ * `soConfirm` — so an order can legitimately be raised short and filled as a
+ * back order. Read at confirm time rather than trusting whatever the screen
+ * was showing when the page loaded.
+ */
+function shortLines(items: SoDraft["items"]) {
+  return items
+    .map((it) => ({ it, avail: availabilityFor(it.code, it.qty) }))
+    .filter((x) => x.avail && x.avail.shortBy > 0);
+}
+
+/** The shortage notice both confirm dialogs show. Null when everything fits. */
+function StockNotice({ items }: { items: SoDraft["items"] }) {
+  const short = shortLines(items);
+  if (!short.length) return null;
+  return (
+    <>
+      <br />
+      <span className="font-semibold text-warning-text">
+        สต๊อกไม่พอ {short.length} รายการ — {short
+          .map((x) => `${x.it.code} ขาด ${fmt(x.avail!.shortBy)} ${x.it.unit}`)
+          .join(" · ")}
+      </span>
+      <br />
+      <span className="text-ink-2">เปิดใบสั่งขายได้ ส่วนที่ขาดจะกลายเป็น back order</span>
+    </>
+  );
+}
+
+/** Creates the order, pushes it, and returns its code. */
+function createSalesOrderFrom(
+  draft: SoDraft,
+  origin: SoOrigin,
+  credit: ReturnType<typeof creditCheck>,
+): string {
+  const now = stamp();
+  const soCode = nextSOCode();
+
+  SALES_ORDERS.unshift({
+    code: soCode,
+    customer: draft.customer,
+    customerCode: draft.customerCode,
+    salesRep: draft.salesRep,
+    orderDate: now.split(" ")[0],
+    deliveryDate: draft.deliveryDate,
+    warehouse: draft.warehouse,
+    currency: draft.currency,
+    fx: 1,
+    payTerm: draft.payTerm,
+    incoterm: "DAP",
+    shipTo: "",
+    status: credit.withinLimit ? "Confirmed" : "On Hold",
+    priority: draft.priority,
+    channel: draft.channel,
+    srRef: origin.field === "srRef" ? origin.code : "",
+    quotationRef: origin.field === "quotationRef" ? origin.code : "",
+    customerPo: draft.customerPo,
+    remark: `สร้างจาก${origin.noun} ${origin.code}`,
+    creditApproved: credit.withinLimit,
+    creditNote: credit.withinLimit
+      ? "อยู่ในวงเงิน"
+      : `เกินวงเงิน ${money0(credit.overBy)} บาท`,
+    items: draft.items.map((it) => ({
+      code: it.code,
+      name: it.name,
+      unit: it.unit,
+      qty: it.qty,
+      price: it.price,
+      disc: it.disc,
+      tax: it.tax,
+      picked: 0,
+      delivered: 0,
+      note: it.note,
+    })),
+    history: [
+      {
+        t: `Created from ${origin.code}`,
+        d: `แปลงจาก${origin.noun}`,
+        u: USER(),
+        when: now,
+        kind: "primary",
+      },
+    ],
+    created: now,
+    createdBy: USER(),
+    updated: now,
+    updatedBy: USER(),
+  } as unknown as SoRow);
+
+  return soCode;
+}
+
 /** Approved request → a real Sales Order carrying the same priced lines. */
 export function srConvert(sr: SrRow, ctx: ActionCtx) {
   /* Turning an approved request into a real order is the step that binds
@@ -562,6 +720,7 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
             </span>
           </>
         )}
+        <StockNotice items={sr.items ?? []} />
         <br />
         <span className="text-ink-2">
           สต๊อกจะถูกจองเมื่อยืนยันใบสั่งขาย ไม่ใช่ตอนนี้
@@ -572,57 +731,23 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
     tone: "primary",
     onConfirm: () => {
       const now = stamp();
-      const soCode = nextSOCode();
-
-      SALES_ORDERS.unshift({
-        code: soCode,
-        customer: sr.customer,
-        customerCode: sr.customerCode,
-        salesRep: sr.salesRep,
-        orderDate: now.split(" ")[0],
-        deliveryDate: sr.requiredDate,
-        warehouse: sr.warehouse,
-        currency: sr.currency,
-        fx: 1,
-        payTerm: sr.payTerm,
-        incoterm: "DAP",
-        shipTo: "",
-        status: credit.withinLimit ? "Confirmed" : "On Hold",
-        priority: sr.priority,
-        channel: sr.channel,
-        srRef: sr.code,
-        customerPo: sr.customerRef,
-        remark: `สร้างจากใบเสนอราคา ${sr.code}`,
-        creditApproved: credit.withinLimit,
-        creditNote: credit.withinLimit
-          ? "อยู่ในวงเงิน"
-          : `เกินวงเงิน ${money0(credit.overBy)} บาท`,
-        items: (sr.items ?? []).map((it) => ({
-          code: it.code,
-          name: it.name,
-          unit: it.unit,
-          qty: it.qty,
-          price: it.price,
-          disc: it.disc,
-          tax: it.tax,
-          picked: 0,
-          delivered: 0,
-          note: it.note,
-        })),
-        history: [
-          {
-            t: `Created from ${sr.code}`,
-            d: "แปลงจากใบเสนอราคา",
-            u: USER(),
-            when: now,
-            kind: "primary",
-          },
-        ],
-        created: now,
-        createdBy: USER(),
-        updated: now,
-        updatedBy: USER(),
-      } as unknown as SoRow);
+      const soCode = createSalesOrderFrom(
+        {
+          customer: sr.customer,
+          customerCode: sr.customerCode,
+          salesRep: sr.salesRep,
+          deliveryDate: sr.requiredDate,
+          warehouse: sr.warehouse,
+          currency: sr.currency,
+          payTerm: sr.payTerm,
+          priority: sr.priority,
+          channel: sr.channel,
+          customerPo: sr.customerRef,
+          items: sr.items ?? [],
+        },
+        { code: sr.code, field: "srRef", noun: "คำขอขาย" },
+        credit,
+      );
 
       sr.status = "Converted";
       sr.soRef = soCode;

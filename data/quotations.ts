@@ -41,6 +41,13 @@ export interface Quotation {
   rejectReason: string;
   note: string;
   items: QtLine[];
+  /**
+   * Where this quotation went. An accepted quote now converts straight to a
+   * Sales Order, so `soRef` is the normal outcome; `srRef` is the fallback
+   * route, still used when a customer wants the request raised internally
+   * first. A quotation fills at most one of the two.
+   */
+  soRef: string;
   /** The Sales Request this quotation turned into, if any. */
   srRef: string;
   history: { t: string; d: string; u: string; when: string; kind: string }[];
@@ -134,6 +141,7 @@ export const QUOTATIONS: Quotation[] = [
       { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 40, price: 95, disc: 0, tax: 7, note: "" },
     ],
+    soRef: "",
     srRef: "SR2506-0001",
     history: [
       { t: "Converted to Sales Request", d: "สร้าง SR2506-0001 จากใบเสนอราคานี้", u: "Patcharin T.", when: "24/06/2569 14:05", kind: "primary" },
@@ -168,6 +176,7 @@ export const QUOTATIONS: Quotation[] = [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 7, note: "ราคาประมูล" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 7, note: "" },
     ],
+    soRef: "",
     srRef: "SR2506-0002",
     history: [
       { t: "Converted to Sales Request", d: "สร้าง SR2506-0002 รออนุมัติภายใน", u: "Narin C.", when: "26/06/2569 11:15", kind: "primary" },
@@ -203,6 +212,7 @@ export const QUOTATIONS: Quotation[] = [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 120, price: 150, disc: 18, tax: 7, note: "" },
       { code: "AT-GL001", name: "A-GLASS IONOMER (Universal)", unit: "Set", qty: 30, price: 480, disc: 15, tax: 7, note: "" },
     ],
+    soRef: "",
     srRef: "SR2506-0003",
     history: [
       { t: "Converted to Sales Request", d: "สร้าง SR2506-0003 จากใบเสนอราคานี้", u: "Somchai S.", when: "27/06/2569 13:10", kind: "primary" },
@@ -236,6 +246,7 @@ export const QUOTATIONS: Quotation[] = [
     items: [
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 0, tax: 7, note: "" },
     ],
+    soRef: "",
     srRef: "",
     history: [
       { t: "Rejected by customer", d: "เหตุผล: ราคาสูงเกินไป", u: "Somchai S.", when: "24/06/2569 11:20", kind: "warn" },
@@ -269,6 +280,7 @@ export const QUOTATIONS: Quotation[] = [
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 48, price: 95, disc: 3, tax: 7, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 24, price: 110, disc: 3, tax: 7, note: "" },
     ],
+    soRef: "",
     srRef: "",
     history: [
       { t: "Sent to customer", d: "ส่งใบเสนอราคาให้คลินิก", u: "Supavita Y.", when: "02/07/2569 10:30", kind: "info" },
@@ -300,6 +312,7 @@ export const QUOTATIONS: Quotation[] = [
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
     ],
+    soRef: "",
     srRef: "",
     history: [
       { t: "Created", d: "สร้างร่างใบเสนอราคา", u: "Patcharin T.", when: "03/07/2569 14:15", kind: "" },
@@ -308,5 +321,45 @@ export const QUOTATIONS: Quotation[] = [
     createdBy: "Patcharin T.",
     updated: "03/07/2569 14:15",
     updatedBy: "Patcharin T.",
+  },
+  {
+    /* The direct route, and the only quotation in the set that took it: this
+       one became SO2506-0005 without a Sales Request in between. The three
+       older Converted quotes still point at their Sales Requests, so both
+       paths have a worked example. Lines, customer and dates match that order
+       exactly — the pair is meant to be read together. */
+    code: "QT2507-0007",
+    customer: "ร้านทันตภัณฑ์ ก้าวหน้า",
+    customerCode: "BP000118",
+    salesRep: "SALE002 - Somchai Srisuk",
+    quoteDate: "01/07/2569",
+    validUntil: "31/07/2569",
+    status: "Converted",
+    approvalStatus: "Approved",
+    currency: "THB",
+    payTerm: "เครดิต 15 วัน",
+    priceList: "PL-STD-2026 Standard",
+    channel: "Direct",
+    customerRef: "KWN-0088",
+    rejectReason: "",
+    note: "ลูกค้ากลับมาสั่งใหม่หลังต่อรองราคารอบก่อนไม่สำเร็จ",
+    items: [
+      { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 48, price: 120, disc: 3, tax: 7, note: "" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 3, tax: 7, note: "" },
+    ],
+    soRef: "SO2506-0005",
+    srRef: "",
+    history: [
+      { t: "Converted to Sales Order", d: "สร้าง SO2506-0005 จากใบเสนอราคานี้", u: "Somchai S.", when: "01/07/2569 09:05", kind: "primary" },
+      { t: "Accepted by customer", d: "ลูกค้ายืนยันราคาทางโทรศัพท์", u: "Somchai S.", when: "01/07/2569 08:55", kind: "primary" },
+      { t: "Sent to customer", d: "ส่งใบเสนอราคาให้ลูกค้า", u: "Somchai S.", when: "01/07/2569 08:40", kind: "info" },
+      { t: "Approved", d: "อนุมัติภายในโดย สมชาย ใจดี", u: "สมชาย ใจดี", when: "01/07/2569 08:35", kind: "primary" },
+      { t: "Submitted for approval", d: "ส่งขออนุมัติภายใน", u: "Somchai S.", when: "01/07/2569 08:20", kind: "info" },
+      { t: "Created", d: "สร้างใบเสนอราคา", u: "Somchai S.", when: "01/07/2569 08:10", kind: "" },
+    ],
+    created: "01/07/2569 08:10",
+    createdBy: "Somchai S.",
+    updated: "01/07/2569 09:05",
+    updatedBy: "Somchai S.",
   },
 ];

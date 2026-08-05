@@ -326,7 +326,16 @@ export const SO_DETAIL: DetailSchema<SoRow> = {
               { label: "Currency", value: so.currency },
               { label: "Payment Term", value: so.payTerm },
               { label: "Incoterm", value: so.incoterm },
-              so.srRef ? { label: "Source Quotation", value: <Badge tone="info">{so.srRef}</Badge> } : null,
+              /* Two separate sources, and an order has at most one: the
+                 request route fills srRef, the direct route quotationRef.
+                 This row used to label srRef "Source Quotation", which read
+                 as a quotation number and never was one. */
+              so.srRef
+                ? { label: "Source Sales Request", value: <Badge tone="info">{so.srRef}</Badge> }
+                : null,
+              so.quotationRef
+                ? { label: "Source Quotation", value: <Badge tone="info">{so.quotationRef}</Badge> }
+                : null,
             ],
           },
           {

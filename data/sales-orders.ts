@@ -41,7 +41,14 @@ export interface SalesOrder {
   status: string;
   priority: string;
   channel: string;
+  /** The Sales Request this order came from, when it took that route. */
   srRef: string;
+  /**
+   * The Quotation this order came from, when the quote converted straight to
+   * an order. Optional: orders raised from a Sales Request or by hand leave
+   * it empty, and every order predating the direct route has none.
+   */
+  quotationRef?: string;
   customerPo: string;
   remark: string;
   /** Cleared by sales admin when the order exceeds the credit limit. */
@@ -231,8 +238,10 @@ export const SALES_ORDERS: SalesOrder[] = [
     priority: "Normal",
     channel: "Direct",
     srRef: "",
+    /* Came straight from the quotation — no Sales Request in between. */
+    quotationRef: "QT2507-0007",
     customerPo: "KWN-0088",
-    remark: "",
+    remark: "สร้างจากใบเสนอราคา QT2507-0007",
     creditApproved: true,
     creditNote: "อยู่ในวงเงิน",
     items: [
@@ -241,7 +250,7 @@ export const SALES_ORDERS: SalesOrder[] = [
     ],
     history: [
       { t: "Confirmed", d: "ยืนยันคำสั่งขาย รอจัดของ", u: "Somchai S.", when: "01/07/2569 09:15", kind: "primary" },
-      { t: "Created", d: "สร้างใบสั่งขาย", u: "Somchai S.", when: "01/07/2569 09:05", kind: "" },
+      { t: "Created from QT2507-0007", d: "แปลงจากใบเสนอราคา", u: "Somchai S.", when: "01/07/2569 09:05", kind: "primary" },
     ],
     created: "01/07/2569 09:05",
     createdBy: "Somchai S.",

@@ -248,8 +248,10 @@ export function applyQuotation(draft: SalesRequestDraft, quotationRef: string): 
 export function quotationChoices(customerCode = ""): string[] {
   /* Read at call time, not at load time: the store is mutable mock state and
      a quotation accepted a moment ago must appear here. */
+  /* `soRef` too: a quote that already became an order directly must not be
+     offered here, or the same quotation would produce two documents. */
   return QUOTATIONS.filter(
-    (q) => ["Draft", "Sent", "Accepted"].includes(q.status) && !q.srRef,
+    (q) => ["Draft", "Sent", "Accepted"].includes(q.status) && !q.srRef && !q.soRef,
   )
     .filter((q) => !customerCode || q.customerCode === customerCode)
     .map((q) => q.code);

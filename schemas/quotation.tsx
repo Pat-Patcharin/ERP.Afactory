@@ -78,9 +78,22 @@ function qtWorkflowActions(qt: QtRow, ctx: ActionCtx): RowAction<QtRow>[] {
   }
 
   if (qt.status === "Accepted")
-    acts.push({ label: "Convert to Sales Request", icon: "salesRequest", run: (r) => qtConvert(r, ctx) });
+    acts.push({ label: "Convert to Sales Order", icon: "salesOrder", run: (r) => qtConvert(r, ctx) });
 
   return acts;
+}
+
+/**
+ * Where a converted quotation went, and which module holds it.
+ *
+ * An accepted quote now becomes a Sales Order directly, but quotes converted
+ * through the Sales Request route still exist and must still open. One place
+ * decides, so the column, the link and the detail fields cannot disagree.
+ */
+function qtTarget(qt: QtRow): { code: string; entity: string; label: string } | null {
+  if (qt.soRef) return { code: qt.soRef, entity: "sales-order", label: "Sales Order" };
+  if (qt.srRef) return { code: qt.srRef, entity: "sales-request", label: "Sales Request" };
+  return null;
 }
 
 export const QT_LIST: ListSchema<QtRow> = {
@@ -193,10 +206,15 @@ export const QT_LIST: ListSchema<QtRow> = {
       ),
     },
     {
-      key: "srRef",
-      label: "Sales Request",
+      key: "convertedTo",
+      label: "Converted To",
       muted: true,
-      cell: (q) => (q.srRef ? <Badge tone="info">{q.srRef}</Badge> : DASH),
+      /* One column for both routes — an order or a request, whichever this
+         quote produced. */
+      cell: (q) => {
+        const t = qtTarget(q);
+        return t ? <Badge tone="info">{t.code}</Badge> : DASH;
+      },
     },
     {
       key: "status",
@@ -235,11 +253,12 @@ export const QT_LIST: ListSchema<QtRow> = {
 
     acts.push(...qtWorkflowActions(qt, ctx));
 
-    if (qt.srRef)
+    const target = qtTarget(qt);
+    if (target)
       acts.push({
-        label: `ดู ${qt.srRef}`,
-        icon: "salesRequest",
-        run: () => ctx.openEntity("sales-request", qt.srRef),
+        label: `ดู ${target.code}`,
+        icon: target.entity === "sales-order" ? "salesOrder" : "salesRequest",
+        run: () => ctx.openEntity(target.entity, target.code),
       });
 
     acts.push({
@@ -292,7 +311,7 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
       icon: "salesRep",
       label: "Sales Rep",
       value: q.salesRep.split(" - ")[1] ?? q.salesRep,
-      sub: q.srRef || "ยังไม่ได้แปลง",
+      sub: qtTarget(q)?.code || "ยังไม่ได้แปลง",
       wide: true,
       goTab: "overview",
     },
@@ -316,7 +335,12 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
               value: credit.cashOnly ? "เงินสด" : money0(credit.available),
               muted: credit.cashOnly,
             },
-            { icon: "salesRequest", label: "Sales Request", value: q.srRef || DASH, muted: !q.srRef },
+            {
+              icon: qtTarget(q)?.entity === "sales-order" ? "salesOrder" : "salesRequest",
+              label: qtTarget(q)?.label ?? "Converted To",
+              value: qtTarget(q)?.code ?? DASH,
+              muted: !qtTarget(q),
+            },
             { icon: "clock", label: "Last Updated", value: q.updated, muted: true },
           ],
         };
@@ -372,7 +396,12 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
               { label: "Quote Date", value: q.quoteDate },
               { label: "Valid Until", value: q.validUntil },
               { label: "Currency", value: q.currency },
-              q.srRef ? { label: "Sales Request", value: <Badge tone="info">{q.srRef}</Badge> } : null,
+              qtTarget(q)
+                ? {
+                    label: qtTarget(q)!.label,
+                    value: <Badge tone="info">{qtTarget(q)!.code}</Badge>,
+                  }
+                : null,
               q.rejectReason ? { label: "Reject Reason", value: q.rejectReason, span: true } : null,
             ],
           },

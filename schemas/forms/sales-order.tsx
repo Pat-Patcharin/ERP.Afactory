@@ -637,7 +637,9 @@ export const SO_FORM: FormSchema<SoRow> = {
         history: [
           {
             t: patch.srRef ? `Created from ${patch.srRef}` : "Created",
-            d: patch.srRef ? "แปลงจากใบเสนอราคา" : "สร้างใบสั่งขายจากฟอร์ม",
+            /* The form only ever converts a Sales Request; it said
+               "ใบเสนอราคา", which is a different document. */
+            d: patch.srRef ? "แปลงจากคำขอขาย" : "สร้างใบสั่งขายจากฟอร์ม",
             u: FORM_USER(),
             when: now,
             kind: "primary",
