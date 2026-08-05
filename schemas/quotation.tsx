@@ -1,8 +1,8 @@
 import { printActions } from "@/lib/print/actions";
 import { QUOTATIONS, creditCheck, getCustomer, type QtRow } from "@/lib/domain/outbound";
 import { docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
-import { QT_STATUS } from "@/data/quotations";
-import { QT_TONE, tone } from "@/lib/badges";
+import { QT_APPROVAL_STATUS, QT_STATUS } from "@/data/quotations";
+import { QT_APPROVAL_TONE, QT_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money0 } from "@/lib/format";
 import {
   qtAccept,
@@ -67,6 +67,14 @@ export const QT_LIST: ListSchema<QtRow> = {
       test: (q, v) => q.channel === v,
     },
     { id: "status", label: "Status", options: () => [...QT_STATUS], test: (q, v) => q.status === v },
+    {
+      id: "approvalStatus",
+      label: "Approval Status",
+      /* The whole list, not just the values in use — "ใบไหนถูกตีกลับ" must be
+         answerable with an empty table rather than a missing option. */
+      options: () => [...QT_APPROVAL_STATUS],
+      test: (q, v) => q.approvalStatus === v,
+    },
   ],
 
   columns: [
@@ -137,6 +145,18 @@ export const QT_LIST: ListSchema<QtRow> = {
           <Badge tone="danger">Expired</Badge>
         ) : (
           <Badge tone={tone(QT_TONE, q.status)}>{q.status}</Badge>
+        ),
+    },
+    {
+      key: "approvalStatus",
+      label: "Approval Status",
+      /* Two Drafts read alike until this column: one never submitted, one sent
+         back for edits. Same treatment as the Sales Return list. */
+      cell: (q) =>
+        q.approvalStatus === "Not Submitted" ? (
+          <span className="text-ink-3">{DASH}</span>
+        ) : (
+          <Badge tone={tone(QT_APPROVAL_TONE, q.approvalStatus)}>{q.approvalStatus}</Badge>
         ),
     },
   ],

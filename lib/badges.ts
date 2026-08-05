@@ -122,15 +122,37 @@ export const SR_TONE: Record<string, BadgeTone> = {
 
 /* ---------- Outbound ---------- */
 
-/** Quotation — the optional price offer sent to the customer. */
+/**
+ * Quotation — the price offer sent to the customer, now approved internally
+ * before it goes out. Same order as `QT_STATUS` in data/quotations.ts; the
+ * two files are edited together.
+ */
 export const QT_TONE: Record<string, BadgeTone> = {
   Draft: "neutral",
+  "Pending Approval": "warning",
+  Approved: "success",
   Sent: "info",
   Accepted: "success",
   Rejected: "danger",
   Expired: "danger",
   Converted: "info",
   Cancelled: "neutral",
+};
+
+/**
+ * Quotation approval — the second dimension, alongside CN_APPROVAL_TONE and
+ * RTN_APPROVAL_TONE. Paired with `QT_APPROVAL_STATUS` in data/quotations.ts.
+ *
+ * No "Not Required" entry: unlike a credit note, every quotation goes through
+ * approval before it can be sent.
+ */
+export const QT_APPROVAL_TONE: Record<string, BadgeTone> = {
+  "Not Submitted": "neutral",
+  "Pending Approval": "warning",
+  Approved: "success",
+  Rejected: "danger",
+  /* Sent back to the rep for edits — not a refusal, so not danger. */
+  "Revision Requested": "warning",
 };
 
 /** Sales Request — internal approval. Named SRQ so it never reads as Sales Rep. */
