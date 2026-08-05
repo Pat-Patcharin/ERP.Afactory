@@ -24,6 +24,7 @@ import type {
   ListSchema,
   RowAction,
 } from "@/lib/types";
+import { Icon } from "@/lib/icons";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { QuotationEditor } from "@/components/quotation/QuotationEditor";
 
@@ -72,8 +73,9 @@ function qtWorkflowActions(qt: QtRow, ctx: ActionCtx): RowAction<QtRow>[] {
   if (qt.status === "Approved")
     acts.push({ label: "Send to Customer", icon: "send", run: (r) => qtSend(r, ctx) });
 
-  /* The way back into editing once the figures are sealed. */
-  if (["Approved", "Sent"].includes(qt.status))
+  /* The way back into editing once the figures are sealed — including from
+     the closed outcomes a customer can walk back from. See QT_REOPENABLE. */
+  if (["Approved", "Sent", "Expired", "Rejected"].includes(qt.status))
     acts.push({ label: "ขอแก้ไข", icon: "edit", run: (r) => qtRequestEdit(r, ctx) });
 
   /* The customer's answer, which is not an approval decision. */
@@ -485,7 +487,47 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
     {
       key: "history",
       label: "History",
-      blocks: (q) => [
+      blocks: (q, ctx) => [
+        {
+          type: "table",
+          title: `ฉบับก่อนหน้า (${(q.revisions ?? []).length})`,
+          rows: [...(q.revisions ?? [])].reverse(),
+          empty: "ยังไม่เคยถูกเปิดกลับมาแก้ไข — มีเพียงฉบับปัจจุบัน",
+          cols: [
+            {
+              key: "revision",
+              label: "ฉบับที่",
+              cell: (r) => <span className="tnum font-medium">{fmt(r.revision)}</span>,
+            },
+            {
+              key: "grandTotal",
+              label: "ยอดรวม",
+              align: "right",
+              cell: (r) => money0(r.totals.grandTotal),
+            },
+            { key: "approvedBy", label: "ผู้อนุมัติ", muted: true, cell: (r) => r.approvedBy || DASH },
+            { key: "sentAt", label: "ส่งลูกค้า", muted: true, cell: (r) => r.sentAt || DASH },
+            { key: "closedAt", label: "ปิดเมื่อ", muted: true, cell: (r) => r.closedAt },
+            { key: "closedReason", label: "เหตุผลที่แก้", cell: (r) => r.closedReason },
+            {
+              key: "open",
+              label: "",
+              /* Opens the stored snapshot, not the live record — see
+                 mapQuotationRevision. */
+              cell: (r) => (
+                <button
+                  onClick={() =>
+                    ctx.goto(`/print/quotation/${encodeURIComponent(q.code)}?rev=${r.revision}`)
+                  }
+                  className="inline-flex items-center gap-1 font-medium text-info hover:underline"
+                >
+                  <Icon name="printer" size={14} />
+                  เปิดดู
+                </button>
+              ),
+            },
+          ],
+        },
         {
           type: "timeline",
           title: "Activity",

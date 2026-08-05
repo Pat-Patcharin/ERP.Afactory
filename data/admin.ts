@@ -890,6 +890,21 @@ export const COMPANY = {
    * change: every printed page draws its logo through it.
    */
   logoUrl: "",
+  /**
+   * Authorised signature and company seal, served from /public the same way
+   * the logo is — e.g. "/signature-md.png", "/stamp-afactory.png".
+   *
+   * These belong to the company, not to a user account and not to a print
+   * template: the same signature and seal appear on every document that
+   * carries them, so changing them here must change all of them at once. That
+   * is the same reason COMPANY_BANKS lives beside this rather than inside the
+   * print config.
+   *
+   * Empty is a supported state, and the default one: the printed sheet falls
+   * back to a blank box to sign by hand. Nothing may require these to be set.
+   */
+  signatureUrl: "",
+  stampUrl: "",
   fiscalYearStart: "01/01",
   baseCurrency: "THB",
   vatRate: 7,

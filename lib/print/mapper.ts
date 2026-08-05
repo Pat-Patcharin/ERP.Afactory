@@ -299,12 +299,15 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
         ...p,
         meta: buildMeta(config, {
           docNo: d.code,
+          revision: `ฉบับที่ ${d.revision}`,
           docDate: d.quoteDate,
           customerCode: d.customerCode,
           salesRep: d.salesRep,
           payTerm: d.payTerm,
           currency: d.currency,
           reference: d.customerRef,
+          approvedBy: d.approvedBy,
+          approvedAt: d.approvedAt,
         }),
         lines: (d.items ?? []).map((it, i) => priceLine(it, i + 1)),
         totals: makeTotals(
@@ -319,6 +322,10 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
         ),
         bank: defaultBank(d.code),
         remarks: [...config.remarks, ...(d.note ? [d.note] : [])],
+        /* Only a quotation that actually cleared approval carries one. */
+        ...(d.approvalStatus === "Approved" && d.approvedBy
+          ? { approval: { by: d.approvedBy, at: d.approvedAt } }
+          : {}),
       };
     }
 
@@ -792,3 +799,69 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
 
 /** Status tone map so a printed badge reads the same as it does on screen. */
 export const statusTone = (t: string): BadgeTone => (t as BadgeTone) ?? "neutral";
+
+/**
+ * Render a stored revision of a quotation as a document.
+ *
+ * The header — customer, addresses, terms — comes from the live record,
+ * because it is the same company and the same quotation number. Everything
+ * that was frozen when the issue closed comes from the snapshot: the lines,
+ * the money, the approver, the dates. Feed the result to `buildPrintJob` as
+ * `options.document` and the whole engine works on it unchanged.
+ *
+ * Returns null when the quotation or that revision does not exist, so a
+ * hand-typed URL fails as "not found" rather than as today's figures wearing
+ * an old revision number.
+ */
+export function mapQuotationRevision(
+  code: string,
+  revision: number,
+  config: PrintConfig,
+): PrintDoc | null {
+  const d = QUOTATIONS.find((x) => x.code === code);
+  if (!d) return null;
+  const snap = (d.revisions ?? []).find((r) => r.revision === revision);
+  if (!snap) return null;
+
+  const p = parties(d.customerCode, d.customer);
+  return {
+    entity: "quotation",
+    code: d.code,
+    status: d.status,
+    statusTone: "info",
+    date: d.quoteDate,
+    company: printCompany(),
+    ...p,
+    meta: buildMeta(config, {
+      docNo: d.code,
+      revision: `ฉบับที่ ${snap.revision}`,
+      docDate: d.quoteDate,
+      customerCode: d.customerCode,
+      salesRep: d.salesRep,
+      payTerm: d.payTerm,
+      currency: d.currency,
+      reference: d.customerRef,
+      approvedBy: snap.approvedBy,
+      approvedAt: snap.approvedAt,
+    }),
+    lines: (snap.items ?? []).map((it, i) => priceLine(it, i + 1)),
+    totals: makeTotals(
+      {
+        subtotal: snap.totals.subtotal,
+        lineDiscount: snap.totals.discount,
+        netAmount: snap.totals.subtotal - snap.totals.discount,
+        vat: snap.totals.vat,
+        grandTotal: snap.totals.grandTotal,
+      },
+      d.currency,
+    ),
+    bank: defaultBank(d.code),
+    remarks: [...config.remarks, ...(d.note ? [d.note] : [])],
+    ...(snap.approvedBy ? { approval: { by: snap.approvedBy, at: snap.approvedAt } } : {}),
+    supersededRevision: {
+      revision: snap.revision,
+      closedAt: snap.closedAt,
+      closedReason: snap.closedReason,
+    },
+  };
+}

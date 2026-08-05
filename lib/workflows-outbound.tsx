@@ -1,5 +1,6 @@
 import { actingUserName, can, currentRole } from "./domain/admin";
 import { useState } from "react";
+import { docDiscTotal, docGrandTotal, docSubtotal, docTaxTotal } from "./domain/lines";
 import { fmt, money0, stamp } from "./format";
 import type { ActionCtx } from "./types";
 import {
@@ -179,9 +180,14 @@ export function qtApprove(qt: QtRow, ctx: ActionCtx) {
     confirmText: "Approve quotation",
     tone: "primary",
     onConfirm: () => {
+      const now = stamp();
       qt.status = "Approved";
       qt.approvalStatus = "Approved";
-      qt.updated = stamp();
+      /* Recorded as fields, not only in the history line: the printed sheet
+         has to name its approver, and a revision snapshot has to keep them. */
+      qt.approvedBy = USER();
+      qt.approvedAt = now;
+      qt.updated = now;
       qt.updatedBy = USER();
       log(qt, "Approved", `อนุมัติภายในโดย ${USER()}`);
       commit(ctx, "อนุมัติใบเสนอราคาแล้ว", `${qt.code} — พร้อมส่งให้ลูกค้า`);
@@ -297,8 +303,10 @@ export function qtSend(qt: QtRow, ctx: ActionCtx) {
     );
     return;
   }
+  const now = stamp();
   qt.status = "Sent";
-  qt.updated = stamp();
+  qt.sentAt = now;
+  qt.updated = now;
   qt.updatedBy = USER();
   log(qt, "Sent to customer", "ส่งใบเสนอราคาให้ลูกค้าแล้ว", "info");
   commit(ctx, "ส่งใบเสนอราคาแล้ว", `${qt.code} — รอลูกค้าตอบกลับ`);
@@ -427,8 +435,20 @@ export function qtConvert(qt: QtRow, ctx: ActionCtx) {
 }
 
 /**
- * Pull an approved or sent quotation back for editing: status returns to
- * `Draft`, the revision number goes up, and approval starts from nothing.
+ * Statuses `qtRequestEdit` can pull back. Sealed but not dead:
+ *
+ *   Approved / Sent   the usual case — something changed after sign-off
+ *   Expired           validity ran out and the customer came back anyway
+ *   Rejected          the customer said no, then changed their mind
+ *
+ * `Converted` is absent: it already produced an order, which is the document
+ * to amend. `Cancelled` is absent: killing a quote is deliberate.
+ */
+const QT_REOPENABLE: readonly string[] = ["Approved", "Sent", "Expired", "Rejected"];
+
+/**
+ * Pull a sealed quotation back for editing: status returns to `Draft`, the
+ * revision number goes up, and approval starts from nothing.
  *
  * Permission is `edit`, NOT `approve` — and that is deliberate, so please do
  * not "fix" it to match `srReopen`. The two look alike and are not:
@@ -446,10 +466,10 @@ export function qtConvert(qt: QtRow, ctx: ActionCtx) {
  */
 export function qtRequestEdit(qt: QtRow, ctx: ActionCtx) {
   if (denied(ctx, "quotation", "edit", "ขอแก้ไขใบเสนอราคาไม่ได้")) return;
-  if (!["Approved", "Sent"].includes(qt.status)) {
+  if (!QT_REOPENABLE.includes(qt.status)) {
     ctx.toast(
       "ขอแก้ไขไม่ได้",
-      `${qt.code} อยู่ในสถานะ ${qt.status} — ขอแก้ไขได้เฉพาะใบที่อนุมัติแล้วหรือส่งให้ลูกค้าแล้ว`,
+      `${qt.code} อยู่ในสถานะ ${qt.status} — เปิดกลับมาแก้ได้เฉพาะใบที่อนุมัติแล้ว ส่งแล้ว หมดอายุ หรือลูกค้าปฏิเสธ`,
       "warning",
     );
     return;
@@ -477,10 +497,40 @@ export function qtRequestEdit(qt: QtRow, ctx: ActionCtx) {
         return false;
       }
       const from = qt.status;
+      const now = stamp();
+
+      /* Snapshot BEFORE anything is touched. Once past this line the live
+         record no longer holds the issue the customer was given, so this is
+         the only moment the old one can be captured. Appended, never
+         written over — see QtRevision. */
+      (qt.revisions ??= []).push({
+        revision: qt.revision,
+        items: (qt.items ?? []).map((it) => ({ ...it })),
+        totals: {
+          subtotal: docSubtotal(qt),
+          discount: docDiscTotal(qt),
+          vat: docTaxTotal(qt),
+          grandTotal: docGrandTotal(qt),
+        },
+        approvedBy: qt.approvedBy,
+        approvedAt: qt.approvedAt,
+        sentAt: qt.sentAt,
+        closedAt: now,
+        closedReason: note,
+      });
+
       qt.status = "Draft";
       qt.approvalStatus = "Not Submitted";
+      /* The refusal no longer applies to the document being edited, and a
+         stale reason would skew win/loss reporting. Same as srReopen. */
+      qt.rejectReason = "";
+      /* The new issue has not been approved or sent yet; the old stamps live
+         on in the snapshot above. */
+      qt.approvedBy = "";
+      qt.approvedAt = "";
+      qt.sentAt = "";
       qt.revision += 1;
-      qt.updated = stamp();
+      qt.updated = now;
       qt.updatedBy = USER();
       log(
         qt,

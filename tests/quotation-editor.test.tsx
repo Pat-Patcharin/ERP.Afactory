@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EntityCreatePage from "@/app/(erp)/m/[entity]/new/page";
 import EntityEditPage from "@/app/(erp)/m/[entity]/[code]/edit/page";
@@ -10,6 +11,7 @@ import { BUSINESS_PARTNERS } from "@/lib/domain/partner";
 import { SALES_REPRESENTATIVES } from "@/lib/domain/sales";
 import { PRODUCTS } from "@/lib/domain/product";
 import { QUOTATIONS, getCustomer } from "@/lib/domain/outbound";
+import { qtRequestEdit } from "@/lib/workflows-outbound";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 import {
   applyCustomer,
@@ -31,7 +33,8 @@ import {
   type QuotationDraft,
 } from "@/lib/domain/quotation-draft";
 import { docGrandTotal } from "@/lib/domain/lines";
-import { buildPrintJob, getPrintConfig } from "@/lib/print";
+import { buildPrintJob, getPrintConfig, mapQuotationRevision } from "@/lib/print";
+import { PrintDocument } from "@/components/print/PrintDocument";
 import { getSchemas } from "@/schemas/registry";
 import { routeParams } from "./setup";
 
@@ -732,7 +735,16 @@ describe("Quotation editor — editing a saved quotation", () => {
    ============================================================ */
 
 describe("Quotation editor — a sealed quotation refuses edits", () => {
-  const LOCKED = ["Approved", "Sent", "Accepted", "Converted"];
+  /* Every status except Draft and Pending Approval. */
+  const LOCKED = [
+    "Approved",
+    "Sent",
+    "Accepted",
+    "Converted",
+    "Rejected",
+    "Expired",
+    "Cancelled",
+  ];
 
   /** The Draft fixture, moved into whichever status is under test. */
   const asStatus = (status: string) => {
@@ -796,6 +808,158 @@ describe("Quotation editor — a sealed quotation refuses edits", () => {
     for (const status of LOCKED) {
       expect(labels(status), `${status} must not offer Edit`).not.toContain("Edit");
     }
+  });
+});
+
+/* ============================================================
+   Reopening a sealed quotation
+
+   Sealing only works if there is a documented way back in;
+   otherwise people raise a replacement quotation and the
+   revision trail this field exists for never gets written.
+   ============================================================ */
+
+describe("Quotation — qtRequestEdit reopens a sealed quotation", () => {
+  /** Captures the modal so the test can supply a reason and confirm. */
+  function fakeCtx() {
+    const calls = {
+      toasts: [] as { title: string; tone?: string }[],
+      modal: null as null | { body: () => ReactNode; onConfirm?: () => boolean | void },
+    };
+    return {
+      calls,
+      ctx: {
+        goto: () => {},
+        openEntity: () => {},
+        toast: (title: string, _m?: string, tone?: string) => calls.toasts.push({ title, tone }),
+        confirm: (o: { onConfirm: () => void }) => o.onConfirm(),
+        formModal: (o: { body: () => ReactNode; onConfirm?: () => boolean | void }) => {
+          calls.modal = o;
+        },
+        refresh: () => {},
+        quickView: () => {},
+        panel: () => {},
+      } as never,
+    };
+  }
+
+  const at = (status: string) => {
+    const q = QUOTATIONS.find((x) => x.code === "QT2507-0006")!;
+    q.status = status;
+    q.approvalStatus = "Approved";
+    q.revision = 1;
+    return q;
+  };
+
+  beforeEach(() => setCurrentUser(USERS.find((u) => u.roleCode === "SALES_REP")!.code));
+
+  for (const status of ["Approved", "Sent", "Expired", "Rejected"]) {
+    it(`reopens a ${status} quotation as a new revision`, async () => {
+      const user = userEvent.setup();
+      const q = at(status);
+      const { calls, ctx } = fakeCtx();
+
+      qtRequestEdit(q as never, ctx);
+      expect(calls.modal, "should have asked for a reason").toBeTruthy();
+
+      /* Confirming with nothing typed must be refused. */
+      expect(calls.modal!.onConfirm!()).toBe(false);
+      expect(q.status, "still sealed until a reason is given").toBe(status);
+
+      /* Typing into the real field is what feeds the reason to onConfirm. */
+      render(<>{calls.modal!.body()}</>);
+      await user.type(screen.getByLabelText("เหตุผลที่ขอแก้ไข"), "ลูกค้าขอเปลี่ยนจำนวน");
+      calls.modal!.onConfirm!();
+
+      expect(q.status).toBe("Draft");
+      expect(q.approvalStatus).toBe("Not Submitted");
+      expect(q.revision).toBe(2);
+      expect(q.rejectReason).toBe("");
+      expect(q.history[0].t).toContain("revision 2");
+      expect(q.history[0].d).toContain(status);
+    });
+  }
+
+  it("refuses to reopen a Cancelled quotation", () => {
+    const q = at("Cancelled");
+    const { calls, ctx } = fakeCtx();
+
+    qtRequestEdit(q as never, ctx);
+
+    expect(calls.modal, "no modal — cancelling a quote is meant to be final").toBeNull();
+    expect(calls.toasts[0]?.tone).toBe("warning");
+    expect(q.status).toBe("Cancelled");
+    expect(q.revision).toBe(1);
+  });
+
+  it("snapshots the closing issue before touching anything", async () => {
+    const user = userEvent.setup();
+    const q = at("Sent");
+    q.items = [{ ...q.items[0], qty: 10, price: 100, disc: 0, tax: 7 }];
+    q.approvedBy = "สมชาย ใจดี";
+    q.approvedAt = "01/07/2569 09:00";
+    q.sentAt = "01/07/2569 09:30";
+    q.revisions = [];
+    const { calls, ctx } = fakeCtx();
+
+    qtRequestEdit(q as never, ctx);
+    render(<>{calls.modal!.body()}</>);
+    await user.type(screen.getByLabelText("เหตุผลที่ขอแก้ไข"), "ลูกค้าขอ 15 ชิ้น");
+    calls.modal!.onConfirm!();
+
+    expect(q.revisions).toHaveLength(1);
+    const snap = q.revisions[0];
+    expect(snap.revision, "the issue that just closed, not the new one").toBe(1);
+    expect(snap.items[0].qty).toBe(10);
+    expect(snap.approvedBy).toBe("สมชาย ใจดี");
+    expect(snap.sentAt).toBe("01/07/2569 09:30");
+    expect(snap.closedReason).toBe("ลูกค้าขอ 15 ชิ้น");
+    expect(snap.closedAt).toBeTruthy();
+    /* The live record moved on; the snapshot kept the old stamps. */
+    expect(q.approvedBy).toBe("");
+    expect(q.sentAt).toBe("");
+  });
+
+  it("leaves earlier snapshots untouched when a second revision closes", async () => {
+    const user = userEvent.setup();
+    const q = at("Sent");
+    q.items = [{ ...q.items[0], qty: 10 }];
+    q.revisions = [];
+
+    const reopen = async (reason: string, qty: number) => {
+      q.items = [{ ...q.items[0], qty }];
+      const { calls, ctx } = fakeCtx();
+      qtRequestEdit(q as never, ctx);
+      /* Scope to this render: the previous modal is still in the document. */
+      const { container } = render(<>{calls.modal!.body()}</>);
+      await user.type(within(container).getByLabelText("เหตุผลที่ขอแก้ไข"), reason);
+      calls.modal!.onConfirm!();
+      q.status = "Sent";
+    };
+
+    await reopen("รอบแรก", 10);
+    const firstSnapshot = JSON.stringify(q.revisions[0]);
+
+    await reopen("รอบสอง", 20);
+
+    expect(q.revisions).toHaveLength(2);
+    expect(JSON.stringify(q.revisions[0]), "entry 1 must be byte-identical").toBe(firstSnapshot);
+    expect(q.revisions[0].revision).toBe(1);
+    expect(q.revisions[1].revision).toBe(2);
+    expect(q.revisions[0].items[0].qty).toBe(10);
+    expect(q.revisions[1].items[0].qty).toBe(20);
+    expect(q.revision).toBe(3);
+  });
+
+  it("refuses to reopen a Converted quotation", () => {
+    /* It already produced an order; that is the document to amend. */
+    const q = at("Converted");
+    const { calls, ctx } = fakeCtx();
+
+    qtRequestEdit(q as never, ctx);
+
+    expect(calls.modal).toBeNull();
+    expect(q.status).toBe("Converted");
   });
 });
 
@@ -867,5 +1031,149 @@ describe("Quotation editor — existing behaviour", () => {
     expect(QT_PRICE_LISTS).toContain(d.priceList);
     expect(BUSINESS_PARTNERS.some((b) => b.code === d.customerCode)).toBe(true);
     expect(PRODUCTS.some((p) => p.code === applyProduct(blankLine(), PRODUCT).code)).toBe(true);
+  });
+});
+
+/* ============================================================
+   Signature and stamp on the printed sheet
+
+   The rule under test is a three-way AND: approver panel, an
+   approved document, and a signature on file. Any one missing
+   falls back to the blank box that was always there.
+   ============================================================ */
+
+describe("Quotation print — signature and stamp", () => {
+  const CODE = "QT2507-0006";
+
+  afterEach(() => {
+    COMPANY.signatureUrl = "";
+    COMPANY.stampUrl = "";
+  });
+
+  const approved = () => {
+    const q = QUOTATIONS.find((x) => x.code === CODE)!;
+    q.status = "Approved";
+    q.approvalStatus = "Approved";
+    q.approvedBy = "สมชาย ใจดี";
+    q.approvedAt = "01/07/2569 09:00";
+    return q;
+  };
+
+  const sheet = (code = CODE) => {
+    const job = buildPrintJob("quotation", code)!;
+    expect(job, "the quotation must be printable").toBeTruthy();
+    return render(<PrintDocument job={job} />).container;
+  };
+
+  it("prints normally when no signature file is on record", () => {
+    approved();
+    const c = sheet();
+
+    expect(c.querySelector('[data-testid="print-page-1"]')).toBeInTheDocument();
+    expect(c.querySelectorAll("img")).toHaveLength(0);
+    expect(c.textContent).toContain("วันที่ ____ / ____ / ______");
+  });
+
+  it("stamps the approver's signature and name once approved", () => {
+    approved();
+    COMPANY.signatureUrl = "/signature-md.png";
+    COMPANY.stampUrl = "/stamp-afactory.png";
+    const c = sheet();
+
+    const srcs = [...c.querySelectorAll("img")].map((i) => i.getAttribute("src"));
+    expect(srcs).toContain("/signature-md.png");
+    expect(srcs).toContain("/stamp-afactory.png");
+    /* The image never stands alone. */
+    expect(c.textContent).toContain("สมชาย ใจดี");
+    expect(c.textContent).toContain("01/07/2569 09:00");
+  });
+
+  it("prints no signature on a quotation that has not been approved", () => {
+    const q = QUOTATIONS.find((x) => x.code === CODE)!;
+    q.status = "Draft";
+    q.approvalStatus = "Not Submitted";
+    q.approvedBy = "";
+    q.approvedAt = "";
+    COMPANY.signatureUrl = "/signature-md.png";
+    const c = sheet();
+
+    expect([...c.querySelectorAll("img")].map((i) => i.getAttribute("src"))).not.toContain(
+      "/signature-md.png",
+    );
+    expect(c.textContent).toContain("วันที่ ____ / ____ / ______");
+  });
+
+  it("carries the document number, revision and approver onto the sheet", () => {
+    const q = approved();
+    q.revision = 3;
+    const c = sheet();
+
+    expect(c.textContent).toContain(CODE);
+    expect(c.textContent).toContain("ฉบับที่ 3");
+    expect(c.textContent).toContain("สมชาย ใจดี");
+  });
+});
+
+/* ============================================================
+   Reopening a stored revision
+   ============================================================ */
+
+describe("Quotation print — an earlier revision", () => {
+  const CODE = "QT2507-0006";
+
+  const withSnapshot = () => {
+    const q = QUOTATIONS.find((x) => x.code === CODE)!;
+    q.revision = 2;
+    q.revisions = [
+      {
+        revision: 1,
+        items: [
+          { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 10, price: 100, disc: 0, tax: 7, note: "" },
+        ],
+        totals: { subtotal: 1000, discount: 0, vat: 70, grandTotal: 1070 },
+        approvedBy: "สมชาย ใจดี",
+        approvedAt: "01/07/2569 09:00",
+        sentAt: "01/07/2569 09:30",
+        closedAt: "02/07/2569 10:00",
+        closedReason: "ลูกค้าขอเพิ่มจำนวน",
+      },
+    ];
+    /* The live document now says something else entirely. */
+    q.items = [
+      { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 99, price: 100, disc: 0, tax: 7, note: "" },
+    ];
+    return q;
+  };
+
+  it("renders the stored figures, not the current ones", () => {
+    withSnapshot();
+    const config = getPrintConfig("quotation")!;
+    const document = mapQuotationRevision(CODE, 1, config)!;
+    const job = buildPrintJob("quotation", CODE, { document })!;
+    const c = render(<PrintDocument job={job} />).container;
+
+    expect(job.doc.totals!.grandTotal).toBe(1070);
+    expect(job.doc.lines[0].qty, "the old quantity, not 99").toBe(10);
+    expect(c.textContent).toContain("ฉบับที่ 1");
+  });
+
+  it("says on its face that it is not the current issue", () => {
+    withSnapshot();
+    const config = getPrintConfig("quotation")!;
+    const document = mapQuotationRevision(CODE, 1, config)!;
+    const job = buildPrintJob("quotation", CODE, { document })!;
+    const c = render(<PrintDocument job={job} />).container;
+
+    expect(c.querySelector('[data-testid="superseded-banner"]')).toBeInTheDocument();
+    expect(c.textContent).toContain("ไม่ใช่ฉบับปัจจุบัน");
+    expect(c.textContent).toContain("ลูกค้าขอเพิ่มจำนวน");
+    expect(c.textContent).toContain("SUPERSEDED");
+  });
+
+  it("returns null for a revision that was never stored", () => {
+    withSnapshot();
+    const config = getPrintConfig("quotation")!;
+    expect(mapQuotationRevision(CODE, 9, config)).toBeNull();
+    expect(mapQuotationRevision("QT-NOPE", 1, config)).toBeNull();
   });
 });

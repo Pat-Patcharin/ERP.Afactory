@@ -34,12 +34,17 @@ export default function PrintRoute() {
     );
   }
 
+  /* ?rev=1 opens a stored issue rather than the live document. Like the copy
+     type it is a query flag: same document, different thing being looked at. */
+  const rev = Number(search.get("rev"));
+
   return (
     <PrintPreview
       docType={docType as PrintDocType}
       code={code}
       initialCopy={copy}
       autoPdf={search.get("pdf") === "1"}
+      revision={Number.isFinite(rev) && rev > 0 ? rev : undefined}
     />
   );
 }

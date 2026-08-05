@@ -1,3 +1,4 @@
+import { COMPANY } from "@/data/admin";
 import { COLUMN_LABELS, SIGNATURE_LABELS, fillerRows } from "@/lib/print";
 import { visibleColumns } from "@/lib/print/permissions";
 import type { ItemColumn, PrintJob, PrintLine, PrintPage } from "@/lib/print/types";
@@ -553,12 +554,28 @@ function PaymentInfo({ job }: { job: PrintJob }) {
   );
 }
 
+/**
+ * Signature panels.
+ *
+ * Every panel is a blank box to sign by hand, exactly as before — except the
+ * approver's, and only on a document that actually cleared approval, and only
+ * when the company has a signature file on record. All three conditions have
+ * to hold: a stored signature printed onto an unapproved document would be a
+ * forgery the system produced by itself.
+ *
+ * The image never stands alone. The approver's name and the time they approved
+ * are printed under it, because a scanned squiggle identifies nobody.
+ */
 function Signatures({ job }: { job: PrintJob }) {
   if (!job.config.showSignatures) return null;
+  const approval = job.doc.approval;
+
   return (
     <div style={{ display: "flex", gap: "3mm", marginTop: "2.5mm" }}>
       {job.config.signatureRoles.map((role) => {
         const l = SIGNATURE_LABELS[role];
+        const signed = role === "approvedBy" && approval && COMPANY.signatureUrl;
+
         return (
           <div key={role} className="a4-panel" style={{ flex: 1, minWidth: 0, paddingTop: "2mm" }}>
             <div className="a4-label" style={{ color: "var(--pr-orange)", fontSize: "6pt" }}>
@@ -567,16 +584,54 @@ function Signatures({ job }: { job: PrintJob }) {
             <div style={{ fontSize: "6.6pt" }} className="a4-dim">
               {l?.th ?? ""}
             </div>
+
+            {signed ? (
+              <div style={{ position: "relative", height: "8mm", marginTop: "1mm" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={COMPANY.signatureUrl}
+                  alt=""
+                  style={{ height: "8mm", objectFit: "contain" }}
+                />
+                {COMPANY.stampUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={COMPANY.stampUrl}
+                    alt=""
+                    style={{
+                      position: "absolute",
+                      left: "6mm",
+                      top: 0,
+                      height: "10mm",
+                      opacity: 0.75,
+                      objectFit: "contain",
+                    }}
+                  />
+                )}
+              </div>
+            ) : (
+              <div style={{ height: "8mm" }} />
+            )}
+
             <div
               style={{
-                marginTop: "8mm",
+                marginTop: signed ? "1mm" : 0,
                 borderTop: "0.2mm dotted var(--pr-line-strong)",
                 paddingTop: "1mm",
                 fontSize: "6.6pt",
               }}
               className="a4-dim"
             >
-              วันที่ ____ / ____ / ______
+              {signed ? (
+                <>
+                  <div style={{ fontWeight: 600 }} className="a4-ink">
+                    {approval!.by}
+                  </div>
+                  <div>{approval!.at}</div>
+                </>
+              ) : (
+                "วันที่ ____ / ____ / ______"
+              )}
             </div>
           </div>
         );
@@ -616,7 +671,11 @@ function Footer({ job, page }: { job: PrintJob; page: PrintPage }) {
 export function PrintPageView({ job, page }: { job: PrintJob; page: PrintPage }) {
   const { config } = job;
   const multi = job.totalPages > 1;
-  const watermark = job.watermark ?? (job.reprintOf > 0 ? "REPRINT" : "");
+  const superseded = job.doc.supersededRevision;
+  /* A superseded issue is stamped across the sheet so it can never be mistaken
+     for the live document, whatever else the page says. */
+  const watermark =
+    job.watermark ?? (superseded ? "SUPERSEDED" : job.reprintOf > 0 ? "REPRINT" : "");
 
   return (
     <section className="a4-page" data-testid={`print-page-${page.page}`} data-page={page.page}>
@@ -628,6 +687,25 @@ export function PrintPageView({ job, page }: { job: PrintJob; page: PrintPage })
 
       <div className="a4-layer" style={{ padding: "0" }}>
         {page.isFirst ? <FullHeader job={job} /> : <CompactHeader job={job} page={page} />}
+
+        {superseded && page.isFirst && (
+          <div
+            data-testid="superseded-banner"
+            style={{
+              marginTop: "2mm",
+              padding: "1.5mm 2mm",
+              border: "0.3mm solid var(--pr-orange)",
+              fontSize: "7pt",
+            }}
+          >
+            <strong>
+              ฉบับแก้ไขครั้งที่ {superseded.revision} — ไม่ใช่ฉบับปัจจุบัน
+            </strong>
+            <div className="a4-dim" style={{ fontSize: "6.6pt" }}>
+              ปิดเมื่อ {superseded.closedAt} · เหตุผล: {superseded.closedReason}
+            </div>
+          </div>
+        )}
 
         {/* Continued-from marker on every page after the first. */}
         {!page.isFirst && (

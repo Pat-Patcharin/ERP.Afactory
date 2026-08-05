@@ -7,6 +7,7 @@ import {
   buildPrintJob,
   getCopyDef,
   getPrintConfig,
+  mapQuotationRevision,
   pdfFilename,
   printTypesFor,
   recordPrint,
@@ -51,11 +52,15 @@ export function PrintPreview({
   /* "Export PDF" in a detail menu opens the save dialog on arrival; the user
      already said what they wanted, so making them click again is friction. */
   autoPdf = false,
+  /* Show a stored revision instead of the live record. Quotation only — it is
+     the only document that keeps issue snapshots. */
+  revision,
 }: {
   docType: PrintDocType;
   code: string;
   initialCopy?: CopyType;
   autoPdf?: boolean;
+  revision?: number;
 }) {
   const router = useRouter();
   const toast = useUI((s) => s.toast);
@@ -67,7 +72,16 @@ export function PrintPreview({
   const [page, setPage] = useState(1);
 
   const config = getPrintConfig(type);
-  const job = useMemo(() => buildPrintJob(type, code, { copyType }), [type, code, copyType]);
+  const job = useMemo(() => {
+    /* A revision renders from its snapshot, so the engine never shows today's
+       figures under an old issue number. */
+    if (revision && type === "quotation" && config) {
+      const document = mapQuotationRevision(code, revision, config);
+      if (!document) return null;
+      return buildPrintJob(type, code, { copyType, document });
+    }
+    return buildPrintJob(type, code, { copyType });
+  }, [type, code, copyType, revision, config]);
 
   /* Sibling documents from the same source — a Delivery Order can print with
      or without price, and both read the same record. */

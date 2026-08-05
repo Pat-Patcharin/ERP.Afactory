@@ -106,4 +106,4 @@ export { bahtText, thaiNumberText } from "./words";
 export { allowedCopyTypes, canSeePrice, canSeeTax, visibleColumns } from "./permissions";
 export { recordPrint, recordPreview, printCount, resetPrintCounts, pdfFilename } from "./audit";
 export { validatePrint } from "./validate";
-export { mapDocument, printCompany, defaultBank } from "./mapper";
+export { mapDocument, mapQuotationRevision, printCompany, defaultBank } from "./mapper";

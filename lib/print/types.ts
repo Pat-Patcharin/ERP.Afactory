@@ -134,7 +134,10 @@ export type MetaField =
   | "warehouse"
   | "deliveryDate"
   | "trackingNo"
-  | "reference";
+  | "reference"
+  | "revision"
+  | "approvedBy"
+  | "approvedAt";
 
 /* ---------- The neutral document ---------- */
 
@@ -235,6 +238,17 @@ export interface PrintDoc {
   bank: PrintBank | null;
   /** Remarks from the config plus anything the source document carries. */
   remarks: string[];
+  /**
+   * Present only once the document has actually cleared approval. The
+   * signature block reads this: no approval, no signature image, whatever the
+   * status field happens to say.
+   */
+  approval?: { by: string; at: string };
+  /**
+   * Set when the sheet shows a stored earlier issue rather than the live
+   * document, so the page can say so on its face. Absent on the current one.
+   */
+  supersededRevision?: { revision: number; closedAt: string; closedReason: string };
 }
 
 /* ---------- Pagination result ---------- */

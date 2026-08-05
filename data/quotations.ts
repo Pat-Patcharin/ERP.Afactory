@@ -21,6 +21,49 @@ export interface QtLine {
   note: string;
 }
 
+/**
+ * A closed issue of a quotation, kept so an earlier revision can be reopened
+ * and read after the live document has moved on.
+ *
+ * THIS IS A DATA SNAPSHOT, NOT A PICTURE OF THE DOCUMENT — and that is a
+ * choice, not an oversight. Reopening revision 1 re-renders the stored figures
+ * through whatever print layout exists at the time of viewing, so a later
+ * change to the template changes how an old revision looks. The numbers, the
+ * lines, the approver and the dates are exactly what they were; the paper
+ * around them is today's.
+ *
+ * That is enough to answer "what did we actually offer, and who signed it" for
+ * internal purposes. It is NOT a faithful copy of the sheet the customer is
+ * holding, and it will not stand up as one. Producing that needs a real PDF
+ * written to storage the moment the quote is issued, which needs a backend
+ * this prototype does not have.
+ *
+ * Append-only. Nothing may edit or remove an entry once written: the point of
+ * the record is that it cannot be tidied up after the fact.
+ */
+export interface QtRevision {
+  /** Which issue this was — matches the `revision` the document carried. */
+  revision: number;
+  /** The lines exactly as they stood, deep-copied away from the live record. */
+  items: QtLine[];
+  /** Money as it was, so a later change to price rules cannot restate history. */
+  totals: {
+    subtotal: number;
+    discount: number;
+    vat: number;
+    grandTotal: number;
+  };
+  /** Who approved this issue, and when. Empty when it never got that far. */
+  approvedBy: string;
+  approvedAt: string;
+  /** When it went to the customer. Empty when it never did. */
+  sentAt: string;
+  /** When this issue was closed by a reopen. */
+  closedAt: string;
+  /** Why it was reopened — without this an old issue is a mystery. */
+  closedReason: string;
+}
+
 export interface Quotation {
   code: string;
   customer: string;
@@ -38,6 +81,13 @@ export interface Quotation {
    * on a printed sheet identifies exactly which version was agreed.
    */
   revision: number;
+  /** Earlier issues, oldest first. Append-only — see QtRevision. */
+  revisions: QtRevision[];
+  /** Who cleared the current issue for sending, and when. */
+  approvedBy: string;
+  approvedAt: string;
+  /** When the current issue went to the customer. */
+  sentAt: string;
   currency: string;
   payTerm: string;
   priceList: string;
@@ -105,16 +155,31 @@ export const QT_APPROVAL_STATUS = [
 ] as const;
 
 /**
- * Statuses that seal the document. Once a quote has been approved, the figures
- * on it are what somebody signed off and, from `Sent` onward, what the customer
- * is holding — editing in place would silently change an agreed offer. Getting
- * back to editing means `qtRequestEdit`, which returns the quote to `Draft`,
- * raises the revision and sends it round the approval loop again.
+ * Statuses that seal the document — everything except `Draft` and
+ * `Pending Approval`.
  *
- * `Rejected`, `Expired` and `Cancelled` are not listed: those are dead ends
- * nobody reopens, and the Edit button is already hidden for them.
+ * Once a quote has been approved the figures on it are what somebody signed
+ * off and, from `Sent` onward, what the customer is holding; editing in place
+ * would silently change an agreed offer. The closed outcomes are sealed for
+ * the same reason: a rejected or expired quote is the record of what was
+ * actually offered and turned down, and rewriting it destroys that.
+ *
+ * The way back in is `qtRequestEdit`, which returns the quote to `Draft`,
+ * raises the revision and sends it round the approval loop again. It accepts
+ * `Expired` and `Rejected` too — a customer who changes their mind or comes
+ * back after the validity ran out is ordinary business, and it needs a route
+ * that leaves a trail. `Cancelled` has none: killing a quote is deliberate,
+ * and it should stay dead.
  */
-export const QT_LOCKED_STATUS = ["Approved", "Sent", "Accepted", "Converted"] as const;
+export const QT_LOCKED_STATUS = [
+  "Approved",
+  "Sent",
+  "Accepted",
+  "Converted",
+  "Rejected",
+  "Expired",
+  "Cancelled",
+] as const;
 
 export const isQuotationLocked = (status: string): boolean =>
   (QT_LOCKED_STATUS as readonly string[]).includes(status);
@@ -151,6 +216,10 @@ export const QUOTATIONS: Quotation[] = [
     status: "Converted",
     approvalStatus: "Approved",
     revision: 1,
+    revisions: [],
+    approvedBy: "สมชาย ใจดี",
+    approvedAt: "22/06/2569 15:00",
+    sentAt: "22/06/2569 15:20",
     currency: "THB",
     payTerm: "เครดิต 30 วัน",
     priceList: "PL-CLINIC-2026 Clinic",
@@ -188,6 +257,10 @@ export const QUOTATIONS: Quotation[] = [
     status: "Converted",
     approvalStatus: "Approved",
     revision: 1,
+    revisions: [],
+    approvedBy: "สมชาย ใจดี",
+    approvedAt: "24/06/2569 15:45",
+    sentAt: "24/06/2569 16:30",
     currency: "THB",
     payTerm: "เครดิต 60 วัน",
     priceList: "PL-GOV-2026 Government",
@@ -224,6 +297,10 @@ export const QUOTATIONS: Quotation[] = [
     status: "Converted",
     approvalStatus: "Approved",
     revision: 1,
+    revisions: [],
+    approvedBy: "สมชาย ใจดี",
+    approvedAt: "25/06/2569 14:10",
+    sentAt: "25/06/2569 14:40",
     currency: "THB",
     payTerm: "เครดิต 45 วัน",
     priceList: "PL-DEALER-2026 Dealer",
@@ -261,6 +338,10 @@ export const QUOTATIONS: Quotation[] = [
     status: "Rejected",
     approvalStatus: "Approved",
     revision: 1,
+    revisions: [],
+    approvedBy: "สมชาย ใจดี",
+    approvedAt: "18/06/2569 09:55",
+    sentAt: "18/06/2569 10:00",
     currency: "THB",
     payTerm: "เครดิต 15 วัน",
     priceList: "PL-STD-2026 Standard",
@@ -295,6 +376,10 @@ export const QUOTATIONS: Quotation[] = [
     status: "Sent",
     approvalStatus: "Approved",
     revision: 1,
+    revisions: [],
+    approvedBy: "สมชาย ใจดี",
+    approvedAt: "02/07/2569 10:20",
+    sentAt: "02/07/2569 10:30",
     currency: "THB",
     payTerm: "เงินสด",
     priceList: "PL-CLINIC-2026 Clinic",
@@ -329,6 +414,10 @@ export const QUOTATIONS: Quotation[] = [
     status: "Draft",
     approvalStatus: "Not Submitted",
     revision: 1,
+    revisions: [],
+    approvedBy: "",
+    approvedAt: "",
+    sentAt: "",
     currency: "THB",
     payTerm: "เครดิต 30 วัน",
     priceList: "PL-CLINIC-2026 Clinic",
@@ -364,6 +453,10 @@ export const QUOTATIONS: Quotation[] = [
     status: "Converted",
     approvalStatus: "Approved",
     revision: 1,
+    revisions: [],
+    approvedBy: "สมชาย ใจดี",
+    approvedAt: "01/07/2569 08:35",
+    sentAt: "01/07/2569 08:40",
     currency: "THB",
     payTerm: "เครดิต 15 วัน",
     priceList: "PL-STD-2026 Standard",

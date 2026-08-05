@@ -79,7 +79,21 @@ export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
     titleEN: "QUOTATION",
     showPayment: false,
     showDueDate: false,
-    metaFields: ["docNo", "docDate", "customerCode", "salesRep", "payTerm", "currency", "reference"],
+    /* Revision and approver sit on the sheet itself: a customer holding two
+       issues of the same quotation number must be able to tell them apart,
+       and "who signed this" must be answerable from the paper. */
+    metaFields: [
+      "docNo",
+      "revision",
+      "docDate",
+      "customerCode",
+      "salesRep",
+      "payTerm",
+      "currency",
+      "reference",
+      "approvedBy",
+      "approvedAt",
+    ],
     remarks: [
       "ราคานี้ยืนราคาตามวันที่ระบุในเอกสาร",
       "ราคาดังกล่าวยังไม่รวมค่าขนส่ง เว้นแต่ระบุไว้เป็นอย่างอื่น",
@@ -423,6 +437,9 @@ export const COLUMN_LABELS: Record<string, { en: string; th: string; align?: "ri
 
 export const META_LABELS: Record<string, { en: string; th: string }> = {
   docNo: { en: "Document No.", th: "เลขที่เอกสาร" },
+  revision: { en: "Revision", th: "ฉบับแก้ไขครั้งที่" },
+  approvedBy: { en: "Approved By", th: "ผู้อนุมัติ" },
+  approvedAt: { en: "Approved At", th: "วันเวลาที่อนุมัติ" },
   docDate: { en: "Document Date", th: "วันที่เอกสาร" },
   customerCode: { en: "Customer Code", th: "รหัสลูกค้า" },
   customerPo: { en: "Customer PO No.", th: "เลขที่ใบสั่งซื้อลูกค้า" },
