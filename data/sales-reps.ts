@@ -12,6 +12,8 @@
  * is how the prototype persists changes; swap for API calls when ready.
  */
 
+import { SALES_AREA_CODES } from "./sales-areas";
+
 export type TeamColorMap = Record<string, string>;
 
 export interface SalesRep {
@@ -34,9 +36,10 @@ export interface SalesRep {
   office: string;
   email: string;
   line: string;
+  /** Sales area code from the territory master — "BKK1", "N-UP", … */
   area: string;
+  /** Base province. Must be one the area owns; the form enforces it. */
   province: string;
-  region: string;
   custGroup: string;
   channel: string;
   monthlyTarget: number;
@@ -64,9 +67,14 @@ export const SR_STATUS = ["Active", "Inactive", "On Leave", "Resigned"] as const
 
 export const SR_TEAMS = ["Sales 1", "Sales 2", "Sales 3", "Sales 4"] as const;
 
-export const SR_AREAS = ["Bangkok", "Central", "North", "Northeast", "South", "East", "West"] as const;
-
-export const SR_REGIONS = ["ภาคกลาง", "ภาคเหนือ", "ภาคอีสาน", "ภาคใต้", "ภาคตะวันออก", "ภาคตะวันตก"] as const;
+/**
+ * Areas come from the territory master, so a rep can only be assigned to an
+ * area that actually exists on the map. The old seven-value list ("Bangkok",
+ * "Central", …) was coarser than the sheet the business works from, and the
+ * rep's separate `region` field duplicated what the area's group already
+ * says — both were dropped in favour of this.
+ */
+export const SR_AREAS = SALES_AREA_CODES;
 
 export const SR_DEPARTMENTS = ["Sales", "Key Account", "Dealer", "Government", "Export"] as const;
 
@@ -106,9 +114,8 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
     office: "02-123-4567",
     email: "patcharin.t@afactory.co.th",
     line: "pat_afactory",
-    area: "Bangkok",
-    province: "Bangkok",
-    region: "ภาคกลาง",
+    area: "BKK1",
+    province: "กรุงเทพมหานคร",
     custGroup: "Dental Clinic",
     channel: "Direct",
     monthlyTarget: 500000,
@@ -123,35 +130,35 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
       {
         code: "C010001",
         name: "ABC Dental Clinic",
-        prov: "Bangkok",
+        prov: "กรุงเทพมหานคร",
         group: "Dental Clinic",
         status: "Active",
       },
       {
         code: "C010002",
         name: "Dental Plus Co., Ltd.",
-        prov: "Bangkok",
+        prov: "กรุงเทพมหานคร",
         group: "Dealer",
         status: "Active",
       },
       {
         code: "C010003",
         name: "Smile Gallery Clinic",
-        prov: "Bangkok",
+        prov: "กรุงเทพมหานคร",
         group: "Dental Clinic",
         status: "Active",
       },
       {
         code: "C010004",
         name: "Bangpakok Dental",
-        prov: "Bangkok",
+        prov: "กรุงเทพมหานคร",
         group: "Hospital",
         status: "Active",
       },
       {
         code: "C010005",
         name: "Thantakit Clinic",
-        prov: "Nonthaburi",
+        prov: "นนทบุรี",
         group: "Dental Clinic",
         status: "Active",
       },
@@ -181,9 +188,8 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
     office: "02-123-4568",
     email: "somchai.s@afactory.co.th",
     line: "chai_sale",
-    area: "Central",
-    province: "Nonthaburi",
-    region: "ภาคกลาง",
+    area: "BKK2",
+    province: "นนทบุรี",
     custGroup: "Dental Clinic",
     channel: "Direct",
     monthlyTarget: 400000,
@@ -198,14 +204,14 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
       {
         code: "C010010",
         name: "Central Dental Care",
-        prov: "Nonthaburi",
+        prov: "นนทบุรี",
         group: "Dental Clinic",
         status: "Active",
       },
       {
         code: "C010011",
         name: "Pathum Dental",
-        prov: "Pathum Thani",
+        prov: "ปทุมธานี",
         group: "Dental Clinic",
         status: "Active",
       },
@@ -235,9 +241,8 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
     office: "02-123-4569",
     email: "narin.c@afactory.co.th",
     line: "narin_ka",
-    area: "North",
-    province: "Chiang Mai",
-    region: "ภาคเหนือ",
+    area: "N-UP",
+    province: "เชียงใหม่",
     custGroup: "Hospital",
     channel: "Direct",
     monthlyTarget: 600000,
@@ -252,14 +257,14 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
       {
         code: "C010020",
         name: "Chiang Mai Ram Hospital",
-        prov: "Chiang Mai",
+        prov: "เชียงใหม่",
         group: "Hospital",
         status: "Active",
       },
       {
         code: "C010021",
         name: "Lanna Dental",
-        prov: "Chiang Mai",
+        prov: "เชียงใหม่",
         group: "Dental Clinic",
         status: "Active",
       },
@@ -289,9 +294,8 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
     office: "02-123-4570",
     email: "supavita.y@afactory.co.th",
     line: "vita_sale",
-    area: "Northeast",
-    province: "Khon Kaen",
-    region: "ภาคอีสาน",
+    area: "NE-MID",
+    province: "ขอนแก่น",
     custGroup: "Dental Clinic",
     channel: "Dealer",
     monthlyTarget: 350000,
@@ -306,7 +310,7 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
       {
         code: "C010030",
         name: "Khon Kaen Dental",
-        prov: "Khon Kaen",
+        prov: "ขอนแก่น",
         group: "Dental Clinic",
         status: "Active",
       },
@@ -336,9 +340,8 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
     office: "02-123-4571",
     email: "nattapong.s@afactory.co.th",
     line: "top_dealer",
-    area: "South",
-    province: "Phuket",
-    region: "ภาคใต้",
+    area: "S-LOW",
+    province: "ภูเก็ต",
     custGroup: "Dealer",
     channel: "Dealer",
     monthlyTarget: 450000,
@@ -353,7 +356,7 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
       {
         code: "C010040",
         name: "Phuket Dental Supply",
-        prov: "Phuket",
+        prov: "ภูเก็ต",
         group: "Dealer",
         status: "Active",
       },
@@ -383,9 +386,8 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
     office: "02-123-4572",
     email: "wasin.r@afactory.co.th",
     line: "win_sale",
-    area: "East",
-    province: "Chonburi",
-    region: "ภาคตะวันออก",
+    area: "EAST",
+    province: "ชลบุรี",
     custGroup: "Dental Clinic",
     channel: "Direct",
     monthlyTarget: 400000,
@@ -400,7 +402,7 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
       {
         code: "C010050",
         name: "Chonburi Dental",
-        prov: "Chonburi",
+        prov: "ชลบุรี",
         group: "Dental Clinic",
         status: "Active",
       },
@@ -430,9 +432,8 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
     office: "02-123-4573",
     email: "kanyarat.p@afactory.co.th",
     line: "karn_sale",
-    area: "West",
-    province: "Ratchaburi",
-    region: "ภาคตะวันตก",
+    area: "C-LOW",
+    province: "ราชบุรี",
     custGroup: "Dental Clinic",
     channel: "Direct",
     monthlyTarget: 350000,
@@ -447,7 +448,7 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
       {
         code: "C010060",
         name: "Ratchaburi Dental",
-        prov: "Ratchaburi",
+        prov: "ราชบุรี",
         group: "Dental Clinic",
         status: "Inactive",
       },
@@ -477,9 +478,8 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
     office: "02-123-4574",
     email: "teerapat.k@afactory.co.th",
     line: "tee_sale",
-    area: "Bangkok",
-    province: "Bangkok",
-    region: "ภาคกลาง",
+    area: "BKK3",
+    province: "กรุงเทพมหานคร",
     custGroup: "Dental Clinic",
     channel: "Direct",
     monthlyTarget: 300000,
@@ -494,7 +494,7 @@ export const SALES_REPRESENTATIVES: SalesRep[] = [
       {
         code: "C010070",
         name: "Sukhumvit Dental",
-        prov: "Bangkok",
+        prov: "กรุงเทพมหานคร",
         group: "Dental Clinic",
         status: "Active",
       },

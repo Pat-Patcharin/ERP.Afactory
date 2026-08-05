@@ -388,18 +388,12 @@ export const BP_ROLE_DEFS: BpRoleDef[] = [
   },
 ];
 
-export const PROVINCES = [
-  "กรุงเทพมหานคร",
-  "สมุทรปราการ",
-  "นนทบุรี",
-  "ปทุมธานี",
-  "ชลบุรี",
-  "เชียงใหม่",
-  "ขอนแก่น",
-  "สงขลา",
-  "ภูเก็ต",
-  "นครราชสีมา",
-] as const;
+/**
+ * Provinces come from the sales area master so an address can always be
+ * resolved to a territory. Re-exported here because partner, warehouse and
+ * sales rep forms have always imported the list from this module.
+ */
+export { PROVINCES } from "./sales-areas";
 
 export const PAY_TERMS = [
   "เงินสด",
@@ -543,7 +537,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
       bizType: "นิติบุคคล",
       custLevel: "Gold",
       priceGroup: "Retail",
-      territory: "กรุงเทพฯ-ปริมณฑล",
+      territory: "BKK3 สมุทรปราการ",
       channel: "Direct Sales",
     },
     tax: {
@@ -631,7 +625,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
     sales: {
       rep: "SRE001 - สมชาย ใจดี",
       team: "ทีมกรุงเทพฯ",
-      territory: "กรุงเทพฯ-ปริมณฑล",
+      territory: "BKK3 สมุทรปราการ",
       channel: "Direct Sales",
       custGroup: "คลินิกทั่วไป",
       priceList: "Retail 2569",
@@ -809,7 +803,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
       bizType: "นิติบุคคล",
       custLevel: "Silver",
       priceGroup: "Retail",
-      territory: "ภาคกลาง",
+      territory: "BKK1 ฝั่งธน",
       channel: "Direct Sales",
     },
     tax: {
@@ -864,7 +858,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
     sales: {
       rep: "SRE002 - สุภาวิตา โยธะพันธ์",
       team: "ทีมกรุงเทพฯ",
-      territory: "ภาคกลาง",
+      territory: "BKK1 ฝั่งธน",
       channel: "Direct Sales",
       custGroup: "คลินิกทั่วไป",
       priceList: "Retail 2569",
@@ -971,7 +965,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
       bizType: "นิติบุคคล",
       custLevel: "",
       priceGroup: "",
-      territory: "",
+      territory: "BKK3 สมุทรปราการ",
       channel: "",
     },
     tax: {
@@ -1154,7 +1148,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
       bizType: "ห้างหุ้นส่วน",
       custLevel: "Platinum",
       priceGroup: "Dealer",
-      territory: "ภาคเหนือ",
+      territory: "เหนือบน",
       channel: "Dealer Network",
     },
     tax: {
@@ -1209,7 +1203,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
     sales: {
       rep: "SRE003 - ณัฐพล วงศ์ดี",
       team: "ทีมภาคเหนือ",
-      territory: "ภาคเหนือ",
+      territory: "เหนือบน",
       channel: "Dealer Network",
       custGroup: "ตัวแทนจำหน่าย",
       priceList: "Dealer 2569",
@@ -1306,7 +1300,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
       bizType: "หน่วยงานรัฐ",
       custLevel: "Gold",
       priceGroup: "Government",
-      territory: "กรุงเทพฯ-ปริมณฑล",
+      territory: "BKK2 นนทบุรี",
       channel: "Tender",
     },
     tax: {
@@ -1361,7 +1355,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
     sales: {
       rep: "SRE001 - สมชาย ใจดี",
       team: "ทีมราชการ",
-      territory: "กรุงเทพฯ-ปริมณฑล",
+      territory: "BKK2 นนทบุรี",
       channel: "Tender",
       custGroup: "โรงพยาบาลรัฐ",
       priceList: "Government 2569",
@@ -1444,7 +1438,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
       bizType: "บุคคลธรรมดา",
       custLevel: "Bronze",
       priceGroup: "Retail",
-      territory: "ภาคอีสาน",
+      territory: "อีสานกลาง",
       channel: "Direct Sales",
     },
     tax: {
@@ -1499,7 +1493,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
     sales: {
       rep: "SRE004 - ปิยนารถ เจริญทอง",
       team: "ทีมภาคอีสาน",
-      territory: "ภาคอีสาน",
+      territory: "อีสานกลาง",
       channel: "Direct Sales",
       custGroup: "ร้านค้าปลีก",
       priceList: "Retail 2569",
@@ -1582,7 +1576,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
       bizType: "นิติบุคคล",
       custLevel: "Silver",
       priceGroup: "Retail",
-      territory: "กรุงเทพฯ-ปริมณฑล",
+      territory: "BKK3 สมุทรปราการ",
       channel: "Direct Sales",
     },
     tax: {
@@ -1637,7 +1631,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
     sales: {
       rep: "SRE001 - สมชาย ใจดี",
       team: "ทีมกรุงเทพฯ",
-      territory: "กรุงเทพฯ-ปริมณฑล",
+      territory: "BKK3 สมุทรปราการ",
       channel: "Direct Sales",
       custGroup: "คลินิกทั่วไป",
       priceList: "Retail 2569",

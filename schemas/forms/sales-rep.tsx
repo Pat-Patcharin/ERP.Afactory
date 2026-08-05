@@ -1,15 +1,20 @@
 import {
-  SR_AREAS,
   SR_CHANNELS,
   SR_CUST_GROUPS,
   SR_DEPARTMENTS,
   SR_MANAGERS,
-  SR_REGIONS,
   SR_STATUS,
   SR_TEAMS,
   SR_TITLES,
 } from "@/data/sales-reps";
-import { PROVINCES } from "@/data/partners";
+import {
+  SALES_AREAS,
+  areaCoverage,
+  inSalesArea,
+  provincesOfArea,
+  salesArea,
+  salesAreaGroup,
+} from "@/data/sales-areas";
 import { validEmail, validPhone } from "@/lib/domain/partner";
 import {
   SALES_REPRESENTATIVES,
@@ -47,6 +52,11 @@ const WH_ACCESS = ["ทุกคลัง", "WH-BKK", "WH-CNX", "WH-SVC"];
 
 const isResigned = (s: { status?: string }) => s.status === "Resigned";
 
+/** "BKK1 ฝั่งธน" in the dropdown, "BKK1" in the record. */
+const AREA_OPTIONS = SALES_AREAS.map((a) => ({ value: a.code, label: a.name }));
+
+const str = (v: unknown) => String(v ?? "").trim();
+
 export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
   key: "sales-rep",
   entityLabel: "Sales Representative",
@@ -82,7 +92,6 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
     line: "",
     area: "",
     province: "",
-    region: "",
     custGroup: "",
     channel: "Direct",
     monthlyTarget: 0,
@@ -117,7 +126,6 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
     line: r.line,
     area: r.area,
     province: r.province,
-    region: r.region,
     custGroup: r.custGroup,
     channel: r.channel,
     monthlyTarget: r.monthlyTarget,
@@ -244,7 +252,10 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
       label: "Territory",
       railLabel: "เขตการขาย",
       labelTh: "พื้นที่และกลุ่มลูกค้า",
-      blocks: () => [
+      /* The area is picked first and then narrows the province list, so a rep
+         cannot end up based in a province their area does not own. Blocks are
+         a function of state precisely so this can depend on the area. */
+      blocks: (s) => [
         {
           type: "card",
           title: "Coverage",
@@ -255,10 +266,28 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
               path: "area",
               label: "Sales Area",
               required: true,
-              options: opts(SR_AREAS),
+              options: AREA_OPTIONS,
+              hint: "เลือกเขตก่อน แล้วรายการจังหวัดจะถูกกรองตามเขต",
             },
-            { type: "select", path: "province", label: "Base Province", options: opts(PROVINCES) },
-            { type: "select", path: "region", label: "Region", options: opts(SR_REGIONS) },
+            {
+              type: "select",
+              path: "province",
+              label: "Base Province",
+              /* Without an area chosen the full list is the honest answer;
+                 with one, only the provinces that area owns. */
+              options: opts(provincesOfArea(str(s.area))),
+            },
+            {
+              type: "static",
+              label: "Area Group",
+              value: (st) => salesAreaGroup(str(st.area))?.name ?? "—",
+            },
+            {
+              type: "static",
+              label: "พื้นที่ที่เขตนี้ครอบคลุม",
+              value: (st) => areaCoverage(str(st.area)) || "—",
+              hint: "มาจาก Sales Area Master",
+            },
             { type: "select", path: "custGroup", label: "Customer Group", options: opts(SR_CUST_GROUPS) },
             { type: "select", path: "channel", label: "Sales Channel", options: opts(SR_CHANNELS) },
             { type: "select", path: "prodCat", label: "Product Category", options: PROD_CATS },
@@ -392,6 +421,16 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
       test: (s) => validPhone(String(s.mobile ?? "")),
     },
     {
+      label: "เขตการขายต้องมีอยู่ใน Sales Area Master",
+      step: "territory",
+      test: (s) => !s.area || Boolean(salesArea(str(s.area))),
+    },
+    {
+      label: "จังหวัดฐานต้องอยู่ในเขตที่รับผิดชอบ",
+      step: "territory",
+      test: (s) => !s.area || !s.province || inSalesArea(str(s.area), str(s.province)),
+    },
+    {
       label: "เป้าไตรมาสต้องไม่น้อยกว่าเป้าเดือน",
       step: "targets",
       test: (s) => !num(s.quarterTarget) || num(s.quarterTarget) >= num(s.monthlyTarget),
@@ -430,22 +469,48 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
     const annual = num(s.annualTarget);
     const consistent = !annual || annual >= monthly * 6;
 
+    const area = salesArea(str(s.area));
+    const province = str(s.province);
+    const provinceFits = !area || !province || inSalesArea(area.code, province);
+
     return (
-      <RailCard icon="salesRep" title="Target Sanity Check" tone={consistent ? "default" : "warn"}>
-        <RailRow label="เป้าเดือน" value={monthly ? money0(monthly) : "—"} />
-        <RailRow label="เป้าไตรมาส" value={num(s.quarterTarget) ? money0(s.quarterTarget) : "—"} />
-        <RailRow label="เป้าปี" value={annual ? money0(annual) : "—"} />
-        <RailRow label="เพดานส่วนลด" value={`${num(s.discountLimit)}%`} />
-        <RailRow
-          label="วงเงินอนุมัติ"
-          value={num(s.approvalLimit) ? money0(s.approvalLimit) : "ไม่จำกัด"}
-        />
-        {!consistent && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            เป้าปีต่ำกว่า 6 เท่าของเป้าเดือน — ตรวจสอบว่ากรอกหน่วยถูกต้องหรือไม่
-          </p>
-        )}
-      </RailCard>
+      <>
+        <RailCard
+          icon="mapPin"
+          title="Sales Area"
+          tone={area && !provinceFits ? "warn" : "default"}
+        >
+          <RailRow label="เขต" value={area?.name ?? "ยังไม่ได้เลือก"} />
+          <RailRow label="กลุ่ม" value={salesAreaGroup(str(s.area))?.short ?? "—"} />
+          <RailRow label="จังหวัดในเขต" value={area ? String(area.provinces.length) : "—"} />
+          <RailRow
+            label="เขต กทม."
+            value={area?.districts.length ? String(area.districts.length) : "—"}
+          />
+          <RailRow label="จังหวัดฐาน" value={province || "—"} />
+          {area && !provinceFits && (
+            <p className="mt-3 text-cap leading-relaxed text-warning-text">
+              {province} ไม่ได้อยู่ในเขต {area.name} — เลือกเขตใหม่หรือเปลี่ยนจังหวัดฐาน
+            </p>
+          )}
+        </RailCard>
+
+        <RailCard icon="salesRep" title="Target Sanity Check" tone={consistent ? "default" : "warn"}>
+          <RailRow label="เป้าเดือน" value={monthly ? money0(monthly) : "—"} />
+          <RailRow label="เป้าไตรมาส" value={num(s.quarterTarget) ? money0(s.quarterTarget) : "—"} />
+          <RailRow label="เป้าปี" value={annual ? money0(annual) : "—"} />
+          <RailRow label="เพดานส่วนลด" value={`${num(s.discountLimit)}%`} />
+          <RailRow
+            label="วงเงินอนุมัติ"
+            value={num(s.approvalLimit) ? money0(s.approvalLimit) : "ไม่จำกัด"}
+          />
+          {!consistent && (
+            <p className="mt-3 text-cap leading-relaxed text-warning-text">
+              เป้าปีต่ำกว่า 6 เท่าของเป้าเดือน — ตรวจสอบว่ากรอกหน่วยถูกต้องหรือไม่
+            </p>
+          )}
+        </RailCard>
+      </>
     );
   },
 
@@ -473,9 +538,8 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
       office: String(s.office ?? ""),
       email: String(s.email ?? ""),
       line: String(s.line ?? ""),
-      area: String(s.area ?? ""),
-      province: String(s.province ?? ""),
-      region: String(s.region ?? ""),
+      area: str(s.area),
+      province: str(s.province),
       custGroup: String(s.custGroup ?? ""),
       channel: String(s.channel ?? ""),
       monthlyTarget: num(s.monthlyTarget),

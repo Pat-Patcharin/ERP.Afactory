@@ -816,7 +816,7 @@ describe("BP Master — list view", () => {
    ============================================================ */
 
 describe("BP Master — More Filters drawer", () => {
-  const ADVANCED = ["custType", "supType", "bizType", "size"];
+  const ADVANCED = ["salesArea", "custType", "supType", "bizType", "size"];
 
   it("keeps only the everyday filters on the toolbar", () => {
     const quick = list.filters.filter((f) => !f.advanced).map((f) => f.id);

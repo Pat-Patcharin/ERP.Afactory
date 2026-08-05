@@ -22,6 +22,7 @@ import {
   SUPPLIER_STATUSES,
   SUPPLIER_TYPES,
 } from "@/data/partners";
+import { SALES_AREA_NAMES, resolveSalesArea } from "@/data/sales-areas";
 import { PRODUCTS } from "@/lib/domain/product";
 import { PO_CURRENCIES, PO_INCOTERMS, PO_BUYERS } from "@/data/purchase-orders";
 import {
@@ -41,7 +42,7 @@ import {
 } from "@/lib/domain/partner";
 import { BILLING_ADDRESS_TYPES, DELIVERY_ADDRESS_TYPES } from "@/data/partners";
 import { money0, stamp, toDisplayDate, toInputDate } from "@/lib/format";
-import type { FormSchema, GridRow } from "@/lib/types";
+import type { FormSchema, FormState, GridRow } from "@/lib/types";
 import { FORM_USER, opts, saved } from "./common";
 
 /* ============================================================
@@ -66,7 +67,25 @@ const BRANCH_TYPES = ["สำนักงานใหญ่", "สาขา"];
 const CUST_GROUPS = ["คลินิกทั่วไป", "คลินิกเฉพาะทาง", "โรงพยาบาล", "ตัวแทนจำหน่าย", "หน่วยงานราชการ", "มหาวิทยาลัย"];
 const SUP_GROUPS = ["วัสดุสิ้นเปลือง", "เครื่องมือแพทย์", "อะไหล่", "บริการ", "ขนส่ง"];
 const PRICE_GROUPS = ["Retail", "Dealer", "Government", "Chain Clinic", "Contract"];
-const TERRITORIES = ["กรุงเทพฯ-ปริมณฑล", "ภาคกลาง", "ภาคเหนือ", "ภาคอีสาน", "ภาคใต้", "ภาคตะวันออก"];
+/* Territory options come from the sales area master so a partner is filed
+   under the same 14 areas the reps are assigned to. The old six broad regions
+   could not be matched against a rep's area at all. */
+const TERRITORIES = SALES_AREA_NAMES;
+
+/**
+ * The area the partner's billing address falls in, read live off the address
+ * rows in form state. Shown next to Territory rather than written into it —
+ * a head office in Bangkok served by an upcountry rep is a real arrangement,
+ * so the address suggests and the user decides.
+ */
+function suggestedArea(s: FormState): string {
+  const rows = Array.isArray(s.addresses) ? (s.addresses as Record<string, unknown>[]) : [];
+  const billing = rows.find((a) => a.billingPrimary) ?? rows[0];
+  if (!billing) return "";
+  return (
+    resolveSalesArea(String(billing.prov ?? ""), String(billing.dist ?? ""))?.name ?? ""
+  );
+}
 const CHANNELS = ["Direct Sales", "Dealer", "Online", "Government", "Export"];
 /* Address types now come from the master list so the form, the detail page
    and the validator agree on which of them can carry a billing default. */
@@ -365,6 +384,12 @@ export const BP_FORM: FormSchema<BpRow> = {
               when: isCustomer,
             },
             { type: "select", path: "cls.territory", label: "Territory", options: TERRITORIES },
+            {
+              type: "static",
+              label: "เขตตามที่อยู่ออกบิล",
+              value: (s) => suggestedArea(s) || "— ระบุจังหวัด/เขตในที่อยู่ก่อน",
+              hint: "จาก Sales Area Master — ใช้เทียบกับ Territory ที่เลือก",
+            },
             { type: "select", path: "cls.channel", label: "Sales Channel", options: CHANNELS },
           ],
         },
@@ -741,6 +766,12 @@ export const BP_FORM: FormSchema<BpRow> = {
               options: opts(SALES_REPS),
             },
             { type: "select", path: "sales.territory", label: "Territory", options: TERRITORIES },
+            {
+              type: "static",
+              label: "เขตตามที่อยู่ออกบิล",
+              value: (s) => suggestedArea(s) || "— ระบุจังหวัด/เขตในที่อยู่ก่อน",
+              hint: "จาก Sales Area Master",
+            },
             { type: "select", path: "sales.channel", label: "Sales Channel", options: CHANNELS },
             { type: "text", path: "sales.priceList", label: "Price List", placeholder: "Retail 2569" },
             { type: "text", path: "sales.discGroup", label: "Discount Group", placeholder: "Gold 5%" },

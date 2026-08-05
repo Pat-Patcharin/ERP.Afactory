@@ -42,6 +42,7 @@ import {
   SALES_REPS,
   SUPPLIER_TYPES,
 } from "@/data/partners";
+import { SALES_AREA_NAMES } from "@/data/sales-areas";
 import { BP_TONE, CREDIT_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
 import { checkPermission, maskAccount } from "@/lib/permissions";
@@ -484,6 +485,17 @@ export const BP_LIST: ListSchema<BpRow> = {
       test: (b, v) => b.salesRep === v,
     },
     {
+      id: "salesArea",
+      advanced: true,
+      label: "Sales Area",
+      /* Every area, so the filter also answers "who do we have in ใต้ล่าง?"
+         with an empty table rather than an absent option. Province is the
+         everyday geographic filter; area is a management view, so it belongs
+         in the drawer rather than on the toolbar. */
+      options: () => [...SALES_AREA_NAMES],
+      test: (b, v) => b.salesArea === v,
+    },
+    {
       id: "credit",
       label: "Credit Status",
       options: () => [...CREDIT_STATUS],
@@ -566,7 +578,19 @@ export const BP_LIST: ListSchema<BpRow> = {
       key: "salesArea",
       label: "Sale Area",
       muted: true,
-      cell: (b) => b.salesArea,
+      /* A territory that contradicts the billing address is how a partner
+         ends up invoiced by one rep and visited by another. */
+      cell: (b) =>
+        b.salesAreaMismatch ? (
+          <span
+            className="font-semibold text-warning-text"
+            title={`ที่อยู่ออกบิลอยู่ในเขต ${b.salesAreaFromAddress}`}
+          >
+            {b.salesArea}
+          </span>
+        ) : (
+          b.salesArea
+        ),
     },
     {
       key: "creditStatus",
@@ -1051,6 +1075,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               { label: "Price List", value: b.customer?.priceList ?? DASH },
               { label: "Currency", value: b.supplier?.currency ?? "THB" },
               { label: "Sale Area", value: b.salesArea },
+              { label: "เขตตามที่อยู่ออกบิล", value: b.salesAreaFromAddress },
             ],
           },
 
@@ -1141,6 +1166,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
               { label: "Sales Representative", value: c.rep },
               { label: "Default Price List", value: c.priceList },
               { label: "Sale Area", value: b.salesArea },
+              { label: "เขตตามที่อยู่ออกบิล", value: b.salesAreaFromAddress },
             ],
           },
 

@@ -1,4 +1,9 @@
-import { SALES_REPRESENTATIVES, decorateSRs, type SalesRepRow } from "@/lib/domain/sales";
+import {
+  SALES_REPRESENTATIVES,
+  areaCoverageRows,
+  decorateSRs,
+  type SalesRepRow,
+} from "@/lib/domain/sales";
 import {
   SR_AREAS,
   SR_DEPARTMENTS,
@@ -7,6 +12,12 @@ import {
   SR_TEAMS,
   SR_TEAM_COLOR,
 } from "@/data/sales-reps";
+import {
+  SALES_AREA_GROUPS,
+  inSalesArea,
+  salesArea,
+  salesAreaName,
+} from "@/data/sales-areas";
 import { SR_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money0 } from "@/lib/format";
 import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
@@ -52,7 +63,17 @@ export const SR_LIST: ListSchema<SalesRepRow> = {
   emptyTitle: "ไม่พบพนักงานขายที่ตรงกับเงื่อนไข",
 
   source: () => SALES_REPRESENTATIVES,
-  searchFields: ["code", "empId", "name", "nick", "mobile", "email", "area", "province"],
+  searchFields: [
+    "code",
+    "empId",
+    "name",
+    "nick",
+    "mobile",
+    "email",
+    "area",
+    "areaName",
+    "province",
+  ],
 
   hero: () => {
     const reps = SALES_REPRESENTATIVES;
@@ -60,7 +81,13 @@ export const SR_LIST: ListSchema<SalesRepRow> = {
     const totalCust = reps.reduce((s, r) => s + (Number(r.custCount) || 0), 0);
     const totalTarget = active.reduce((s, r) => s + (Number(r.monthlyTarget) || 0), 0);
     const teams = new Set(reps.map((r) => r.team).filter(Boolean)).size;
-    const areas = new Set(reps.map((r) => r.area).filter(Boolean)).size;
+
+    /* Coverage is measured against the territory master, not against the
+       areas that happen to appear on a rep record — an area nobody works is
+       exactly the number a sales manager is looking for. */
+    const coverage = areaCoverageRows();
+    const covered = coverage.filter((c) => c.activeReps.length > 0).length;
+    const gaps = coverage.length - covered;
 
     return {
       banner: {
@@ -70,7 +97,7 @@ export const SR_LIST: ListSchema<SalesRepRow> = {
           `${reps.length} sales reps`,
           `${active.length} active`,
           `${teams} teams`,
-          `${areas} areas`,
+          `${covered}/${coverage.length} เขตมีเซลล์ดูแล`,
           `${totalCust} customers assigned`,
         ],
         stamp: "Master data — ยังไม่ผูกข้อมูลยอดขาย",
@@ -92,7 +119,13 @@ export const SR_LIST: ListSchema<SalesRepRow> = {
           goTab: "active",
         },
         { label: "Teams", value: fmt(teams), sub: "ทีมขาย", icon: "layers" },
-        { label: "Areas Covered", value: fmt(areas), sub: "พื้นที่รับผิดชอบ", icon: "mapPin" },
+        {
+          label: "Sales Areas",
+          value: `${covered}/${coverage.length}`,
+          sub: gaps ? `ยังไม่มีเซลล์ ${gaps} เขต` : "ครอบคลุมครบทุกเขต",
+          tone: gaps ? "warn" : "ok",
+          icon: "mapPin",
+        },
         {
           label: "Customers",
           value: fmt(totalCust),
@@ -113,7 +146,23 @@ export const SR_LIST: ListSchema<SalesRepRow> = {
 
   filters: [
     { id: "team", label: "Team", options: () => [...SR_TEAMS], test: (r, v) => r.team === v },
-    { id: "area", label: "Area", options: () => [...SR_AREAS], test: (r, v) => r.area === v },
+    {
+      id: "area",
+      label: "Sales Area",
+      /* Every area in the master, not just the ones already staffed, so the
+         filter can be used to confirm an area has nobody in it. */
+      options: () => SR_AREAS.map(salesAreaName),
+      test: (r, v) => r.areaName === v,
+    },
+    {
+      id: "areaGroup",
+      advanced: true,
+      label: "Area Group",
+      /* Rolls the 14 areas up into the three groupings. Wanted occasionally,
+         so it sits in the drawer and leaves the toolbar as it was. */
+      options: () => SALES_AREA_GROUPS.map((g) => g.short),
+      test: (r, v) => r.areaGroup === v,
+    },
     {
       id: "province",
       label: "Province",
@@ -151,8 +200,33 @@ export const SR_LIST: ListSchema<SalesRepRow> = {
       ),
     },
     { key: "team", label: "Team", cell: (r) => r.team },
-    { key: "area", label: "Area", cell: (r) => r.area },
-    { key: "province", label: "Province", muted: true, cell: (r) => r.province },
+    {
+      key: "area",
+      label: "Sales Area",
+      sortable: true,
+      sortValue: (r) => r.areaName,
+      cell: (r) => (
+        <>
+          {r.areaName}
+          <CellSub>{r.areaGroup}</CellSub>
+        </>
+      ),
+    },
+    {
+      key: "province",
+      label: "Base Province",
+      muted: true,
+      /* A province the area does not own is a data error worth surfacing in
+         the list rather than only inside the form. */
+      cell: (r) =>
+        r.areaMatchesProvince ? (
+          r.province
+        ) : (
+          <span className="font-semibold text-warning-text" title="จังหวัดไม่อยู่ในเขตที่รับผิดชอบ">
+            {r.province}
+          </span>
+        ),
+    },
     { key: "manager", label: "Manager", muted: true, cell: (r) => r.manager },
     {
       key: "mobile",
@@ -256,12 +330,19 @@ export const SR_DETAIL: DetailSchema<SalesRepRow> = {
       { text: r.status, tone: tone(SR_TONE, r.status) },
       { text: r.team, tone: "neutral" },
     ],
-    tags: [r.area, r.province, `Manager: ${r.manager}`].filter(Boolean),
+    tags: [r.areaName, r.areaGroup, r.province, `Manager: ${r.manager}`].filter(Boolean),
   }),
 
   kpis: (r) => [
     { icon: "partner", label: "Customers", value: fmt(r.custCount), sub: "ราย", goTab: "customers" },
-    { icon: "mapPin", label: "Territory", value: r.area, sub: r.province, wide: true },
+    {
+      icon: "mapPin",
+      label: "Sales Area",
+      value: r.areaName,
+      sub: r.areaCoverage || r.province,
+      wide: true,
+      goTab: "territory",
+    },
     {
       icon: "pricing",
       label: "Monthly Target",
@@ -322,9 +403,19 @@ export const SR_DETAIL: DetailSchema<SalesRepRow> = {
           title: "Sales Territory",
           cols: 2,
           items: [
-            { label: "Area", value: r.area },
-            { label: "Province", value: r.province },
-            { label: "Region", value: r.region },
+            { label: "Sales Area", value: r.areaName },
+            { label: "Area Group", value: r.areaGroup },
+            {
+              label: "Base Province",
+              value: r.areaMatchesProvince ? (
+                r.province
+              ) : (
+                <span className="font-semibold text-warning-text">
+                  {r.province || DASH} — ไม่อยู่ในเขตนี้
+                </span>
+              ),
+            },
+            { label: "Coverage", value: r.areaCoverage || DASH },
             { label: "Customer Group", value: r.custGroup },
             { label: "Sales Channel", value: r.channel },
             { label: "Monthly Target", value: `฿${money0(r.monthlyTarget)}` },
@@ -347,6 +438,90 @@ export const SR_DETAIL: DetailSchema<SalesRepRow> = {
     },
 
     {
+      key: "territory",
+      label: "Territory",
+      /* The area master spelled out, so a rep's coverage can be checked
+         without opening the territory sheet next to the screen. */
+      blocks: (r) => {
+        const area = salesArea(r.area);
+        if (!area) {
+          return [
+            {
+              type: "fields",
+              title: "Sales Territory",
+              cols: 1,
+              items: [{ label: "Sales Area", value: `${r.area || DASH} — ไม่พบเขตนี้ในระบบ` }],
+            },
+          ];
+        }
+
+        const peers = SALES_REPRESENTATIVES.filter(
+          (x) => x.area === area.code && x.code !== r.code,
+        );
+
+        return [
+          {
+            type: "fields",
+            title: `${area.name} — ${r.areaGroup}`,
+            cols: 2,
+            items: [
+              { label: "Area Code", value: area.code },
+              { label: "Coverage", value: r.areaCoverage || DASH },
+              { label: "Base Province", value: r.province || DASH },
+              { label: "Reps in this area", value: fmt(peers.length + 1) },
+            ],
+          },
+          {
+            type: "table",
+            title: `จังหวัดที่รับผิดชอบ (${area.provinces.length})`,
+            rows: area.provinces.map((p) => ({ prov: p, base: p === r.province })),
+            empty: "เขตนี้แบ่งตามเขต กทม. ไม่ได้ถือจังหวัดเต็ม",
+            cols: [
+              {
+                key: "prov",
+                label: "จังหวัด",
+                cell: (p) => (p.base ? <span className="font-semibold">{p.prov}</span> : p.prov),
+              },
+              {
+                key: "base",
+                label: "",
+                cell: (p) => (p.base ? <Badge tone="info">ฐานประจำ</Badge> : null),
+              },
+            ],
+          },
+          ...(area.districts.length
+            ? [
+                {
+                  type: "table" as const,
+                  title: `เขต กทม. ที่รับผิดชอบ (${area.districts.length})`,
+                  rows: area.districts.map((d) => ({ dist: d })),
+                  empty: "",
+                  cols: [{ key: "dist", label: "เขต" }],
+                },
+              ]
+            : []),
+          {
+            type: "table",
+            title: `เซลล์อื่นในเขตเดียวกัน (${peers.length})`,
+            rows: peers,
+            empty: "ไม่มีเซลล์คนอื่นในเขตนี้",
+            cols: [
+              { key: "code", label: "Sales Rep", cell: (p) => <span className="tnum">{p.code}</span> },
+              { key: "name", label: "Name", cell: (p) => <span className="font-medium">{p.name}</span> },
+              { key: "team", label: "Team", muted: true },
+              { key: "province", label: "Base Province", muted: true },
+              {
+                key: "status",
+                label: "Status",
+                cell: (p) => <Badge tone={tone(SR_TONE, p.status)}>{p.status}</Badge>,
+              },
+            ],
+          },
+        ];
+      },
+    },
+
+    {
       key: "customers",
       label: "Customers",
       blocks: (r) => [
@@ -358,7 +533,21 @@ export const SR_DETAIL: DetailSchema<SalesRepRow> = {
           cols: [
             { key: "code", label: "Customer Code", cell: (c) => <span className="tnum">{c.code}</span> },
             { key: "name", label: "Customer Name", cell: (c) => <span className="font-medium">{c.name}</span> },
-            { key: "prov", label: "Province", muted: true },
+            {
+              key: "prov",
+              label: "Province",
+              muted: true,
+              /* A customer outside the rep's area is legitimate but worth
+                 seeing — it is how a territory quietly drifts. */
+              cell: (c) =>
+                inSalesArea(r.area, c.prov) ? (
+                  c.prov
+                ) : (
+                  <span className="text-warning-text" title="อยู่นอกเขตที่รับผิดชอบ">
+                    {c.prov}
+                  </span>
+                ),
+            },
             { key: "group", label: "Customer Group" },
             {
               key: "status",
@@ -371,7 +560,6 @@ export const SR_DETAIL: DetailSchema<SalesRepRow> = {
         },
       ],
     },
-
   ],
 };
 

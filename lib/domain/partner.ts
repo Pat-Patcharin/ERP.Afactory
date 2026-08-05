@@ -17,6 +17,7 @@ import {
   SUPPLIER_ITEMS,
   SUPPLIER_SEED,
 } from "@/data/partner-profiles";
+import { resolveSalesArea } from "@/data/sales-areas";
 /* The decorated master, not the raw file: the price list master folds in
    there, so a supplier item naming a catalogue product still finds its unit. */
 import { PRODUCTS } from "./product";
@@ -68,6 +69,16 @@ export interface BpRow extends BusinessPartner {
   riskLevel: string;
   /** Sales territory — from the sales block, falling back to classification. */
   salesArea: string;
+  /**
+   * The area the billing address actually falls in, read off the territory
+   * master. Kept separate from `salesArea` (which is what someone typed on
+   * the record) so the two can be compared instead of one overwriting the
+   * other. DASH when the address is too thin to place — most often a Bangkok
+   * address with no district.
+   */
+  salesAreaFromAddress: string;
+  /** True when the recorded territory disagrees with the address. */
+  salesAreaMismatch: boolean;
   creditLimit: number;
   creditUsed: number;
   availableCredit: number;
@@ -331,6 +342,13 @@ export function decorateBPs() {
     bp.businessType = bp.customer?.bizType ?? bp.cls?.bizType ?? DASH;
     bp.riskLevel = bp.customer?.risk ?? DASH;
     bp.salesArea = bp.sales?.territory || bp.cls?.territory || DASH;
+
+    const placed = billing ? resolveSalesArea(billing.prov, billing.dist) : null;
+    bp.salesAreaFromAddress = placed?.name ?? DASH;
+    /* Only a disagreement counts — an unplaceable address or a blank
+       territory is incomplete data, not a contradiction. */
+    bp.salesAreaMismatch =
+      Boolean(placed) && bp.salesArea !== DASH && bp.salesArea !== placed!.name;
     bp.creditLimit = bp.credit?.limit ?? 0;
     bp.creditUsed = bp.credit?.outstanding ?? 0;
     bp.availableCredit = Math.max(0, bp.creditLimit - bp.creditUsed);
