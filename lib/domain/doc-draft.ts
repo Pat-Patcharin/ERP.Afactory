@@ -1,5 +1,5 @@
 import { COMPANY } from "@/data/admin";
-import { currentUser, getRole } from "./admin";
+import { currentUser, getRole, getRoles } from "./admin";
 import { PAY_TERMS } from "@/data/partners";
 import { QT_CHANNELS, QT_PRICE_LISTS } from "@/data/quotations";
 import { PRODUCTS, productStock } from "./product";
@@ -442,6 +442,22 @@ export const maySignAt = (level: string): boolean => {
   if (getRole(code)?.all) return true;
   return level !== "manager" || MANAGER_ROLES.includes(code);
 };
+
+/**
+ * The same question asked of every role rather than of the acting user —
+ * which is what an approval request needs before it knows where to go.
+ *
+ * Sending a manager-level document to everyone who may approve the module
+ * would put it in front of people who will be refused at the button, and
+ * being asked to do something you cannot do is how a notification bell stops
+ * being read.
+ */
+export const rolesSigningAt = (level: string): string[] =>
+  getRoles()
+    .filter(
+      (r) => r.status === "Active" && (r.all || level !== "manager" || MANAGER_ROLES.includes(r.code)),
+    )
+    .map((r) => r.code);
 
 /** How the refusal reads. One wording, so every surface says the same thing. */
 export const MANAGER_ONLY_REASON =

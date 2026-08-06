@@ -1,7 +1,13 @@
 import { actingUserName, can, currentRole, currentUser, getRole } from "./domain/admin";
 import { useState } from "react";
 import { docDiscTotal, docGrandTotal, docSubtotal, docTaxTotal } from "./domain/lines";
-import { MANAGER_ONLY_REASON, maySignAt, priceApproval } from "./domain/doc-draft";
+import {
+  MANAGER_ONLY_REASON,
+  maySignAt,
+  priceApproval,
+  rolesSigningAt,
+} from "./domain/doc-draft";
+import { notify, rolesWhoMay } from "./domain/notify";
 import { fmt, money0, stamp } from "./format";
 import type { ActionCtx } from "./types";
 import {
@@ -62,6 +68,27 @@ function commit(ctx: ActionCtx, title: string, message: string, tone: "success" 
   ctx.refresh();
   ctx.toast(title, message, tone);
 }
+
+/* ============================================================
+   TELLING THE NEXT PERSON
+
+   Every send below sits inside the function that changes the
+   status, never inside a button: there are three surfaces per
+   transition — the list row, the detail menu, the workspace —
+   and one function.
+
+   Who receives it is read from the permission matrix, and for a
+   price under the floor also from the level, so an approval
+   request never lands with somebody who will be refused at the
+   button. Nobody is told their own news; that is enforced when
+   the inbox is read. See lib/domain/notify.ts.
+   ============================================================ */
+
+/** Roles that may approve this module AND may sign at this price level. */
+const approversFor = (moduleKey: string, level = "admin") => {
+  const signing = rolesSigningAt(level);
+  return rolesWhoMay(moduleKey, "approve").filter((r) => signing.includes(r));
+};
 
 /* ============================================================
    WHO MAY DO WHAT
@@ -181,6 +208,17 @@ export function qtSubmit(qt: QtRow, ctx: ActionCtx) {
       : "ส่งขออนุมัติภายใน",
     "info",
   );
+  notify({
+    kind: price.level === "manager" ? "escalated" : "approval_request",
+    docType: "quotation",
+    docCode: qt.code,
+    title: `ใบเสนอราคา ${qt.code} รออนุมัติ`,
+    body:
+      price.level === "manager"
+        ? `${qt.customer} — ${price.flagged.length} รายการต่ำกว่าราคาขั้นต่ำ ต้องให้ผู้จัดการอนุมัติ`
+        : `${qt.customer} — มูลค่า ${money0(qt.amount)} บาท`,
+    toRoles: approversFor("quotation", price.level),
+  });
   commit(
     ctx,
     "ส่งขออนุมัติแล้ว",
@@ -237,6 +275,14 @@ export function qtApprove(qt: QtRow, ctx: ActionCtx) {
       qt.updated = now;
       qt.updatedBy = USER();
       log(qt, "Approved", `อนุมัติภายในโดย ${USER()}`);
+      notify({
+        kind: "approved",
+        docType: "quotation",
+        docCode: qt.code,
+        title: `${qt.code} อนุมัติแล้ว`,
+        body: `อนุมัติภายในโดย ${USER()} — ส่งให้ลูกค้าได้`,
+        toUser: qt.createdBy,
+      });
       commit(ctx, "อนุมัติใบเสนอราคาแล้ว", `${qt.code} — พร้อมส่งให้ลูกค้า`);
     },
   });
@@ -283,6 +329,14 @@ export function qtRejectApproval(qt: QtRow, ctx: ActionCtx) {
       qt.updated = stamp();
       qt.updatedBy = USER();
       log(qt, "Rejected", `ไม่อนุมัติ: ${note}`, "warn");
+      notify({
+        kind: "rejected",
+        docType: "quotation",
+        docCode: qt.code,
+        title: `${qt.code} ไม่ผ่านการอนุมัติ`,
+        body: note,
+        toUser: qt.createdBy,
+      });
       commit(ctx, "ไม่อนุมัติใบเสนอราคา", `${qt.code} — ${note}`, "danger");
     },
   });
@@ -330,6 +384,14 @@ export function qtRequestRevision(qt: QtRow, ctx: ActionCtx) {
       qt.updated = stamp();
       qt.updatedBy = USER();
       log(qt, "Revision requested", note, "warn");
+      notify({
+        kind: "revision_requested",
+        docType: "quotation",
+        docCode: qt.code,
+        title: `${qt.code} ถูกส่งกลับให้แก้ไข`,
+        body: note,
+        toUser: qt.createdBy,
+      });
       commit(ctx, "ส่งกลับให้แก้ไขแล้ว", `${qt.code} — ${note}`, "warning");
     },
   });
@@ -681,6 +743,17 @@ export function srSubmit(sr: SrRow, ctx: ActionCtx) {
       : "ส่งขออนุมัติภายใน",
     "info",
   );
+  notify({
+    kind: price.level === "manager" ? "escalated" : "approval_request",
+    docType: "sales-request",
+    docCode: sr.code,
+    title: `คำขอขาย ${sr.code} รออนุมัติ`,
+    body:
+      price.level === "manager"
+        ? `${sr.customer} — ${price.flagged.length} รายการต่ำกว่าราคาขั้นต่ำ ต้องให้ผู้จัดการอนุมัติ`
+        : `${sr.customer} — มูลค่า ${money0(sr.amount)} บาท`,
+    toRoles: approversFor("sales-request", price.level),
+  });
   commit(
     ctx,
     "ส่งขออนุมัติแล้ว",
@@ -740,6 +813,14 @@ export function srApprove(sr: SrRow, ctx: ActionCtx) {
           ? `อนุมัติภายในโดย ${USER()} — เครดิตอยู่ในวงเงิน`
           : `อนุมัติภายในโดย ${USER()} — เกินวงเงิน ${money0(credit.overBy)} บาท`,
       );
+      notify({
+        kind: "approved",
+        docType: "sales-request",
+        docCode: sr.code,
+        title: `${sr.code} อนุมัติแล้ว`,
+        body: `อนุมัติภายในโดย ${USER()} — แปลงเป็นใบสั่งขายได้`,
+        toUser: sr.createdBy,
+      });
       commit(ctx, "อนุมัติคำขอขายแล้ว", `${sr.code} — พร้อมแปลงเป็นใบสั่งขาย`);
     },
   });
@@ -759,6 +840,14 @@ export function srReject(sr: SrRow, ctx: ActionCtx) {
       sr.updated = stamp();
       sr.updatedBy = USER();
       log(sr, "Rejected", `ไม่อนุมัติ: ${sr.rejectReason}`, "warn");
+      notify({
+        kind: "rejected",
+        docType: "sales-request",
+        docCode: sr.code,
+        title: `${sr.code} ไม่ผ่านการอนุมัติ`,
+        body: sr.rejectReason,
+        toUser: sr.createdBy,
+      });
       commit(ctx, "ไม่อนุมัติคำขอขาย", `${sr.code} — ${sr.rejectReason}`, "danger");
     },
   });
@@ -1022,7 +1111,18 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
       sr.soRef = soCode;
       sr.updated = now;
       sr.updatedBy = USER();
-      log(sr, "Converted to Sales Order", `สร้าง ${soCode} จากใบเสนอราคานี้`);
+      log(sr, "Converted to Sales Order", `สร้าง ${soCode} จากคำขอขายนี้`);
+      /* Two audiences, one event: the salesperson learns their request became
+         an order, and the warehouse learns there is one to pick. */
+      notify({
+        kind: "converted",
+        docType: "sales-order",
+        docCode: soCode,
+        title: `เปิดใบสั่งขาย ${soCode} แล้ว`,
+        body: `${sr.customer} — แปลงจากคำขอขาย ${sr.code}`,
+        toUser: sr.createdBy,
+        toRoles: rolesWhoMay("picking", "create"),
+      });
 
       commit(
         ctx,

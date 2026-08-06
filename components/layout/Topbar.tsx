@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
-import { Icon } from "@/lib/icons";
+import { usePathname, useRouter } from "next/navigation";
+import { Icon, type IconName } from "@/lib/icons";
 import { findNav } from "@/lib/nav";
 import { useUI } from "@/lib/store";
 import {
@@ -12,7 +12,20 @@ import {
   restoreAccount,
   switchAccount,
 } from "@/lib/domain/admin";
+import { markAllRead, markRead, myNotifications, unreadCount } from "@/lib/domain/notify";
+import type { NotifyKind } from "@/data/notifications";
 import { DotBadge, IconButton, Menu, MenuItem, MenuSep } from "@/components/ui";
+
+/** What each kind looks like at a glance — an approval reads differently
+ *  from a refusal, and the icon is the first thing seen. */
+const NOTIFY_ICON: Record<NotifyKind, IconName> = {
+  approval_request: "clock",
+  escalated: "alert",
+  approved: "checkCircle",
+  rejected: "xCircle",
+  revision_requested: "edit",
+  converted: "salesOrder",
+};
 
 /** พ ส → PS, สุภาวิตา โยธะพันธ์ → สย. Two letters, whatever the script. */
 const initials = (name: string) =>
@@ -32,10 +45,15 @@ export function Topbar() {
   useUI((s) => s.revision);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const router = useRouter();
   const nav = findNav(pathname);
   const me = currentUser();
   const myRole = getRole(me.roleCode);
   const accounts = demoAccounts();
+  /* Read on every paint, and the paint is driven by the store revision — the
+     same counter a workflow bumps when it sends one. */
+  const inbox = myNotifications();
+  const unread = unreadCount();
 
   /* The remembered account is applied after mount, never during render: the
      server has no localStorage, and disagreeing with it here would be a
@@ -106,13 +124,67 @@ export function Topbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <IconButton
-          aria-label="Notifications"
-          onClick={() => toast("การแจ้งเตือน", "ศูนย์แจ้งเตือน — Future support", "info")}
+        <Menu
+          align="right"
+          className="w-[340px] max-md:w-[280px]"
+          trigger={({ toggle }) => (
+            <IconButton aria-label="Notifications" onClick={toggle}>
+              <Icon name="bell" size={19} />
+              {unread > 0 && <DotBadge>{unread}</DotBadge>}
+            </IconButton>
+          )}
         >
-          <Icon name="bell" size={19} />
-          <DotBadge>8</DotBadge>
-        </IconButton>
+          {(close) => (
+            <>
+              <div className="flex items-center gap-2 px-3 pb-1 pt-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+                  การแจ้งเตือน
+                </p>
+                {unread > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      markAllRead();
+                      refresh();
+                    }}
+                    className="ml-auto text-[11px] font-medium text-info hover:underline"
+                  >
+                    อ่านทั้งหมด
+                  </button>
+                )}
+              </div>
+
+              {inbox.length === 0 ? (
+                <p className="px-3 py-4 text-center text-[13px] text-ink-3">
+                  ยังไม่มีการแจ้งเตือน
+                </p>
+              ) : (
+                inbox.slice(0, 8).map((n) => (
+                  <MenuItem
+                    key={n.id}
+                    icon={NOTIFY_ICON[n.kind] ?? "bell"}
+                    onClick={() => {
+                      close();
+                      markRead(n.id);
+                      refresh();
+                      router.push(n.href);
+                    }}
+                  >
+                    <span className="flex min-w-0 flex-col">
+                      <span className={n.readAt ? "truncate" : "truncate font-semibold"}>
+                        {n.title}
+                      </span>
+                      <span className="truncate text-cap text-ink-2">{n.body}</span>
+                      <span className="text-cap text-ink-3">
+                        {n.createdBy} · {n.createdAt}
+                      </span>
+                    </span>
+                  </MenuItem>
+                ))
+              )}
+            </>
+          )}
+        </Menu>
 
         <Menu
           trigger={({ toggle }) => (

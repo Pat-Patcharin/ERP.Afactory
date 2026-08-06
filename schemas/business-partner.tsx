@@ -46,6 +46,7 @@ import { SALES_AREA_NAMES } from "@/data/sales-areas";
 import { BP_TONE, CREDIT_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt, money0, stamp } from "@/lib/format";
 import { actingUserName, can } from "@/lib/domain/admin";
+import { bpConfirm } from "@/lib/workflows-partner";
 import { checkPermission, maskAccount } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import type {
@@ -739,44 +740,14 @@ export const BP_LIST: ListSchema<BpRow> = {
        * to. Who did it and when goes into the partner's own history — the
        * record already keeps one, so nothing new was invented for this.
        */
+      /* The transition itself lives in lib/workflows-partner — the guard and
+         the notification belong where the record changes, not on the button. */
       ...(bp.status === "Draft" && can("business-partner", "approve")
         ? ([
             {
               label: "ยืนยันคู่ค้า",
               icon: "checkCircle",
-              run: (r: BpRow) =>
-                ctx.confirm({
-                  title: "ยืนยันคู่ค้ารายนี้?",
-                  message: (
-                    <>
-                      <strong>{r.code}</strong> — {r.nameTh}
-                      <br />
-                      ยืนยันแล้วจะเปิดใบสั่งขายได้ และชื่อนิติบุคคลกับเลขผู้เสียภาษีจะแก้ไม่ได้อีก
-                      <br />
-                      <span className="text-ink-2">
-                        เลขผู้เสียภาษี {r.tax?.taxId || "— ยังไม่ได้กรอก"}
-                      </span>
-                    </>
-                  ),
-                  confirmText: "ยืนยันคู่ค้า",
-                  tone: "primary",
-                  onConfirm: () => {
-                    const now = stamp();
-                    r.status = "Active";
-                    r.updated = now;
-                    r.updatedBy = actingUserName();
-                    (r.history ??= []).unshift({
-                      t: "Partner confirmed",
-                      d: "ยืนยันคู่ค้าที่พนักงานขายสร้างไว้ — เปิดใบสั่งขายได้",
-                      u: actingUserName(),
-                      when: now,
-                      kind: "primary",
-                    });
-                    decorateBPs();
-                    ctx.refresh();
-                    ctx.toast("ยืนยันคู่ค้าแล้ว", `${r.code} — ${r.nameTh}`, "success");
-                  },
-                }),
+              run: (r: BpRow) => bpConfirm(r, ctx),
             },
           ] as const)
         : []),
