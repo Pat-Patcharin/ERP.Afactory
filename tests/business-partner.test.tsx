@@ -58,6 +58,7 @@ import {
 } from "@/lib/domain/partner";
 import {
   bpCustomerKpi,
+  bpInvoices,
   bpLastPurchase,
   bpLatestPurchaseYear,
   bpLatestSalesYear,
@@ -68,7 +69,7 @@ import {
   bpTopProducts,
   bpTopPurchasedProducts,
 } from "@/lib/domain/partner-analytics";
-import { daysUntil } from "@/lib/format";
+import { daysUntil, money0 } from "@/lib/format";
 import { ATTACHMENT_SEED } from "@/data/partner-profiles";
 import { USERS } from "@/data/admin";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
@@ -1848,5 +1849,110 @@ describe("BP Master — module wiring", () => {
     const del = list.rowActions(withTxn, ctx).find((a) => a.label === "Delete")!;
     expect(del.disabled).toBe(true);
     expect(del.disabledReason).toContain(String(withTxn.txnCount));
+  });
+});
+
+/* ============================================================
+   THE KPI STRIP
+
+   Available credit came out of it: it is limit minus used, the
+   two tiles beside it, and knowing it has never made anybody
+   pick up the phone. What is late and unpaid does.
+   ============================================================ */
+
+describe("BP Master — เกินกำหนดชำระ แทน Available Credit", () => {
+  const kpiTile = (code: string, label: string) =>
+    detail.kpis(bp(code)).find((k) => k.label === label);
+
+  it("ไม่มีช่อง Available Credit บนแถบ KPI แล้ว", () => {
+    const labels = detail.kpis(bp(BOTH)).map((k) => k.label);
+    expect(labels).not.toContain("Available Credit");
+    expect(labels).toContain("เกินกำหนดชำระ");
+    /* The two it is derived from stay — the arithmetic is still on screen. */
+    expect(labels).toContain("Credit Limit");
+    expect(labels).toContain("Credit Used");
+  });
+
+  it("แสดงยอดค้างของใบที่เลยกำหนด ไม่ใช่มูลค่าเต็มใบ", () => {
+    const b = bp(BOTH);
+    const kpi = bpCustomerKpi(b);
+    const late = bpInvoices(b).filter((i) => i.isOverdue);
+
+    expect(kpi.overdue).toBe(late.length);
+    expect(kpi.overdueAmount).toBe(
+      Math.round(late.reduce((t, i) => t + i.outstanding, 0) * 100) / 100,
+    );
+    /* A part-paid late invoice owes the remainder, never the face value. */
+    const faceValue = late.reduce((t, i) => t + i.grandTotal, 0);
+    expect(kpi.overdueAmount).toBeLessThanOrEqual(faceValue);
+  });
+
+  it("นับเฉพาะใบที่ยังมีผล — ใบที่ยกเลิกหรือ Void ไม่ใช่หนี้", () => {
+    const b = bp(BOTH);
+    const dead = bpInvoices(b).filter((i) => ["Cancelled", "Void"].includes(i.status));
+    for (const inv of dead) expect(inv.isOverdue).toBe(false);
+  });
+
+  it("บอกจำนวนใบและวันที่เกินมาไว้ใต้ตัวเลข", () => {
+    const b = bp(BOTH);
+    const kpi = bpCustomerKpi(b);
+    const tile = kpiTile(BOTH, "เกินกำหนดชำระ")!;
+
+    if (kpi.overdue > 0) {
+      expect(tile.sub).toContain(`${kpi.overdue} ใบ`);
+      expect(tile.sub).toContain(String(kpi.overdueDays));
+    } else {
+      /* Nothing late still has to say whether anything is owed at all. */
+      expect(tile.sub).toContain(kpi.notYetDue > 0 ? "ยังไม่ถึงกำหนด" : "ไม่มียอดค้างชำระ");
+    }
+  });
+
+  it("แยกยอดที่เกินกำหนดออกจากยอดที่ยังไม่ถึงกำหนด", () => {
+    /* BP000123 owes 150,250 on an invoice that is not late — the tile must
+       read zero overdue and still say the money is there. */
+    const kpi = bpCustomerKpi(bp(BOTH));
+    expect(kpi.overdue).toBe(0);
+    expect(kpi.overdueAmount).toBe(0);
+    expect(kpi.notYetDue).toBeGreaterThan(0);
+    expect(kpiTile(BOTH, "เกินกำหนดชำระ")!.sub).toContain("ยังไม่ถึงกำหนด");
+  });
+
+  it("ลูกค้าที่มีใบเกินกำหนดจริง แสดงยอดและอายุหนี้", () => {
+    /* BP000122 carries one overdue invoice on its own record. */
+    const kpi = bpCustomerKpi(bp(CUSTOMER));
+    expect(kpi.overdue).toBe(1);
+    expect(kpi.overdueAmount).toBeGreaterThan(0);
+    expect(kpiTile(CUSTOMER, "เกินกำหนดชำระ")!.value).toBe(money0(kpi.overdueAmount));
+  });
+
+  it("คู่ค้าที่ไม่ใช่ลูกค้าไม่มียอดให้ทวง", () => {
+    const tile = kpiTile(SUPPLIER, "เกินกำหนดชำระ")!;
+    expect(tile.sub).toBe("ไม่ใช่ลูกค้า");
+  });
+
+  it("ปิดตัวเลขไว้เมื่อบทบาทนั้นดูข้อมูลเครดิตไม่ได้", () => {
+    /* Same gate the two credit tiles use — an overdue balance is credit data
+       and must not leak through the tile that replaced one of them. */
+    const rep = USERS.find((u) => u.roleCode === "SALES_REP" && u.status === "Active")!;
+    setCurrentUser(rep.code);
+    try {
+      const tile = kpiTile(BOTH, "เกินกำหนดชำระ")!;
+      const limit = kpiTile(BOTH, "Credit Limit")!;
+      expect(tile.value).toBe(limit.value === "••••" ? "••••" : tile.value);
+    } finally {
+      resetCurrentUser();
+    }
+  });
+
+  it("ทุกช่องบนแถบ KPI ลิงก์ไปแท็บที่มีอยู่จริง", () => {
+    /* Three of them pointed at tabs that stopped existing when eleven tabs
+       became five, and a dead goTab silently lands on Overview. */
+    for (const code of [BOTH, CUSTOMER, SUPPLIER]) {
+      const record = bp(code);
+      const tabs = detail.tabs.filter((t) => !t.when || t.when(record)).map((t) => t.key);
+      for (const k of detail.kpis(record)) {
+        if (k.goTab) expect(tabs, `${code} · ${k.label}`).toContain(k.goTab);
+      }
+    }
   });
 });

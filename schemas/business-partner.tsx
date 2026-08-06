@@ -874,6 +874,12 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
     const sup = b.supplier;
     const last = bpLastPurchase(b);
     const credit = checkPermission("canViewCredit");
+    /* Money owed past its due date. Read off the invoices rather than the
+       partner record, because the record carries a limit and a balance and
+       neither of those knows what is late. Available credit used to sit in
+       this tile; it is arithmetic anyone can do from the two tiles to its
+       left, and it never made anybody pick up the phone. */
+    const kpi = bpCustomerKpi(b);
 
     return [
       {
@@ -881,21 +887,35 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
         label: "Credit Limit",
         value: cust ? (credit ? money0(cust.creditLimit) : "••••") : DASH,
         sub: cust ? "THB" : "ไม่ใช่ลูกค้า",
-        goTab: "business",
+        /* "business" was a tab that stopped existing when eleven became five,
+           so these two used to fall back to Overview without saying so. And
+           the tab they point at now is hidden on a partner who is not a
+           customer — which is exactly when these tiles read "ไม่ใช่ลูกค้า"
+           and have nowhere to go. */
+        goTab: cust ? "customer" : undefined,
       },
       {
         icon: "cart",
         label: "Credit Used",
         value: cust ? (credit ? money0(cust.creditUsed) : "••••") : DASH,
         sub: cust ? `Term ${b.creditTerm}` : "",
-        goTab: "business",
+        goTab: cust ? "customer" : undefined,
       },
       {
-        icon: "shield",
-        label: "Available Credit",
-        value: cust ? (credit ? money0(b.availableCredit) : "••••") : DASH,
-        sub: b.creditStatus,
-        goTab: "business",
+        icon: "alert",
+        label: "เกินกำหนดชำระ",
+        value: cust ? (credit ? money0(kpi.overdueAmount) : "••••") : DASH,
+        sub: !cust
+          ? "ไม่ใช่ลูกค้า"
+          : kpi.overdue > 0
+            ? `${kpi.overdue} ใบ · เกินมา ${kpi.overdueDays} วัน`
+            : kpi.notYetDue > 0
+              ? /* Nothing late is not the same as nothing owed. */
+                `ไม่มีเกินกำหนด · ยังไม่ถึงกำหนด ${money0(kpi.notYetDue)}`
+              : "ไม่มียอดค้างชำระ",
+        /* Straight to the invoices, not to the credit block — somebody
+           reading this number wants to know which ones. */
+        goTab: cust ? "sales-history" : undefined,
       },
       {
         icon: "clock",
@@ -903,7 +923,9 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
         value: last.date || DASH,
         sub: last.doc || (sup ? "ผู้ขาย" : "ยังไม่มีรายการ"),
         wide: true,
-        goTab: "activity",
+        /* Whichever history tab this partner actually has — for a supplier
+           the last transaction is an order WE placed. */
+        goTab: cust ? "sales-history" : sup ? "purchase-history" : undefined,
       },
     ];
   },

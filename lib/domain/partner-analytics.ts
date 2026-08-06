@@ -88,7 +88,14 @@ export interface CustomerKpi {
   openOrders: number;
   invoices: number;
   outstanding: number;
+  /** How many invoices are past their due date and still owed. */
   overdue: number;
+  /** And what that comes to in money — the figure somebody chases. */
+  overdueAmount: number;
+  /** Days past due on the oldest of them. 0 when nothing is overdue. */
+  overdueDays: number;
+  /** Owed but not late yet — so "nothing overdue" is not read as "owes nothing". */
+  notYetDue: number;
   skus: number;
 }
 
@@ -100,6 +107,16 @@ export function bpCustomerKpi(bp: BusinessPartner): CustomerKpi {
   const revenue = orders.reduce((t, s) => t + (s.total || 0), 0);
   const last = orders[0];
 
+  /* Overdue is decided on the invoice, not here: `isOverdue` already means
+     "still owed, past its due date, and on a document that is live" — a
+     cancelled or voided invoice is not a debt however old it is. */
+  const late = invoices.filter((i) => i.isOverdue);
+  const overdueAmount = round2(late.reduce((t, i) => t + (i.outstanding || 0), 0));
+  const outstanding = round2(invoices.reduce((t, i) => t + (i.outstanding || 0), 0));
+  /* The recorded rows answer for a partner the invoice module has never met —
+     and only then. See recordedArrears. */
+  const arrears = invoices.length ? null : recordedArrears(bp);
+
   return {
     orders: orders.length,
     revenue,
@@ -108,11 +125,76 @@ export function bpCustomerKpi(bp: BusinessPartner): CustomerKpi {
     lastOrderAmount: last?.total ?? 0,
     openOrders: orders.filter((s) => !CLOSED_SO.includes(s.status)).length,
     invoices: invoices.length,
-    outstanding: invoices.reduce((t, i) => t + (i.outstanding || 0), 0),
-    overdue: invoices.filter((i) => i.isOverdue).length,
+    outstanding: arrears ? round2(arrears.amount + arrears.notYetDue) : outstanding,
+    overdue: arrears ? arrears.count : late.length,
+    /* What is unpaid on those invoices, not what they were worth: a customer
+       who has paid half of a late invoice owes the half. */
+    overdueAmount: arrears ? arrears.amount : overdueAmount,
+    overdueDays: arrears ? arrears.days : late.reduce((m, i) => Math.max(m, i.daysOverdue ?? 0), 0),
+    notYetDue: arrears ? arrears.notYetDue : round2(outstanding - overdueAmount),
     skus: bpTopProducts(bp, 999).length,
   };
 }
+
+/* ============================================================
+   ARREARS ON A PARTNER THE INVOICE MODULE HAS NEVER MET
+
+   Sales invoices carry their own customer register — `CUST-000x`
+   codes and English clinic names — which the partner master does
+   not appear in. That is the same seam the purchase side has, and
+   giving those documents a BP code is a master-data job, not a
+   reporting one.
+
+   Until it happens, a partner still knows what it owes: the
+   record carries its own invoice history, which is what the
+   Customer Purchase History tab already falls back to. This reads
+   the same rows so a KPI tile and the tab underneath it never
+   disagree, and it is used ONLY when the live join found nothing
+   overdue — a real invoice always wins.
+
+   Those rows carry a status and a date but no due date, so the
+   age is worked out the way the invoice would: issue date plus
+   the customer's own credit term.
+   ============================================================ */
+
+interface Arrears {
+  count: number;
+  amount: number;
+  days: number;
+  notYetDue: number;
+}
+
+const DAY = 86_400_000;
+/** Rows the partner record treats as still owed. Paid ones carry other words. */
+const OWED = ["Overdue", "Unpaid", "Partially Paid"];
+
+function recordedArrears(bp: BusinessPartner): Arrears | null {
+  const owed = (bp.txn?.inv ?? []).filter((r) => OWED.includes(r.status));
+  if (!owed.length) return null;
+
+  const rows = owed.filter((r) => r.status === "Overdue");
+  const term = Number(String(bp.creditTerm ?? "").replace(/\D/g, "")) || bp.credit?.days || 0;
+  const days = rows.reduce((m, r) => {
+    const issued = dateTs(r.date);
+    if (!issued) return m;
+    return Math.max(m, Math.floor((Date.now() - (issued + term * DAY)) / DAY));
+  }, 0);
+
+  const sum = (list: typeof owed) =>
+    round2(list.reduce((t, r) => t + (Number(r.amount) || 0), 0));
+
+  return {
+    count: rows.length,
+    amount: sum(rows),
+    /* A row marked overdue that the term says is not yet due is still a debt
+       somebody flagged; it is reported as overdue with an age of zero rather
+       than as a negative number of days. */
+    days: Math.max(0, days),
+    notYetDue: sum(owed.filter((r) => r.status !== "Overdue")),
+  };
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /* ---------- Buy side ---------- */
 

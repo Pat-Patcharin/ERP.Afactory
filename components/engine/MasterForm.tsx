@@ -50,6 +50,13 @@ const AUTOSAVE_DEBOUNCE = 1200;
 /** How often the "saved 2 minutes ago" label re-reads the clock. */
 const CLOCK_TICK = 20_000;
 
+/**
+ * The anchor a section is reachable at. Namespaced by form key so two forms
+ * mounted in one tree — a drawer over a page — cannot collide on a step key
+ * as ordinary as "items".
+ */
+const sectionDomId = (formKey: string, stepKey: string) => `form-${formKey}-${stepKey}`;
+
 export function MasterForm<T extends RecordBase>({
   schema,
   record,
@@ -188,17 +195,15 @@ export function MasterForm<T extends RecordBase>({
   const status = useMemo(() => formStatus(schema, state), [schema, state]);
 
   /**
-   * Resolve the step by key, not index — a step can disappear when a toggle
-   * turns it off (a partner that is no longer a supplier has no Purchasing
-   * step). Falling back to the nearest surviving position keeps the user
-   * roughly where they were instead of throwing them to the start.
+   * Which section the rail marks as "where you are".
+   *
+   * Every section is on the page, so this decides a highlight and nothing
+   * else — no section is ever hidden by it. Resolved by key rather than
+   * index because a step can disappear when a toggle turns it off (a partner
+   * who is no longer a supplier has no Purchasing section), and a stale key
+   * simply falls back to the first surviving one.
    */
-  const lastIdx = useRef(0);
-  let idx = steps.findIndex((s) => s.key === stepKey);
-  if (idx < 0) idx = Math.min(lastIdx.current, steps.length - 1);
-  if (idx < 0) idx = 0;
-  lastIdx.current = idx;
-  const active = steps[idx];
+  const activeKey = steps.some((s) => s.key === stepKey) ? stepKey : (steps[0]?.key ?? "");
 
   const duplicates = useMemo(
     () => schema.findDuplicates?.(state) ?? [],
@@ -227,6 +232,46 @@ export function MasterForm<T extends RecordBase>({
     return () => clearInterval(t);
   }, []);
 
+  /* ---------- Which section the rail points at while scrolling ---------- */
+
+  /* Keyed on the step list rather than on `steps` itself: that array is
+     rebuilt on every keystroke, and re-observing the page each time somebody
+     types a letter would be an observer per character. */
+  const stepKeys = steps.map((s) => s.key).join("|");
+
+  useEffect(() => {
+    /* jsdom has no IntersectionObserver. The rail still works there — a click
+       sets the highlight directly — so this is a progressive extra, not a
+       requirement. */
+    if (typeof IntersectionObserver === "undefined") return;
+
+    const keys = stepKeys ? stepKeys.split("|") : [];
+    const byId = new Map(keys.map((k) => [sectionDomId(schema.key, k), k]));
+    const els = [...byId.keys()]
+      .map((id) => document.getElementById(id))
+      .filter((el): el is HTMLElement => Boolean(el));
+    if (!els.length) return;
+
+    const onScreen = new Set<string>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) onScreen.add(e.target.id);
+          else onScreen.delete(e.target.id);
+        }
+        /* The highest section still on screen, in document order — what a
+           reader would call "where I am" when two are visible at once. */
+        const top = [...byId.keys()].find((id) => onScreen.has(id));
+        if (top) setStepKey(byId.get(top)!);
+      },
+      /* Top edge sits below the sticky topbar; the bottom margin stops a
+         section that has only just crept into view from stealing the mark. */
+      { rootMargin: "-88px 0px -55% 0px" },
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [stepKeys, schema.key]);
+
   /* Leaving with unsaved edits is almost always a misclick, never a decision. */
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -238,11 +283,27 @@ export function MasterForm<T extends RecordBase>({
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
-  /* ---------- Actions ---------- */
+  /* ============================================================
+     MOVING AROUND A FORM THAT IS ALL ON ONE PAGE
 
-  const goStep = (nextKey: string) => {
+     The rail no longer swaps which section is mounted — every
+     section is already there. It scrolls, which is why a jump
+     works the same whether it comes from the rail, from the
+     review list, or from Save landing on the first thing that is
+     missing.
+
+     `scrollIntoView` is called optionally: jsdom does not
+     implement it, and a test that fills in a form should not
+     fail on the way the page moves.
+     ============================================================ */
+
+  const jumpTo = (nextKey: string) => {
     setStepKey(nextKey);
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    if (typeof document === "undefined") return;
+    document.getElementById(sectionDomId(schema.key, nextKey))?.scrollIntoView?.({
+      behavior: "smooth",
+      block: "start",
+    });
   };
 
   const leave = () => {
@@ -267,7 +328,7 @@ export function MasterForm<T extends RecordBase>({
 
     if (!status.canSave) {
       const target = status.missing[0]?.step ?? status.broken[0]?.step;
-      if (target) goStep(target);
+      if (target) jumpTo(target);
       const missingCount = status.missing.length;
       ctx.toast(
         "ยังกรอกข้อมูลไม่ครบ",
@@ -388,7 +449,7 @@ export function MasterForm<T extends RecordBase>({
               {mode === "edit" ? (
                 <span className="tnum">{record?.code}</span>
               ) : (
-                subtitle || "กรอกข้อมูลตามขั้นตอนทางด้านซ้าย"
+                subtitle || "กรอกได้ทั้งหมดในหน้าเดียว — กดหัวข้อด้านซ้ายเพื่อข้ามไปยังส่วนนั้น"
               )}
               {mode === "edit" && subtitle && ` · ${subtitle}`}
             </p>
@@ -444,13 +505,13 @@ export function MasterForm<T extends RecordBase>({
       >
         <StepRail
           steps={steps}
-          activeKey={active?.key ?? ""}
+          activeKey={activeKey}
           status={status}
           showErrors={showErrors}
-          onPick={goStep}
+          onPick={jumpTo}
         />
 
-        <section key={active?.key} className="flex min-w-0 flex-col gap-4 animate-paneIn">
+        <div className="flex min-w-0 flex-col gap-4">
           {offeredDraft && (
             <DraftBanner
               at={offeredDraft.at}
@@ -474,36 +535,66 @@ export function MasterForm<T extends RecordBase>({
             />
           )}
 
-          {active?.review ? (
-            <ReviewStep schema={schema} state={state} onJump={goStep} />
-          ) : (
-            (active?.blocks(state).filter(Boolean) as FormBlock[] | undefined)?.map(
-              (b, i) => <BlockView key={i} block={b} api={api} />,
-            )
-          )}
+          {/* ---------- Every section, in order ---------- */}
+          {steps.map((step, i) => {
+            const st = status.steps[step.key];
+            const bad = showErrors && st && !st.complete;
 
-          {/* ---------- Step navigation ---------- */}
+            return (
+              <section
+                key={step.key}
+                id={sectionDomId(schema.key, step.key)}
+                aria-labelledby={`${sectionDomId(schema.key, step.key)}-h`}
+                /* Clears the sticky topbar, so a jump does not land with the
+                   heading tucked underneath it. */
+                className="flex scroll-mt-[84px] flex-col gap-4"
+              >
+                <header className="flex items-center gap-2.5 pt-2 first:pt-0">
+                  <span
+                    className={cn(
+                      "grid h-[22px] w-[22px] flex-shrink-0 place-items-center rounded-full border text-[11px] font-semibold tnum",
+                      bad
+                        ? "border-danger bg-danger text-white"
+                        : st && st.complete && st.total > 0
+                          ? "border-success bg-success text-white"
+                          : "border-line-strong bg-card text-ink-3",
+                    )}
+                  >
+                    {bad ? <Icon name="alert" size={12} strokeWidth={2.6} /> : i + 1}
+                  </span>
+                  <h2
+                    id={`${sectionDomId(schema.key, step.key)}-h`}
+                    className="text-[15px] font-semibold tracking-[-0.01em]"
+                  >
+                    {step.label}
+                  </h2>
+                  {step.labelTh && (
+                    <span className="truncate text-cap text-ink-3">{step.labelTh}</span>
+                  )}
+                </header>
+
+                {step.review ? (
+                  <ReviewStep schema={schema} state={state} onJump={jumpTo} />
+                ) : (
+                  (step.blocks(state).filter(Boolean) as FormBlock[] | undefined)?.map(
+                    (b, bi) => <BlockView key={bi} block={b} api={api} />,
+                  )
+                )}
+              </section>
+            );
+          })}
+
+          {/* ---------- Save ---------- */}
           <div className="flex items-center gap-3 border-t border-line pt-4">
-            <Button disabled={idx === 0} onClick={() => goStep(steps[idx - 1].key)}>
-              <Icon name="arrowLeft" size={16} />
-              ย้อนกลับ
-            </Button>
-            <span className="mx-auto text-cap text-ink-3 tnum">
-              ขั้นตอน {idx + 1} / {steps.length}
+            <span className="text-cap text-ink-3 tnum">
+              {status.done}/{status.total} ช่องที่จำเป็น · {steps.length} หัวข้อ
             </span>
-            {idx < steps.length - 1 ? (
-              <Button variant="primary" onClick={() => goStep(steps[idx + 1].key)}>
-                ถัดไป: {steps[idx + 1].label}
-                <Icon name="arrowRight" size={16} />
-              </Button>
-            ) : (
-              <Button variant="primary" onClick={save}>
-                <Icon name="save" size={16} strokeWidth={2} />
-                {schema.saveButton ?? `Save ${entityLabel}`}
-              </Button>
-            )}
+            <Button variant="primary" className="ml-auto" onClick={save}>
+              <Icon name="save" size={16} strokeWidth={2} />
+              {schema.saveButton ?? `Save ${entityLabel}`}
+            </Button>
           </div>
-        </section>
+        </div>
 
         {hasAside && (
           <aside className="flex flex-col gap-4 max-[1280px]:col-span-full max-[1280px]:flex-row max-[1280px]:flex-wrap max-md:flex-col">
@@ -532,7 +623,7 @@ function StepRail({
 }) {
   return (
     <nav
-      aria-label="ขั้นตอนการกรอกข้อมูล"
+      aria-label="หัวข้อในฟอร์ม"
       className="sticky top-[84px] flex flex-col gap-0.5 max-[900px]:static max-[900px]:flex-row max-[900px]:overflow-x-auto max-[900px]:pb-2 scrollbar-none"
     >
       {steps.map((s, i) => {
@@ -545,7 +636,9 @@ function StepRail({
           <button
             key={s.key}
             onClick={() => onPick(s.key)}
-            aria-current={on ? "step" : undefined}
+            /* "location", not "step": nothing is hidden behind this any more,
+               it says which part of one page you are looking at. */
+            aria-current={on ? "location" : undefined}
             className={cn(
               "flex items-center gap-2.5 rounded-btn px-3 py-2.5 text-left transition-colors duration-fast max-[900px]:flex-shrink-0",
               on ? "bg-primary-soft text-primary-active" : "text-ink-2 hover:bg-neutral-soft",
@@ -745,7 +838,7 @@ function ReviewStep<T extends RecordBase>({
       key={`${step}:${label}`}
       type="button"
       onClick={() => onJump(step)}
-      title="กลับไปแก้ไขขั้นตอนนี้"
+      title="ไปที่หัวข้อนี้เพื่อแก้ไข"
       className="flex w-full items-baseline gap-4 border-b border-line py-[9px] text-left last:border-b-0 hover:bg-surface"
     >
       <span className="flex-shrink-0 text-[13px] text-ink-2">{label}</span>
