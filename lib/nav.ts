@@ -202,3 +202,49 @@ export const NAV_INDEX = NAV.flatMap((g) =>
 
 export const findNav = (href: string) =>
   NAV_INDEX.find((i) => i.href === href || href.startsWith(i.href + "/"));
+
+/** Every section that can be folded away — the unlabelled first group cannot. */
+export const NAV_GROUP_LABELS = NAV.map((g) => g.label).filter(
+  (l): l is string => Boolean(l),
+);
+
+/* ============================================================
+   SECTIONS SOMEBODY HAS FOLDED AWAY
+
+   Nine sections and sixty destinations is a long scroll for a
+   warehouse clerk who opens four of them. Which ones are folded
+   is a preference about this person's day, so it outlives the
+   page — and it is stored by label rather than by index, so
+   adding a section to NAV does not silently fold a different one.
+
+   Best-effort, like the form drafts: private mode and a full
+   quota both degrade to "everything open", which is the state
+   the sidebar had before this existed.
+   ============================================================ */
+
+const NAV_COLLAPSED_KEY = "afactory:nav:collapsed";
+
+export function readCollapsedGroups(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(NAV_COLLAPSED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    /* Labels that no longer exist are dropped rather than kept as dead
+       entries — a renamed section reappears open, which is the safe way
+       round. */
+    return parsed.filter((l): l is string => typeof l === "string" && NAV_GROUP_LABELS.includes(l));
+  } catch {
+    return [];
+  }
+}
+
+export function writeCollapsedGroups(labels: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(NAV_COLLAPSED_KEY, JSON.stringify(labels));
+  } catch {
+    /* storage unavailable — the preference was best-effort anyway */
+  }
+}

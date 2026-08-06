@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { writeCollapsedGroups } from "./nav";
 import type {
   ConfirmOptions,
   FormModalOptions,
@@ -65,6 +66,19 @@ interface UIState {
   setMobileNav: (open: boolean) => void;
 
   /**
+   * Sidebar sections folded down to their heading, by label.
+   *
+   * Starts empty on both server and client so the first paint matches what
+   * was rendered on the server; the Sidebar hydrates the stored preference
+   * on mount. Every section open is also the honest default for someone who
+   * has never touched this.
+   */
+  navCollapsed: string[];
+  toggleNavGroup: (label: string) => void;
+  /** Adopt the stored preference on mount. Does not write it back. */
+  hydrateNavGroups: (labels: string[]) => void;
+
+  /**
    * Mock data lives in plain module-level arrays. Mutating them cannot notify
    * React, so every write bumps this counter and the list/detail views read it
    * as a dependency. Swap for real cache invalidation when the API lands.
@@ -111,6 +125,17 @@ export const useUI = create<UIState>((set, get) => ({
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   mobileNavOpen: false,
   setMobileNav: (open) => set({ mobileNavOpen: open }),
+
+  navCollapsed: [],
+  toggleNavGroup: (label) =>
+    set((s) => {
+      const next = s.navCollapsed.includes(label)
+        ? s.navCollapsed.filter((l) => l !== label)
+        : [...s.navCollapsed, label];
+      writeCollapsedGroups(next);
+      return { navCollapsed: next };
+    }),
+  hydrateNavGroups: (labels) => set({ navCollapsed: labels }),
 
   revision: 0,
   refresh: () => set((s) => ({ revision: s.revision + 1 })),

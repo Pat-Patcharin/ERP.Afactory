@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/lib/icons";
-import { NAV, type NavItem } from "@/lib/nav";
+import { NAV, readCollapsedGroups, type NavItem } from "@/lib/nav";
 import { useUI } from "@/lib/store";
 import { MODULES, canAny } from "@/lib/domain/admin";
 
@@ -28,9 +29,18 @@ export function Sidebar() {
   const toggle = useUI((s) => s.toggleSidebar);
   const mobileOpen = useUI((s) => s.mobileNavOpen);
   const setMobileNav = useUI((s) => s.setMobileNav);
+  const navCollapsed = useUI((s) => s.navCollapsed);
+  const toggleGroup = useUI((s) => s.toggleNavGroup);
+  const hydrateNavGroups = useUI((s) => s.hydrateNavGroups);
   /* Repaint when the acting account changes — the menu is different for a
      sales rep than for an administrator. */
   useUI((s) => s.revision);
+
+  /* After mount, not during render: the server has no localStorage, so
+     reading it any earlier would paint a different tree than it sent. */
+  useEffect(() => {
+    hydrateNavGroups(readCollapsedGroups());
+  }, [hydrateNavGroups]);
 
   const isActive = (href: string) => {
     const base = href.split("?")[0];
@@ -70,41 +80,75 @@ export function Sidebar() {
         </div>
 
         <nav className="scrollbar-sidebar flex-1 overflow-y-auto px-3 pb-4 pt-2">
-          {NAV.map((group, gi) => ({ ...group, items: group.items.filter(mayOpen) }))
+          {NAV.map((group) => ({ ...group, items: group.items.filter(mayOpen) }))
             .filter((group) => group.items.length > 0)
-            .map((group, gi) => (
-            <div key={group.label ?? gi}>
-              {group.label && !collapsed && (
-                <div className="whitespace-nowrap px-3 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-[0.08em] text-sidebar-label">
-                  {group.label}
-                </div>
-              )}
-              {group.label && collapsed && <div className="h-4" />}
+            .map((group, gi) => {
+              /* Folding is a labelled-section affair, and only while the
+                 sidebar shows words: in the icon rail there is no heading to
+                 fold into, so hiding the items would hide the whole menu. */
+              const foldable = Boolean(group.label) && !collapsed;
+              const folded = foldable && navCollapsed.includes(group.label!);
+              const hasActive = group.items.some((it) => isActive(it.href));
 
-              {group.items.map((item) => {
-                const on = isActive(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileNav(false)}
-                    title={collapsed ? item.label : undefined}
-                    className={cn(
-                      "flex w-full items-center gap-3 rounded-btn px-3 py-[9px] font-medium",
-                      "whitespace-nowrap transition-colors duration-fast",
-                      collapsed && "justify-center px-[9px]",
-                      on
-                        ? "bg-primary text-white shadow-sm"
-                        : "text-sidebar-text hover:bg-sidebar-hover hover:text-[#e5e7eb]",
-                    )}
-                  >
-                    <Icon name={item.icon} size={18} />
-                    {!collapsed && <span>{item.label}</span>}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
+              return (
+                <div key={group.label ?? gi}>
+                  {group.label && !collapsed && (
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group.label!)}
+                      aria-expanded={!folded}
+                      title={folded ? `เปิด ${group.label}` : `หุบ ${group.label}`}
+                      className={cn(
+                        "group flex w-full items-center gap-2 rounded-btn px-3 pb-2 pt-5",
+                        "whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.08em]",
+                        "text-sidebar-label transition-colors duration-fast hover:text-[#e5e7eb]",
+                      )}
+                    >
+                      <Icon
+                        name="chevronDown"
+                        size={13}
+                        className={cn(
+                          "flex-shrink-0 transition-transform duration-fast",
+                          folded && "-rotate-90",
+                        )}
+                      />
+                      <span>{group.label}</span>
+                      {/* Where you are, when the section it lives in is shut.
+                          Without it a folded sidebar loses the one thing it
+                          was showing you — which page is open. */}
+                      {folded && hasActive && (
+                        <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />
+                      )}
+                    </button>
+                  )}
+                  {group.label && collapsed && <div className="h-4" />}
+
+                  {!folded &&
+                    group.items.map((item) => {
+                      const on = isActive(item.href);
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setMobileNav(false)}
+                          title={collapsed ? item.label : undefined}
+                          className={cn(
+                            "flex w-full items-center gap-3 rounded-btn px-3 py-[9px] font-medium",
+                            "whitespace-nowrap transition-colors duration-fast",
+                            collapsed && "justify-center px-[9px]",
+                            on
+                              ? "bg-primary text-white shadow-sm"
+                              : "text-sidebar-text hover:bg-sidebar-hover hover:text-[#e5e7eb]",
+                          )}
+                        >
+                          <Icon name={item.icon} size={18} />
+                          {!collapsed && <span>{item.label}</span>}
+                        </Link>
+                      );
+                    })}
+                </div>
+              );
+            })}
         </nav>
 
         <div className="border-t border-[#1f2937] p-3">
