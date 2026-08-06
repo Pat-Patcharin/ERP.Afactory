@@ -7,9 +7,11 @@ import { ListView } from "@/components/engine/ListView";
 import {
   actingUserName,
   can,
+  canViewField,
   currentUser,
   demoAccounts,
   getRole,
+  getUser,
   resetCurrentUser,
   restoreAccount,
   switchAccount,
@@ -275,6 +277,35 @@ describe("Two accounts — on the screen", () => {
     await user.click(screen.getByText("สุภาวิตา โยธะพันธ์"));
 
     expect(currentUser().code).toBe(REP);
+  });
+
+  it("offers every chair in the story from that menu", async () => {
+    const user = userEvent.setup();
+    render(<Topbar />);
+    await user.click(screen.getByRole("button", { name: /Super Admin/ }));
+
+    /* Each account by name, so a chair dropped from DEMO_ACCOUNTS shows up
+       here rather than as a demo that quietly cannot be walked. The acting
+       one appears twice — in the trigger, and in the list carrying the tick
+       that says which chair you are sitting in. */
+    for (const code of [REP, SALES_ADMIN, SALES_MANAGER, ADMIN]) {
+      const hits = screen.getAllByText(getUser(code)!.name);
+      expect(hits.length, code).toBeGreaterThanOrEqual(currentUser().code === code ? 2 : 1);
+    }
+  });
+
+  it("re-answers the permission questions the moment the chair changes", async () => {
+    /* The switch is only worth having if `can()` changes with it — the menu,
+       the buttons and the task box all read the same function. */
+    const user = userEvent.setup();
+    render(<Topbar />);
+    await user.click(screen.getByRole("button", { name: /Super Admin/ }));
+    await user.click(screen.getByText(getUser(SALES_ADMIN)!.name));
+
+    expect(currentUser().code).toBe(SALES_ADMIN);
+    expect(can("quotation", "approve"), "the desk signs the ordinary").toBe(true);
+    expect(can("admin-role", "view"), "and loses the admin console").toBe(false);
+    expect(canViewField("cost"), "and never sees cost").toBe(false);
   });
 
   it("hides from the rep the modules the rep may not open", () => {

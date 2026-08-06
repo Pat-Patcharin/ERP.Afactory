@@ -141,8 +141,23 @@ export function Topbar() {
         >
           {(close) => (
             <>
-              {/* Switching account is the whole point of having two, so it
-                  sits above the profile links rather than under them. */}
+              {/* ============================================================
+                  DEMO TOOL — DELETE WHEN REAL AUTHENTICATION LANDS
+
+                  Four chairs one order passes through, switchable from a
+                  menu, because that is the only way to show a three-person
+                  approval flow to one person sitting at one screen.
+
+                  It is not impersonation and must never become it: there is
+                  no check on who may switch, because in a demo there is only
+                  ever one person. The day a login exists, this block and
+                  DEMO_ACCOUNTS both go — an account is what you signed in
+                  as, not something you pick.
+
+                  Switching writes the session and bumps the store revision;
+                  the sidebar, every list and the dashboard all subscribe to
+                  it, so the whole page re-answers `can()` on the next paint.
+                  ============================================================ */}
               <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
                 สลับบัญชี
               </p>
