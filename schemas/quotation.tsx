@@ -84,8 +84,14 @@ function qtWorkflowActions(qt: QtRow, ctx: ActionCtx): RowAction<QtRow>[] {
     acts.push({ label: "Mark Rejected", icon: "xCircle", danger: true, run: (r) => qtReject(r, ctx) });
   }
 
+  /* A request, not an order — the internal approval it carries is the step
+     the direct route used to skip. See qtConvert. */
   if (qt.status === "Accepted")
-    acts.push({ label: "Convert to Sales Order", icon: "salesOrder", run: (r) => qtConvert(r, ctx) });
+    acts.push({
+      label: "Convert to Sales Request",
+      icon: "salesRequest",
+      run: (r) => qtConvert(r, ctx),
+    });
 
   return acts;
 }
@@ -93,8 +99,9 @@ function qtWorkflowActions(qt: QtRow, ctx: ActionCtx): RowAction<QtRow>[] {
 /**
  * Where a converted quotation went, and which module holds it.
  *
- * An accepted quote now becomes a Sales Order directly, but quotes converted
- * through the Sales Request route still exist and must still open. One place
+ * An accepted quote becomes a Sales Request. Quotes converted straight to an
+ * order during the spell when that was allowed still exist and must still
+ * open, so `soRef` is read first and the field stays on the record. One place
  * decides, so the column, the link and the detail fields cannot disagree.
  */
 function qtTarget(qt: QtRow): { code: string; entity: string; label: string } | null {

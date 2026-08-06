@@ -8,6 +8,11 @@ import {
   rolesSigningAt,
 } from "./domain/doc-draft";
 import { notify, rolesWhoMay } from "./domain/notify";
+import {
+  applyQuotation,
+  blankSrDraft,
+  saveSalesRequestDraft,
+} from "./domain/sales-request-draft";
 import { fmt, money0, stamp } from "./format";
 import type { ActionCtx } from "./types";
 import {
@@ -452,101 +457,87 @@ export function qtReject(qt: QtRow, ctx: ActionCtx) {
   });
 }
 
-/**
- * Accepted quotation → a Sales Order, directly.
- *
- * The quote already carries an approved price and the customer's yes, so
- * there is nothing left for a Sales Request to decide. The request route
- * survives for customers who never asked for a quotation — it is raised from
- * the Sales Request editor, not from here.
- *
- * Availability is read here rather than taken from the screen: the page may
- * have been open since before someone else's order took the same stock.
- */
+/* ============================================================
+   ACCEPTED QUOTATION → SALES REQUEST
+
+   The quotation is optional; the sales request is not. A quote
+   carries an agreed price and the customer's yes, and neither of
+   those is an internal decision to fulfil — the warehouse, the
+   credit position and the delivery date still have to be signed
+   off by somebody inside the company, and the request is where
+   that happens. Letting an accepted quote become an order
+   directly skipped that step for exactly the customers who had
+   been through the most process.
+
+   Nothing is built here. The quotation → request path already
+   exists for the editor — `applyQuotation` lays the quote's own
+   terms over the customer master, and `saveSalesRequestDraft`
+   writes the record and closes the quotation. This calls the
+   same two, so a request raised from a menu and one raised in
+   the editor cannot differ.
+
+   A Draft partner is deliberately NOT blocked here: quotations
+   and requests are open to one, and only the order is not — see
+   `blockedForDraftPartner`. Blocking here would strand the very
+   case that rule was written to allow.
+   ============================================================ */
+
 export function qtConvert(qt: QtRow, ctx: ActionCtx) {
-  /* Turning an accepted quote into a real order is what binds the company,
-     so it sits with whoever may raise the order. */
-  if (denied(ctx, "sales-order", "create", "เปิดใบสั่งขายไม่ได้")) return;
+  if (denied(ctx, "sales-request", "create", "เปิดคำขอขายไม่ได้")) return;
   if (qt.status !== "Accepted") {
     ctx.toast(
-      "แปลงเป็นใบสั่งขายไม่ได้",
+      "แปลงเป็นคำขอขายไม่ได้",
       `${qt.code} อยู่ในสถานะ ${qt.status} — ต้องให้ลูกค้าตอบรับก่อน`,
       "warning",
     );
     return;
   }
-
-  /* Asked here so the salesperson gets the message and the way out. */
-  const blocked = blockedForDraftPartner(qt.customerCode);
-  if (blocked) {
-    ctx.toast("เปิดใบสั่งขายไม่ได้", blocked, "danger");
+  if (qt.srRef || qt.soRef) {
+    ctx.toast(
+      "แปลงไปแล้ว",
+      `${qt.code} → ${qt.srRef || qt.soRef}`,
+      "warning",
+    );
     return;
   }
 
   const credit = creditCheck(`${qt.customerCode} - ${qt.customer}`, qt.amount);
 
   ctx.confirm({
-    title: "Convert to Sales Order?",
+    title: "Convert to Sales Request?",
     message: (
       <>
-        สร้างใบสั่งขายจาก <strong>{qt.code}</strong> — ระบบจะออกเลข SO ให้อัตโนมัติ
+        สร้างคำขอขายจาก <strong>{qt.code}</strong> — ระบบจะออกเลข SR ให้อัตโนมัติ
         <br />
         มูลค่า {money0(qt.amount)} บาท
         {!credit.withinLimit && (
           <>
             <br />
-            <span className="font-semibold text-danger-text">
-              เกินวงเงินเครดิต {money0(credit.overBy)} บาท — ใบสั่งขายจะถูกตั้งเป็น On Hold
+            <span className="font-semibold text-warning-text">
+              ลูกค้าเกินวงเงินเครดิต {money0(credit.overBy)} บาท — เปิดคำขอขายได้
+              แต่ใบสั่งขายจะถูกตั้งเป็น On Hold
             </span>
           </>
         )}
         <StockNotice items={qt.items ?? []} />
         <br />
         <span className="text-ink-2">
-          สต๊อกจะถูกจองเมื่อยืนยันใบสั่งขาย ไม่ใช่ตอนนี้
+          คำขอขายยังไม่จองสต๊อกและยังไม่ผูกพันบริษัท — ต้องผ่านการอนุมัติก่อนจึงเปิดใบสั่งขายได้
         </span>
       </>
     ),
-    confirmText: "Convert to SO",
+    confirmText: "Convert to SR",
     tone: "primary",
     onConfirm: () => {
-      const now = stamp();
-      const soCode = createSalesOrderFrom(
-        {
-          customer: qt.customer,
-          customerCode: qt.customerCode,
-          salesRep: qt.salesRep,
-          /* A quotation has no required date; its validity is the only date
-             the customer agreed to. */
-          deliveryDate: qt.validUntil,
-          warehouse: "",
-          currency: qt.currency,
-          payTerm: qt.payTerm,
-          priority: "Normal",
-          channel: qt.channel,
-          customerPo: qt.customerRef,
-          billType: qt.billType,
-          items: qt.items ?? [],
-        },
-        { code: qt.code, field: "quotationRef", noun: "ใบเสนอราคา" },
-        credit,
-      );
+      /* saveSalesRequestDraft writes the request AND closes the quotation —
+         it sets srRef and the Converted status itself, so nothing here does
+         it a second time. */
+      const res = saveSalesRequestDraft(applyQuotation(blankSrDraft(), qt.code), {
+        user: USER(),
+      });
 
-      qt.status = "Converted";
-      qt.soRef = soCode;
-      qt.updated = now;
-      qt.updatedBy = USER();
-      log(qt, "Converted to Sales Order", `สร้าง ${soCode} จากใบเสนอราคานี้`);
-
-      commit(
-        ctx,
-        "แปลงเป็นใบสั่งขายแล้ว",
-        credit.withinLimit
-          ? `${qt.code} → ${soCode}`
-          : `${qt.code} → ${soCode} (On Hold — รออนุมัติเครดิต)`,
-        credit.withinLimit ? "success" : "warning",
-      );
-      ctx.goto(`/m/sales-order/${encodeURIComponent(soCode)}`);
+      commit(ctx, "แปลงเป็นคำขอขายแล้ว", `${qt.code} → ${res.code}`);
+      ctx.goto(`/m/sales-request/${encodeURIComponent(res.code)}`);
     },
   });
 }
@@ -875,11 +866,19 @@ export function srReopen(sr: SrRow, ctx: ActionCtx) {
 /* ============================================================
    BUILDING A SALES ORDER
 
-   Two documents produce one: an approved Sales Request, and —
-   since the direct route — an accepted Quotation. The order they
-   build is the same order, so it is built in one place. The two
-   callers differ only in which reference field points home and in
-   the words on their confirm dialog.
+   One caller now: `srConvert`. There were two — an accepted
+   quotation used to become an order directly — and that route was
+   withdrawn because it let the customers who had been through the
+   most process skip the one internal approval that decides
+   whether the company will actually fulfil.
+
+   The shape stays generic anyway, and deliberately. `SoOrigin`
+   still carries which reference field points home, because the
+   orders already in the book were raised both ways: an order with
+   `quotationRef` set is one of the old ones, it must still open,
+   and its bill-type drift must still compare against the document
+   it actually came from. Collapsing this into "always srRef"
+   would quietly rewrite the history of those records.
    ============================================================ */
 
 /** What an order needs from whichever document produced it. */

@@ -319,16 +319,19 @@ export function decorateSOs() {
     so.deliverPct = pctOf(so.deliveredQty, so.orderedQty);
     so.outstandingQty = soOutstandingQty(so);
 
-    /* The document that produced this order — the quotation on the direct
-       route, the sales request on the other. Never both. */
-    const qt = so.quotationRef ? QUOTATIONS.find((q) => q.code === so.quotationRef) : null;
-    const sr = !qt && so.srRef ? SALES_REQUESTS.find((r) => r.code === so.srRef) : null;
+    /* The document that produced this order. Every new order comes from a
+       sales request, so that is read first; `quotationRef` is only set on the
+       orders raised during the spell when an accepted quote became an order
+       directly, and those must still compare against the paper they actually
+       came from. Never both. */
+    const sr = so.srRef ? SALES_REQUESTS.find((r) => r.code === so.srRef) : null;
+    const qt = !sr && so.quotationRef ? QUOTATIONS.find((q) => q.code === so.quotationRef) : null;
     so.billTypeDrift = billTypeDrift(
       so.billType,
-      qt
-        ? { code: qt.code, label: "ใบเสนอราคา", billType: qt.billType }
-        : sr
-          ? { code: sr.code, label: "คำขอขาย", billType: sr.billType }
+      sr
+        ? { code: sr.code, label: "คำขอขาย", billType: sr.billType }
+        : qt
+          ? { code: qt.code, label: "ใบเสนอราคา", billType: qt.billType }
           : null,
     );
 

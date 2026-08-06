@@ -192,7 +192,7 @@ function takeToAccepted(qt: ReturnType<typeof raiseQuotation>, ctx: never) {
    LINE A — the direct route
    ============================================================ */
 
-describe("Journey A — quotation straight to a sales order and out the door", () => {
+describe("Journey A — quotation through a sales request and out the door", () => {
   it("carries the customer, the price and the wording from quote to invoice", () => {
     const { bp } = vatCustomer();
     const { ctx } = journeyCtx();
@@ -216,17 +216,36 @@ describe("Journey A — quotation straight to a sales order and out the door", (
     qtAccept(qt, ctx);
     expect(qt.status).toBe("Accepted");
 
-    /* ---- Sales order ---- */
+    /* ---- Sales request ----
+       An accepted quote does not become an order by itself. What the customer
+       agreed and what the company will actually fulfil are two decisions, and
+       the request is where the second one is made. */
     qtConvert(qt, ctx);
     decorateOutbound();
     expect(qt.status).toBe("Converted");
-    expect(qt.soRef, "the direct route fills soRef").toBeTruthy();
-    expect(qt.srRef, "and leaves the request reference empty").toBe("");
+    expect(qt.srRef, "an accepted quote becomes a request").toBeTruthy();
+    expect(qt.soRef, "never an order directly").toBe("");
 
-    const so = SALES_ORDERS.find((s) => s.code === qt.soRef)!;
-    expect(so, "the order the quotation produced").toBeTruthy();
+    const sr = SALES_REQUESTS.find((r) => r.code === qt.srRef)!;
+    expect(sr, "the request the quotation produced").toBeTruthy();
+    expect(sr.customerCode).toBe(qt.customerCode);
+    expect(sr.quotationRef, "the request knows where it came from").toBe(qt.code);
+    expect(sr.billType, "how it bills follows the paper the customer agreed").toBe(qt.billType);
+    expect(sr.items[0].price, "at the price they agreed").toBe(qt.items[0].price);
+
+    /* ---- Sales order ---- */
+    asRole("SALES_ADMIN");
+    srSubmit(sr, ctx);
+    srApprove(sr, ctx);
+    expect(sr.status).toBe("Approved");
+    srConvert(sr, ctx);
+    decorateOutbound();
+    expect(sr.status).toBe("Converted");
+
+    const so = SALES_ORDERS.find((s) => s.code === sr.soRef)!;
+    expect(so, "the order the request produced").toBeTruthy();
     expect(so.customerCode).toBe(qt.customerCode);
-    expect(so.quotationRef, "the order knows where it came from").toBe(qt.code);
+    expect(so.srRef, "the order knows where it came from").toBe(sr.code);
     expect(so.billType).toBe(qt.billType);
     expect(so.items[0].qty).toBe(qt.items[0].qty);
     expect(so.items[0].price).toBe(qt.items[0].price);
@@ -352,22 +371,34 @@ describe("Journey B — quotation through a sales request", () => {
    ============================================================ */
 
 describe("Journey C — every obstacle, in the order it would be met", () => {
-  it("lets an unconfirmed partner be quoted but not ordered", () => {
+  it("lets an unconfirmed partner be quoted and requested, but not ordered", () => {
     const { ctx, lastToast } = journeyCtx();
     const bp = outboundCustomers().find((b) => b.status === "Active" && b.billType !== "Non VAT")!;
     bp.status = "Draft";
     decorateBPs();
 
-    /* A quotation binds nobody, so it is allowed. */
+    /* Neither a quotation nor a request binds anybody, so both are allowed —
+       which is the point of the rule: a salesperson can work all afternoon
+       without waiting on an administrator to check a tax ID. */
     asRole("SALES_REP");
     const qt = raiseQuotation({ customerPick: `${bp.code} - ${bp.nameTh}` });
     expect(qt.customerCode).toBe(bp.code);
     takeToAccepted(qt, ctx);
 
-    /* The order is the document that binds, so it is not. */
     qtConvert(qt, ctx);
-    expect(qt.status, "still only accepted").toBe("Accepted");
-    expect(qt.soRef).toBe("");
+    decorateOutbound();
+    expect(qt.status, "the request is open to a draft partner").toBe("Converted");
+    const sr = SALES_REQUESTS.find((r) => r.code === qt.srRef)!;
+    expect(sr).toBeTruthy();
+
+    /* The order is the document that binds, so that is where it stops. */
+    asRole("SALES_ADMIN");
+    srSubmit(sr, ctx);
+    srApprove(sr, ctx);
+    srConvert(sr, ctx);
+
+    expect(sr.status, "approved, but it cannot become an order").toBe("Approved");
+    expect(sr.soRef).toBe("");
     expect(lastToast().tone).toBe("danger");
     expect(lastToast().message, "and it says what can be done instead").toContain("ใบเสนอราคา");
   });
@@ -392,6 +423,27 @@ describe("Journey C — every obstacle, in the order it would be met", () => {
     asRole("SALES_MANAGER");
     qtApprove(qt, ctx);
     expect(qt.status).toBe("Approved");
+  });
+
+  it("will not convert a quotation twice, whichever route the first one took", () => {
+    /* Some orders in the book were raised straight from a quotation, back
+       when that was allowed. Those records still carry `soRef`, still have to
+       open, and must not be converted a second time now that the route is a
+       request — which would give one quotation two children. */
+    const { ctx, lastToast } = journeyCtx();
+    asRole("SALES_REP");
+    const qt = raiseQuotation();
+    takeToAccepted(qt, ctx);
+
+    /* Standing in for one of the legacy records. */
+    qt.soRef = "SO2506-0005";
+
+    asRole("SALES_ADMIN");
+    qtConvert(qt, ctx);
+
+    expect(qt.srRef, "no request was raised").toBe("");
+    expect(qt.status, "and the quotation was left alone").toBe("Accepted");
+    expect(lastToast().message).toContain("SO2506-0005");
   });
 
   it("refuses to submit a quotation for a product whose cost nobody has set", () => {
