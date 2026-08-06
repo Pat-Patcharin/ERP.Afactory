@@ -479,10 +479,12 @@ export function headerFromSource(sourceType: string, sourceDoc: string) {
       currency: so.currency,
       payTerm: "30 Days",
       channel: so.channel,
-      /* What the order says, so the invoice bills the way the customer was
-         quoted. Kept beside taxMode, which answers a different question:
-         whether the prices already include the tax. */
-      billType: so.billType,
+      /* No billType here on purpose. An invoice has no bill type of its own:
+         `billableLinesFrom` sets each line's tax rate from the source, and
+         `effectiveBillType` reads the answer back off those lines. A field
+         here would have no reader, and a field with no reader reads like a
+         mechanism that exists. If an invoice ever needs one of its own, add
+         it together with whatever consumes it. */
       soRef: so.code,
     };
   }
