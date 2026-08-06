@@ -212,6 +212,47 @@ export interface SoRow extends SalesOrder {
   deliverPct: number;
   outstandingQty: number;
   isOverdue: boolean;
+  /**
+   * Set when this order bills differently from the document it was created
+   * from. Null when they agree, or when there is no source to compare with.
+   */
+  billTypeDrift: BillTypeDrift | null;
+}
+
+/* ============================================================
+   BILLING THAT CHANGED ON THE WAY DOWN
+
+   Changing VAT ⇄ Non VAT mid-chain is allowed — a customer may
+   register for VAT between the quotation and the order — but it
+   must never happen quietly, because it moves the money.
+
+   The comparison is always against the document THIS one was
+   created from, not the top of the chain. What somebody needs to
+   know standing in front of an order is "does this differ from
+   the paper it came from", and a legitimate change made once at
+   the quotation would otherwise flag every document downstream of
+   it for the rest of the chain's life.
+   ============================================================ */
+
+export interface BillTypeDrift {
+  /** The document this one was created from. */
+  code: string;
+  /** How that document is named in Thai — for a badge, not a lookup. */
+  label: string;
+  /** What the source bills as. */
+  billType: string;
+  /** What this document bills as. */
+  own: string;
+}
+
+/** Compare against the immediate source. Null when they agree. */
+export function billTypeDrift(
+  own: string,
+  source: { code: string; label: string; billType: string } | null,
+): BillTypeDrift | null {
+  if (!source || !source.billType || !own) return null;
+  if (source.billType === own) return null;
+  return { code: source.code, label: source.label, billType: source.billType, own };
 }
 
 export const SALES_ORDERS = RAW_SO as SoRow[];
@@ -244,6 +285,19 @@ export function decorateSOs() {
     so.pickPct = pctOf(so.pickedQty, so.orderedQty);
     so.deliverPct = pctOf(so.deliveredQty, so.orderedQty);
     so.outstandingQty = soOutstandingQty(so);
+
+    /* The document that produced this order — the quotation on the direct
+       route, the sales request on the other. Never both. */
+    const qt = so.quotationRef ? QUOTATIONS.find((q) => q.code === so.quotationRef) : null;
+    const sr = !qt && so.srRef ? SALES_REQUESTS.find((r) => r.code === so.srRef) : null;
+    so.billTypeDrift = billTypeDrift(
+      so.billType,
+      qt
+        ? { code: qt.code, label: "ใบเสนอราคา", billType: qt.billType }
+        : sr
+          ? { code: sr.code, label: "คำขอขาย", billType: sr.billType }
+          : null,
+    );
 
     const d = daysUntil(so.deliveryDate);
     so.isOverdue =

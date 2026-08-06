@@ -380,6 +380,11 @@ export const INV_DETAIL: DetailSchema<InvRow> = {
       { text: inv.status, tone: tone(INV_TONE, inv.status) },
       { text: inv.paymentStatus, tone: tone(PAY_TONE, inv.paymentStatus) },
       ...(inv.hasPriceOverride ? ([{ text: "Price overridden", tone: "warning" }] as const) : []),
+      ...(inv.billTypeDrift
+        ? ([
+            { text: `${inv.effectiveBillType} ≠ ${inv.billTypeDrift.code}`, tone: "warning" },
+          ] as const)
+        : []),
     ],
     tags: [inv.customerCode, inv.branch, inv.sourceDoc || "Manual"].filter(Boolean),
   }),
@@ -688,6 +693,19 @@ export const INV_DETAIL: DetailSchema<InvRow> = {
             cols: 2,
             items: [
               { label: "Tax Mode", value: <Badge tone="neutral">{inv.taxMode}</Badge> },
+              {
+                label: "Bill Type",
+                /* Read off the lines, not from a field — see effectiveBillType.
+                   Says what it differs from, so nobody has to open history. */
+                value: inv.billTypeDrift ? (
+                  <span className="font-semibold text-warning-text">
+                    {inv.effectiveBillType} — ต่างจาก{inv.billTypeDrift.label}{" "}
+                    {inv.billTypeDrift.code} ที่เป็น {inv.billTypeDrift.billType}
+                  </span>
+                ) : (
+                  inv.effectiveBillType
+                ),
+              },
               { label: "VAT Rate", value: `${inv.vatRate}%` },
               { label: "Taxable Amount", value: money(t.taxable) },
               { label: "Tax Amount", value: money(t.tax) },

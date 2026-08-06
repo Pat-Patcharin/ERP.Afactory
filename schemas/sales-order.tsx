@@ -214,6 +214,11 @@ export const SO_DETAIL: DetailSchema<SoRow> = {
       ...(so.isOverdue ? ([{ text: "Overdue", tone: "danger" }] as const) : []),
       ...(!so.creditApproved ? ([{ text: "Credit Hold", tone: "danger" }] as const) : []),
       { text: so.priority, tone: tone(PRIORITY_TONE, so.priority) },
+      /* Billing that changed on the way down belongs on the header, not
+         buried in history — it moves the money. */
+      ...(so.billTypeDrift
+        ? ([{ text: `${so.billType} ≠ ${so.billTypeDrift.code}`, tone: "warning" }] as const)
+        : []),
     ],
     tags: [so.customerCode, so.warehouse, so.channel].filter(Boolean),
   }),
@@ -245,6 +250,20 @@ export const SO_DETAIL: DetailSchema<SoRow> = {
             { icon: "warehouse", label: "Warehouse", value: so.warehouse },
             { icon: "calendar", label: "Delivery Date", value: so.deliveryDate },
             { icon: "tag", label: "Payment Term", value: so.payTerm },
+            {
+              icon: "pricing",
+              label: "Bill Type",
+              /* Says what changed and what it changed from, in one line, on
+                 the page a salesperson already has open. */
+              value: so.billTypeDrift ? (
+                <span className="font-semibold text-warning-text">
+                  {so.billType} — ต่างจาก{so.billTypeDrift.label} {so.billTypeDrift.code} ที่เป็น{" "}
+                  {so.billTypeDrift.billType}
+                </span>
+              ) : (
+                so.billType
+              ),
+            },
             {
               icon: "shield",
               label: "Credit Status",

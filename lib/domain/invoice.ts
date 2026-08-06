@@ -4,7 +4,13 @@ import {
   type InvLine,
   type SalesInvoice,
 } from "@/data/sales-invoices";
-import { SALES_ORDERS, DELIVERY_ORDERS, getCustomer } from "./outbound";
+import {
+  SALES_ORDERS,
+  DELIVERY_ORDERS,
+  billTypeDrift,
+  getCustomer,
+  type BillTypeDrift,
+} from "./outbound";
 import { BUSINESS_PARTNERS } from "./partner";
 import { lineBase } from "./lines";
 import { DASH, daysUntil, toDisplayDate, toInputDate } from "@/lib/format";
@@ -232,6 +238,19 @@ export interface InvRow extends SalesInvoice {
   isIssuable: boolean;
   canCreditNote: boolean;
   hasPriceOverride: boolean;
+  /**
+   * What this invoice effectively bills as, read off the lines rather than
+   * from a field.
+   *
+   * An invoice has no `billType` of its own — it carries `taxMode`, which
+   * answers a different question — so the honest measure is whether it is
+   * actually charging tax. That is also the thing that matters: a label
+   * saying Non VAT on an invoice with 7% lines would be the lie, not the
+   * other way round.
+   */
+  effectiveBillType: string;
+  /** Set when this invoice bills differently from the order behind it. */
+  billTypeDrift: BillTypeDrift | null;
 }
 
 export const SALES_INVOICES = RAW as InvRow[];
@@ -272,6 +291,30 @@ export function decorateInvoices() {
     inv.canCreditNote =
       ["Issued", "Partially Paid", "Paid", "Overdue"].includes(inv.status) && !inv.creditNoteRef;
     inv.hasPriceOverride = (inv.items ?? []).some((l) => l.priceOverride);
+
+    /* Charging any tax at all makes it a VAT invoice, whatever anyone meant. */
+    inv.effectiveBillType = (inv.items ?? []).some((l) => num(l.taxRate) > 0)
+      ? "VAT"
+      : "Non VAT";
+
+    /* The nearest document upstream that has a bill type of its own. An
+       invoice billed off a Delivery Order stops at the order behind it,
+       because a delivery note carries no bill type — still one hop, not a
+       walk to the top of the chain. */
+    const so =
+      inv.sourceType === "Sales Order"
+        ? SALES_ORDERS.find((s) => s.code === inv.sourceDoc)
+        : inv.sourceType === "Delivery Order"
+          ? (() => {
+              const dobj = DELIVERY_ORDERS.find((d) => d.code === inv.sourceDoc);
+              return dobj ? SALES_ORDERS.find((s) => s.code === dobj.soRef) : undefined;
+            })()
+          : undefined;
+
+    inv.billTypeDrift = billTypeDrift(
+      inv.effectiveBillType,
+      so ? { code: so.code, label: "ใบสั่งขาย", billType: so.billType } : null,
+    );
   }
 }
 

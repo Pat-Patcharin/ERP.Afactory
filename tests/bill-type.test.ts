@@ -3,7 +3,13 @@ import { QUOTATIONS as RAW_QT } from "@/data/quotations";
 import { SALES_ORDERS as RAW_SO } from "@/data/sales-orders";
 import { BILL_TYPES } from "@/data/partners";
 import { BUSINESS_PARTNERS } from "@/lib/domain/partner";
-import { QUOTATIONS, SALES_ORDERS, SALES_REQUESTS } from "@/lib/domain/outbound";
+import {
+  QUOTATIONS,
+  SALES_ORDERS,
+  SALES_REQUESTS,
+  billTypeDrift,
+  decorateOutbound,
+} from "@/lib/domain/outbound";
 import { billableLinesFrom } from "@/lib/domain/invoice";
 import { buildPrintJob, printTypesFor } from "@/lib/print";
 import { applyBillType, planBillTypeChange, zeroTaxIfNonVat } from "@/lib/domain/doc-draft";
@@ -350,5 +356,77 @@ describe("Non VAT print forms", () => {
     const q = QUOTATIONS.find((x) => x.billType === "VAT")!;
     const job = buildPrintJob("quotation", q.code)!;
     expect(job.config.showTax).toBe(true);
+  });
+});
+
+/* ============================================================
+   BILLING THAT CHANGED ON THE WAY DOWN (step 8c, task 2)
+
+   Comparison is always against the document this one was
+   created from — one hop, never a walk to the top of the chain.
+   A legitimate change made once at the quotation would otherwise
+   flag every document below it forever.
+   ============================================================ */
+
+describe("billTypeDrift", () => {
+  const src = (billType: string) => ({ code: "QT2506-0001", label: "ใบเสนอราคา", billType });
+
+  it("says nothing when the two agree", () => {
+    expect(billTypeDrift("VAT", src("VAT"))).toBeNull();
+    expect(billTypeDrift("Non VAT", src("Non VAT"))).toBeNull();
+  });
+
+  it("names the source and both values when they differ", () => {
+    const drift = billTypeDrift("Non VAT", src("VAT"))!;
+    expect(drift).toEqual({
+      code: "QT2506-0001",
+      label: "ใบเสนอราคา",
+      billType: "VAT",
+      own: "Non VAT",
+    });
+  });
+
+  it("says nothing when there is no source to compare with", () => {
+    /* An order raised by hand has nothing above it. */
+    expect(billTypeDrift("VAT", null)).toBeNull();
+  });
+
+  it("says nothing when either side is blank rather than guessing", () => {
+    expect(billTypeDrift("", src("VAT"))).toBeNull();
+    expect(billTypeDrift("VAT", src(""))).toBeNull();
+  });
+});
+
+describe("A sales order compared with the document that made it", () => {
+  it("finds no drift across the seeded set", () => {
+    decorateOutbound();
+    for (const so of SALES_ORDERS) {
+      expect(so.billTypeDrift, `${so.code} should agree with its source`).toBeNull();
+    }
+  });
+
+  it("flags an order whose quotation bills the other way", () => {
+    const so = SALES_ORDERS.find((s) => s.quotationRef)!;
+    const qt = QUOTATIONS.find((q) => q.code === so.quotationRef)!;
+    so.billType = qt.billType === "VAT" ? "Non VAT" : "VAT";
+
+    decorateOutbound();
+
+    const drift = SALES_ORDERS.find((s) => s.code === so.code)!.billTypeDrift!;
+    expect(drift.code, "the quotation it came from, not the top of the chain").toBe(qt.code);
+    expect(drift.label).toBe("ใบเสนอราคา");
+    expect(drift.billType).toBe(qt.billType);
+  });
+
+  it("compares against the sales request when that is the route it took", () => {
+    const so = SALES_ORDERS.find((s) => s.srRef && !s.quotationRef)!;
+    const sr = SALES_REQUESTS.find((r) => r.code === so.srRef)!;
+    so.billType = sr.billType === "VAT" ? "Non VAT" : "VAT";
+
+    decorateOutbound();
+
+    const drift = SALES_ORDERS.find((s) => s.code === so.code)!.billTypeDrift!;
+    expect(drift.code).toBe(sr.code);
+    expect(drift.label).toBe("คำขอขาย");
   });
 });

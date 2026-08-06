@@ -138,7 +138,11 @@ export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
       "เอกสารฉบับนี้ไม่ใช่ใบกำกับภาษี และราคาไม่รวมภาษีมูลค่าเพิ่ม",
     ],
     signatureRoles: ["preparedBy", "approvedBy", "customer"],
-    supportedCopyTypes: ["ORIGINAL", "CUSTOMER", "COMPANY", "ACCOUNTING", "REPRINT"],
+    /* Deliberately the same four as the VAT quotation, not BASE's five. Being
+       Non VAT is no reason for a quotation to have MORE copies than a VAT one.
+       Whether a quotation should carry an ACCOUNTING copy at all is a separate
+       question about the VAT form — see the backlog. */
+    supportedCopyTypes: ["ORIGINAL", "CUSTOMER", "COMPANY", "REPRINT"],
     appliesTo: (r) => r.billType === "Non VAT",
   },
 
