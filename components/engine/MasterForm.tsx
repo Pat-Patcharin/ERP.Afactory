@@ -53,19 +53,34 @@ const CLOCK_TICK = 20_000;
 export function MasterForm<T extends RecordBase>({
   schema,
   record,
+  seed,
 }: {
   schema: FormSchema<T>;
   /** Absent in create mode. */
   record?: T;
+  /**
+   * Values the caller has already decided, applied over `blank()` as if the
+   * user had typed them — `onChange` fires for each, so a seeded source
+   * document pulls its lines exactly as picking it from the list would.
+   * Ignored in edit mode: the record is the truth there.
+   */
+  seed?: Record<string, unknown>;
 }) {
   const ctx = useActionCtx();
   const mode = record ? "edit" : "create";
   const key = draftKey(schema.key, record?.code);
   const locked = record ? (schema.editGuard?.(record) ?? null) : null;
 
-  const [state, setState] = useState<FormState>(() =>
-    record ? schema.toState(record) : schema.blank(),
-  );
+  const [state, setState] = useState<FormState>(() => {
+    if (record) return schema.toState(record);
+    const blank = schema.blank();
+    /* In order — a source document is only meaningful once its type is set. */
+    for (const [path, value] of Object.entries(seed ?? {})) {
+      setPath(blank, path, value);
+      schema.onChange?.(path, blank);
+    }
+    return blank;
+  });
   const [stepKey, setStepKey] = useState(schema.steps[0]?.key ?? "");
   const [showErrors, setShowErrors] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);

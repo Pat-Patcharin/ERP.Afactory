@@ -53,10 +53,21 @@ export const INV_LIST: ListSchema<InvRow> = {
   title: "Sales Invoice",
   subtitle: "Manage customer billing documents, invoice status, due dates, and payment progress.",
   crumb: "Sales Invoice",
-  primaryLabel: "Create Invoice",
+  primaryLabel: "",
   searchPlaceholder: "ค้นหาเลขที่ใบแจ้งหนี้ ลูกค้า SO, DO, PO, เลขภาษี หรือสินค้า...",
   emptyTitle: "ไม่พบใบแจ้งหนี้ที่ตรงกับเงื่อนไข",
   hideImportExport: false,
+  /* Billing follows goods. The way in is the delivery note for what actually
+     shipped, or the order itself when money is collected before it does. */
+  convertOnly: {
+    from: "ใบส่งของ หรือใบสั่งขาย",
+    goto: "/m/delivery-order",
+    gotoLabel: "ไปที่ใบส่งของ",
+    /* The one document a conversion cannot write by itself — somebody still
+       has to say what is being billed — so the form opens, but only with the
+       source its own delivery note or order handed over. */
+    allowSeeded: (p) => Boolean(p.sourceType?.trim() && p.sourceDoc?.trim()),
+  },
 
   source: () => SALES_INVOICES,
   /* Product code and name are searched through the line items below. */
@@ -293,12 +304,13 @@ export const INV_LIST: ListSchema<InvRow> = {
     ],
   }),
 
-  /* Create From Source is the same form — its first step is the source picker. */
+  /* Billing starts at the document being billed, so this goes to the delivery
+     notes rather than to a form with an empty source picker on it. */
   secondaryActions: (ctx) => [
     {
-      label: "Create From Source",
+      label: "วางบิลจากใบส่งของ",
       icon: "link",
-      run: () => ctx.goto("/m/sales-invoice/new"),
+      run: () => ctx.goto("/m/delivery-order"),
     },
   ],
 

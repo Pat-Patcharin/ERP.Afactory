@@ -150,6 +150,17 @@ export const INV_SOURCE_TYPES = [
   "Manual",
 ] as const;
 
+/**
+ * What a NEW invoice may be raised from.
+ *
+ * Narrower than `INV_SOURCE_TYPES` on purpose, and the two must stay separate.
+ * The wider list is what existing records say about themselves — invoices
+ * already booked against a shipment, and the manual ones raised before billing
+ * had to follow a document — and those still have to load, display and edit.
+ * This one is what the form offers, so nothing new joins them.
+ */
+export const INV_BILLABLE_SOURCE_TYPES = ["Delivery Order", "Sales Order"] as const;
+
 export const INV_TAX_INVOICE_TYPES = [
   "Full Tax Invoice",
   "Abbreviated Tax Invoice",

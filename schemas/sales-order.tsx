@@ -4,6 +4,7 @@ import {
   SALES_ORDERS,
   creditCheck,
   getCustomer,
+  soCloseBlocked,
   soLinkedDocs,
   type SoRow,
 } from "@/lib/domain/outbound";
@@ -15,7 +16,9 @@ import { DASH, fmt, money0 } from "@/lib/format";
 import {
   soApproveCredit,
   soCancel,
+  soClose,
   soConfirm,
+  soCreateInvoice,
   soCreatePick,
   soDelete,
 } from "@/lib/workflows-outbound";
@@ -36,10 +39,17 @@ export const SO_LIST: ListSchema<SoRow> = {
   title: "Sales Orders",
   subtitle: "ใบสั่งขายที่ยืนยันกับลูกค้าแล้ว ติดตามการจัดของและการส่งมอบ",
   crumb: "Sales Order",
-  primaryLabel: "New Sales Order",
+  primaryLabel: "",
   searchPlaceholder: "ค้นหาเลขที่ SO ลูกค้า พนักงานขาย หรือเลข PO ลูกค้า...",
   emptyTitle: "ไม่พบใบสั่งขายที่ตรงกับเงื่อนไข",
   hideImportExport: true,
+  /* The document that binds the company. It carries an approved price and a
+     customer's yes, and neither of those can be typed into a blank page. */
+  convertOnly: {
+    from: "ใบเสนอราคาที่ลูกค้าตอบรับ หรือคำขอขายที่อนุมัติแล้ว",
+    goto: "/m/sales-request",
+    gotoLabel: "ไปที่คำขอขาย",
+  },
 
   source: () => SALES_ORDERS,
   searchFields: ["code", "customer", "salesRep", "customerPo", "srRef", "remark"],
@@ -173,6 +183,12 @@ export const SO_LIST: ListSchema<SoRow> = {
 
     if (["Confirmed", "Picking", "Partially Delivered"].includes(so.status) && so.outstandingQty > 0 && mayRun)
       acts.push({ label: "Create Picking", icon: "picking", run: (r) => soCreatePick(r, ctx) });
+
+    /* Offered only once nothing is outstanding — the rule is that an order
+       closes when the goods are with the customer, so a button that appears
+       earlier and then refuses would just be a button that lies. */
+    if (["Picking", "Partially Delivered", "Confirmed"].includes(so.status) && so.outstandingQty === 0 && mayRun)
+      acts.push({ label: "Close Order", icon: "checkCircle", run: (r) => soClose(r, ctx) });
 
     if (so.srRef)
       acts.push({
@@ -465,7 +481,18 @@ export const SO_DETAIL: DetailSchema<SoRow> = {
       label: "Fulfilment",
       blocks: (so, ctx) => {
         const linked = soLinkedDocs(so.code);
+        const closeBlocked = soCloseBlocked(so);
         return [
+          /* Why the order is still open, on the tab that shows the shipping.
+             Only while it is genuinely in flight — saying "ยังปิดไม่ได้" on a
+             cancelled order, or on one already closed, is noise. */
+          Boolean(closeBlocked) &&
+            ["Confirmed", "Picking", "Partially Delivered", "On Hold"].includes(so.status) && {
+              type: "alert",
+              tone: "info",
+              title: "ยังปิดใบสั่งขายไม่ได้",
+              message: closeBlocked,
+            },
           {
             type: "cards",
             title: "Fulfilment Progress",
@@ -586,6 +613,10 @@ export const SO_DETAIL: DetailSchema<SoRow> = {
       acts.push({ label: "Approve Credit", icon: "shield", run: () => soApproveCredit(so, ctx) });
     if (["Confirmed", "Picking", "Partially Delivered"].includes(so.status) && so.outstandingQty > 0 && mayRun)
       acts.push({ label: "Create Picking", icon: "picking", run: () => soCreatePick(so, ctx) });
+    if (["Confirmed", "Picking", "Partially Delivered", "Completed"].includes(so.status))
+      acts.push({ label: "Create Invoice", icon: "invoice", run: () => soCreateInvoice(so, ctx) });
+    if (["Picking", "Partially Delivered", "Confirmed"].includes(so.status) && so.outstandingQty === 0 && mayRun)
+      acts.push({ label: "Close Order", icon: "checkCircle", run: () => soClose(so, ctx) });
     acts.push({
       label: "Print Order",
       icon: "printer",

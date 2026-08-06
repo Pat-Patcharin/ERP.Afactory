@@ -352,6 +352,33 @@ export const openSalesOrders = () =>
   SALES_ORDERS.filter((s) => ["Confirmed", "Picking", "Partially Delivered"].includes(s.status));
 
 /* ============================================================
+   CLOSING AN ORDER
+
+   An order closes when the goods are with the customer and not
+   before. Partial deliveries are ordinary here — the warehouse
+   sends what it has and the rest follows — so what keeps the
+   order open is the outstanding quantity, never the number of
+   documents raised against it. A delivery note that shipped half
+   the line still leaves half a line owed.
+
+   Written as "why not", not as a boolean, because every caller
+   has to tell somebody what is still missing.
+   ============================================================ */
+
+/** Why this order cannot be closed yet, or null when it can. */
+export function soCloseBlocked(so: {
+  status: string;
+  items?: SalesOrder["items"];
+}): string | null {
+  if (so.status === "Completed") return "ใบสั่งขายนี้ปิดไปแล้ว";
+  if (so.status === "Cancelled") return "ใบสั่งขายนี้ถูกยกเลิกแล้ว";
+  const outstanding = soOutstandingQty(so);
+  if (outstanding > 0)
+    return `ยังส่งมอบไม่ครบ คงเหลืออีก ${outstanding} หน่วย — ปิดใบสั่งขายได้เมื่อส่งครบเท่านั้น`;
+  return null;
+}
+
+/* ============================================================
    PICKING
    ============================================================ */
 
@@ -364,6 +391,12 @@ export interface PickRow extends PickingTask {
   pct: number;
   shortCount: number;
   headProduct: string;
+  /** Of what is still to be picked, how much the warehouse can cover today. */
+  readyQty: number;
+  /** And how much of it is waiting on goods that have not arrived. */
+  waitQty: number;
+  /** Lines carrying any of that wait — the ones somebody has to chase. */
+  waitLines: number;
 }
 
 export const PICKING_TASKS = RAW_PK as PickRow[];
@@ -376,6 +409,69 @@ export const pickPickedQty = (t: { items?: PickingTask["items"] }) =>
 export const pickShortLines = (t: { items?: PickingTask["items"] }) =>
   (t.items ?? []).filter((it) => num(it.picked) < num(it.ordered));
 
+/* ============================================================
+   WHAT CAN GO TODAY, AND WHAT HAS TO WAIT
+
+   A picking task carries every line the order still owes, which
+   is the point of it — one sheet, the whole order. What it could
+   not say until now is which of those lines the warehouse can
+   actually serve this morning.
+
+   Read live off the stock master rather than stored on the task:
+   the task may have been raised yesterday, and another order may
+   have taken the same stock since. A number frozen at creation
+   time would send a picker to an empty bin.
+
+   Nothing here reserves anything. It answers "is it there", so
+   the pick can be completed for what exists and the remainder
+   follows as a back order — a partial delivery note, and an
+   invoice for what was actually sent.
+   ============================================================ */
+
+export interface PickLineAvailability {
+  /** Still to come off the shelf for this line. */
+  remaining: number;
+  /** Free stock right now. Null when the product is not in the master. */
+  available: number | null;
+  /** How much of `remaining` the warehouse can cover. */
+  readyQty: number;
+  /** How much of it is waiting on goods. */
+  waitQty: number;
+  /** True once nothing on this line is outstanding. */
+  done: boolean;
+}
+
+export function pickLineAvailability(it: {
+  code: string;
+  ordered?: number;
+  picked?: number;
+}): PickLineAvailability {
+  const picked = num(it.picked);
+  const remaining = Math.max(0, num(it.ordered) - picked);
+  const st = productStock(it.code);
+  /* An unknown product is not "zero in stock" — nobody has said either way.
+     Treated as coverable so an unmapped code shows up as a pick to attempt
+     rather than as a phantom back order the buyer would go chasing. */
+  const available = st ? st.available : null;
+  /* Net of what this task has already taken. The stock figure is what was on
+     the shelf before the picker started, so counting it again against the
+     lines they have already picked would report the same units twice — and
+     "รอของ" would shrink every time somebody picked, which is backwards. */
+  const readyQty =
+    available === null ? remaining : Math.max(0, Math.min(remaining, available - picked));
+  return {
+    remaining,
+    available,
+    readyQty,
+    waitQty: remaining - readyQty,
+    done: remaining === 0,
+  };
+}
+
+/** Every line of a task with its availability worked out — what the sheet shows. */
+export const pickLineViews = (t: { items?: PickingTask["items"] }) =>
+  (t.items ?? []).map((it) => ({ ...it, ...pickLineAvailability(it) }));
+
 export function decoratePicks() {
   for (const t of PICKING_TASKS) {
     t.name = t.code;
@@ -386,6 +482,11 @@ export function decoratePicks() {
     t.pct = pctOf(t.pickedQty, t.orderedQty);
     t.shortCount = pickShortLines(t).length;
     t.headProduct = t.items?.[0]?.name ?? DASH;
+
+    const views = pickLineViews(t);
+    t.readyQty = views.reduce((s, v) => s + v.readyQty, 0);
+    t.waitQty = views.reduce((s, v) => s + v.waitQty, 0);
+    t.waitLines = views.filter((v) => v.waitQty > 0).length;
   }
 }
 

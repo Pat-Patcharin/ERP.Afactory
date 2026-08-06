@@ -22,6 +22,8 @@ import {
   nextPackCode,
   nextPickCode,
   nextSOCode,
+  pickLineAvailability,
+  soCloseBlocked,
   soLinkedDocs,
   type DoRow,
   type PackRow,
@@ -1095,7 +1097,15 @@ export function soApproveCredit(so: SoRow, ctx: ActionCtx) {
   });
 }
 
-/** Confirmed order → a picking task the warehouse can act on. */
+/**
+ * Confirmed order → a picking task the warehouse can act on.
+ *
+ * One sheet carries everything the order still owes, so the floor can see the
+ * whole job at once and the office can see which of it is coverable today.
+ * Lines already picked in full are left off: on the second pass — the back
+ * order after a partial delivery — they would be noise on a sheet whose
+ * remaining lines are the point.
+ */
 export function soCreatePick(so: SoRow, ctx: ActionCtx) {
   if (denied(ctx, "sales-order", "approve", "เปิดใบจัดสินค้าไม่ได้")) return;
   const existing = PICKING_TASKS.find(
@@ -1107,9 +1117,43 @@ export function soCreatePick(so: SoRow, ctx: ActionCtx) {
     return;
   }
 
+  /* What is left to pick, and what the warehouse can cover of it right now.
+     Read here rather than off the order row: the page may have been open
+     since before somebody else's order took the same stock. */
+  const outstanding = (so.items ?? []).filter(
+    (it) => Math.max(0, Number(it.qty) - Number(it.picked)) > 0,
+  );
+  if (!outstanding.length) {
+    ctx.toast("ไม่มีรายการค้างส่ง", `${so.code} — หยิบครบทุกบรรทัดแล้ว`, "warning");
+    return;
+  }
+  const cover = outstanding.map((it) =>
+    pickLineAvailability({ code: it.code, ordered: Number(it.qty) - Number(it.picked), picked: 0 }),
+  );
+  const waitQty = cover.reduce((s, c) => s + c.waitQty, 0);
+  const waitLines = cover.filter((c) => c.waitQty > 0).length;
+
   ctx.confirm({
     title: "Create picking task?",
-    message: `สร้างใบหยิบสินค้าจาก ${so.code} — ${so.itemCount} รายการ ${fmt(so.orderedQty)} หน่วย`,
+    message: (
+      <>
+        สร้างใบหยิบสินค้าจาก <strong>{so.code}</strong> — {outstanding.length} รายการ{" "}
+        {fmt(cover.reduce((s, c) => s + c.remaining, 0))} หน่วย
+        {waitQty > 0 && (
+          <>
+            <br />
+            <span className="font-semibold text-warning-text">
+              มีของพร้อมหยิบ {fmt(cover.reduce((s, c) => s + c.readyQty, 0))} หน่วย · ต้องรอของอีก{" "}
+              {fmt(waitQty)} หน่วย จาก {waitLines} รายการ
+            </span>
+            <br />
+            <span className="text-ink-2">
+              ส่งเท่าที่มีก่อนได้ — ส่วนที่รอจะค้างอยู่ในใบสั่งขายและเปิดใบหยิบรอบถัดไปได้
+            </span>
+          </>
+        )}
+      </>
+    ),
     confirmText: "Create Picking",
     tone: "primary",
     onConfirm: () => {
@@ -1129,7 +1173,7 @@ export function soCreatePick(so: SoRow, ctx: ActionCtx) {
         dueDate: so.deliveryDate,
         strategy: "FEFO (หมดอายุก่อน หยิบก่อน)",
         remark: `สร้างจากใบสั่งขาย ${so.code}`,
-        items: (so.items ?? []).map((it, i) => ({
+        items: outstanding.map((it, i) => ({
           line: i + 1,
           code: it.code,
           name: it.name,
@@ -1171,6 +1215,67 @@ export function soCreatePick(so: SoRow, ctx: ActionCtx) {
       ctx.goto(`/m/picking/${encodeURIComponent(code)}`);
     },
   });
+}
+
+/**
+ * Close the order by hand.
+ *
+ * Confirming the last delivery already closes it — this is for the order that
+ * got there some other way, and for anyone who comes looking for the button.
+ * The rule it enforces is the one worth stating out loud: an order closes when
+ * the goods are with the customer, never because somebody wants it off a list.
+ */
+export function soClose(so: SoRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-order", "approve", "ปิดใบสั่งขายไม่ได้")) return;
+
+  const blocked = soCloseBlocked(so);
+  if (blocked) {
+    ctx.toast("ปิดใบสั่งขายไม่ได้", `${so.code} — ${blocked}`, "warning");
+    return;
+  }
+
+  ctx.confirm({
+    title: "Close this sales order?",
+    message: (
+      <>
+        ปิด <strong>{so.code}</strong> — ส่งมอบครบ {fmt(so.deliveredQty)} หน่วยแล้ว
+        <br />
+        <span className="text-ink-2">ปิดแล้วจะเปิดใบหยิบสินค้าจากใบสั่งขายนี้อีกไม่ได้</span>
+      </>
+    ),
+    confirmText: "Close order",
+    tone: "primary",
+    onConfirm: () => {
+      so.status = "Completed";
+      so.updated = stamp();
+      so.updatedBy = USER();
+      log(so, "Completed", `ปิดใบสั่งขายโดย ${USER()} — ส่งมอบครบถ้วน`);
+      commit(ctx, "ปิดใบสั่งขายแล้ว", `${so.code} — ส่งมอบครบถ้วน`);
+    },
+  });
+}
+
+/**
+ * Order → invoice, for money collected before the goods move: a deposit, a
+ * cash sale, a customer who pays against the order. What ships is billed from
+ * the delivery note instead — `doCreateInvoice` — and the invoice form nets
+ * both routes against what has already been billed, so neither can bill the
+ * same units twice.
+ */
+export function soCreateInvoice(so: SoRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-invoice", "create", "ออกใบแจ้งหนี้ไม่ได้")) return;
+  if (!["Confirmed", "Picking", "Partially Delivered", "Completed"].includes(so.status)) {
+    ctx.toast(
+      "ออกใบแจ้งหนี้ไม่ได้",
+      `${so.code} อยู่ในสถานะ ${so.status} — วางบิลได้เมื่อยืนยันใบสั่งขายแล้ว`,
+      "warning",
+    );
+    return;
+  }
+  /* Order matters: the document list is read off the type. */
+  ctx.goto(
+    `/m/sales-invoice/new?sourceType=${encodeURIComponent("Sales Order")}&sourceDoc=${encodeURIComponent(so.code)}`,
+  );
 }
 
 export function soCancel(so: SoRow, ctx: ActionCtx) {
@@ -1238,6 +1343,70 @@ export function pickStart(task: PickRow, ctx: ActionCtx) {
   task.updated = stamp();
   log(task, "In progress", "เริ่มหยิบสินค้า", "info");
   commit(ctx, "เริ่มหยิบสินค้า", task.code, "info");
+}
+
+/**
+ * Fill every line with what the warehouse can actually cover, leaving the rest
+ * outstanding. The picker still walks the floor and still corrects the numbers
+ * — this is the starting point, not the answer, and it is what turns "อะไรมีของ
+ * อะไรต้องรอ" into a pick that can be completed for the part that exists.
+ */
+export function pickFillAvailable(task: PickRow, ctx: ActionCtx) {
+  if (denied(ctx, "picking", "edit", "แก้ไขใบหยิบสินค้าไม่ได้")) return;
+  if (["Completed", "Cancelled"].includes(task.status)) {
+    ctx.toast(
+      "เติมจำนวนไม่ได้",
+      `${task.code} อยู่ในสถานะ ${task.status} — งานที่ปิดแล้วแก้ไขไม่ได้`,
+      "warning",
+    );
+    return;
+  }
+
+  const fills = (task.items ?? []).map((it) => ({ it, cover: pickLineAvailability(it) }));
+  const addQty = fills.reduce((s, f) => s + f.cover.readyQty, 0);
+  if (addQty === 0) {
+    ctx.toast(
+      "ไม่มีของให้หยิบเพิ่ม",
+      task.waitQty > 0
+        ? `${task.code} — รอของอีก ${fmt(task.waitQty)} หน่วย จาก ${task.waitLines} รายการ`
+        : `${task.code} — หยิบครบทุกบรรทัดแล้ว`,
+      "warning",
+    );
+    return;
+  }
+
+  ctx.confirm({
+    title: "Fill from available stock?",
+    message: (
+      <>
+        เติมจำนวนหยิบตามของที่มีจริงในคลัง <strong>{fmt(addQty)}</strong> หน่วย
+        {task.waitQty > 0 && (
+          <>
+            <br />
+            <span className="font-semibold text-warning-text">
+              อีก {fmt(task.waitQty)} หน่วย จาก {task.waitLines} รายการยังไม่มีของ — จะค้างไว้ในใบสั่งขาย
+            </span>
+          </>
+        )}
+      </>
+    ),
+    confirmText: "เติมตามของที่มี",
+    tone: "primary",
+    onConfirm: () => {
+      for (const { it, cover } of fills) it.picked = Number(it.picked) + cover.readyQty;
+      task.updated = stamp();
+      task.updatedBy = USER();
+      log(task, "Filled from stock", `เติมจำนวนตามของที่มี ${fmt(addQty)} หน่วย`, "info");
+      commit(
+        ctx,
+        "เติมจำนวนแล้ว",
+        task.waitQty > 0
+          ? `${task.code} — รอของอีก ${fmt(task.waitQty)} หน่วย`
+          : `${task.code} — ครบทุกบรรทัด`,
+        task.waitQty > 0 ? "warning" : "success",
+      );
+    },
+  });
 }
 
 /**
@@ -1605,6 +1774,31 @@ export function doConfirmDelivery(d: DoRow, ctx: ActionCtx) {
       commit(ctx, "ยืนยันการส่งมอบแล้ว", `${d.code} — บันทึกกลับเข้า ${d.soRef}`);
     },
   });
+}
+
+/**
+ * Delivery note → the invoice for what it carried.
+ *
+ * An invoice cannot be opened from a blank page, so this is the way in: the
+ * form starts on this document, pulls the lines it has not billed yet, and
+ * bills exactly what left the building. A short delivery therefore bills
+ * short, and the back order bills on its own note later — which is the whole
+ * reason partial deliveries and partial invoices have to travel together.
+ */
+export function doCreateInvoice(d: DoRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-invoice", "create", "ออกใบแจ้งหนี้ไม่ได้")) return;
+  if (!["Shipped", "Delivered"].includes(d.status)) {
+    ctx.toast(
+      "ออกใบแจ้งหนี้ไม่ได้",
+      `${d.code} อยู่ในสถานะ ${d.status} — วางบิลได้เมื่อของออกจากคลังแล้วเท่านั้น`,
+      "warning",
+    );
+    return;
+  }
+  /* Order matters: the document list is read off the type. */
+  ctx.goto(
+    `/m/sales-invoice/new?sourceType=${encodeURIComponent("Delivery Order")}&sourceDoc=${encodeURIComponent(d.code)}`,
+  );
 }
 
 export function doFail(d: DoRow, ctx: ActionCtx) {

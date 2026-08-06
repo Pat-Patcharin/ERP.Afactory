@@ -7,6 +7,7 @@ import { DASH, fmt, money0 } from "@/lib/format";
 import {
   doCancel,
   doConfirmDelivery,
+  doCreateInvoice,
   doDelete,
   doFail,
   doReady,
@@ -29,10 +30,17 @@ export const DO_LIST: ListSchema<DoRow> = {
   title: "Delivery Orders",
   subtitle: "ใบส่งของและการจัดส่ง ติดตามสถานะรถ ผู้รับ และรายการที่ส่งไม่สำเร็จ",
   crumb: "Delivery Order",
-  primaryLabel: "New Delivery Order",
+  primaryLabel: "",
   searchPlaceholder: "ค้นหาเลขที่ DO ใบสั่งขาย ลูกค้า ผู้ขนส่ง หรือเลขติดตาม...",
   emptyTitle: "ไม่พบใบส่งของที่ตรงกับเงื่อนไข",
   hideImportExport: true,
+  /* A delivery note raised on its own says goods left the building that no
+     order asked for. It exists because a pack finished, and only then. */
+  convertOnly: {
+    from: "งานแพ็คที่ปิดงานแล้ว",
+    goto: "/m/packing",
+    gotoLabel: "ไปที่งานแพ็ค",
+  },
 
   source: () => DELIVERY_ORDERS,
   searchFields: ["code", "soRef", "customer", "carrier", "trackingNo", "driver", "shipTo"],
@@ -172,6 +180,9 @@ export const DO_LIST: ListSchema<DoRow> = {
       if (d.status === "Shipped")
         acts.push({ label: "Mark Failed", icon: "xCircle", danger: true, run: (r) => doFail(r, ctx) });
     }
+
+    if (["Shipped", "Delivered"].includes(d.status))
+      acts.push({ label: "Create Invoice", icon: "invoice", run: (r) => doCreateInvoice(r, ctx) });
 
     acts.push({
       label: `ดู ${d.soRef}`,
@@ -448,6 +459,10 @@ export const DO_DETAIL: DetailSchema<DoRow> = {
       if (d.status === "Shipped")
         acts.push({ label: "Mark Failed", icon: "xCircle", danger: true, run: () => doFail(d, ctx) });
     }
+    /* Bills what this note carried — a short delivery bills short, and the
+       back order bills on its own note later. */
+    if (["Shipped", "Delivered"].includes(d.status))
+      acts.push({ label: "Create Invoice", icon: "invoice", run: () => doCreateInvoice(d, ctx) });
     acts.push({
       label: "Print Delivery Note",
       icon: "printer",

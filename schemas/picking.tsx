@@ -1,5 +1,11 @@
 import { printActions } from "@/lib/print/actions";
-import { PICKING_TASKS, getSO, pickShortLines, type PickRow } from "@/lib/domain/outbound";
+import {
+  PICKING_TASKS,
+  getSO,
+  pickLineViews,
+  pickShortLines,
+  type PickRow,
+} from "@/lib/domain/outbound";
 import { PICK_STATUS } from "@/data/picking";
 import { PICK_LINE_TONE, PICK_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
 import { DASH, fmt } from "@/lib/format";
@@ -9,6 +15,7 @@ import {
   pickCancel,
   pickComplete,
   pickCreatePack,
+  pickFillAvailable,
   pickStart,
 } from "@/lib/workflows-outbound";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
@@ -27,10 +34,15 @@ export const PICK_LIST: ListSchema<PickRow> = {
   title: "Picking",
   subtitle: "งานหยิบสินค้าจากคลังตามใบสั่งขาย ติดตามความคืบหน้าและรายการที่หยิบไม่ครบ",
   crumb: "Picking",
-  primaryLabel: "New Picking Task",
+  primaryLabel: "",
   searchPlaceholder: "ค้นหาเลขที่งาน ใบสั่งขาย ลูกค้า หรือผู้รับผิดชอบ...",
   emptyTitle: "ไม่พบงานหยิบสินค้าที่ตรงกับเงื่อนไข",
   hideImportExport: true,
+  convertOnly: {
+    from: "ใบสั่งขายที่ยืนยันแล้ว",
+    goto: "/m/sales-order",
+    gotoLabel: "ไปที่ใบสั่งขาย",
+  },
 
   source: () => PICKING_TASKS,
   searchFields: ["code", "soRef", "customer", "assignedTo", "warehouse"],
@@ -40,6 +52,13 @@ export const PICK_LIST: ListSchema<PickRow> = {
     { key: "waiting", label: "Waiting", test: (t) => t.status === "Waiting" },
     { key: "assigned", label: "Assigned", test: (t) => t.status === "Assigned" },
     { key: "progress", label: "In Progress", test: (t) => t.status === "In Progress" },
+    /* The queue the buyer works from: open tasks with something the warehouse
+       cannot cover today, whoever they are assigned to. */
+    {
+      key: "wait",
+      label: "รอของ",
+      test: (t) => t.waitQty > 0 && !["Completed", "Cancelled"].includes(t.status),
+    },
     { key: "short", label: "หยิบไม่ครบ", test: (t) => t.shortCount > 0 && t.status !== "Cancelled" },
     { key: "completed", label: "Completed", test: (t) => t.status === "Completed" },
   ],
@@ -112,6 +131,25 @@ export const PICK_LIST: ListSchema<PickRow> = {
       ),
     },
     {
+      key: "waitQty",
+      label: "มีของ / รอของ",
+      align: "right",
+      sortable: true,
+      sortValue: (t) => t.waitQty,
+      cell: (t) =>
+        ["Completed", "Cancelled"].includes(t.status) ? (
+          DASH
+        ) : (
+          <>
+            {fmt(t.readyQty)} /{" "}
+            <span className={t.waitQty > 0 ? "font-semibold text-warning-text" : ""}>
+              {fmt(t.waitQty)}
+            </span>
+            {t.waitLines > 0 && <CellSub>รอ {t.waitLines} บรรทัด</CellSub>}
+          </>
+        ),
+    },
+    {
       key: "pct",
       label: "Progress",
       align: "right",
@@ -147,6 +185,9 @@ export const PICK_LIST: ListSchema<PickRow> = {
 
     if (task.status === "Assigned")
       acts.push({ label: "Start Picking", icon: "play", run: (r) => pickStart(r, ctx) });
+
+    if (["Waiting", "Assigned", "In Progress"].includes(task.status) && task.readyQty > 0)
+      acts.push({ label: "เติมตามของที่มี", icon: "picking", run: (r) => pickFillAvailable(r, ctx) });
 
     if (["Assigned", "In Progress"].includes(task.status))
       acts.push({ label: "Complete Picking", icon: "checkCircle", run: (r) => pickComplete(r, ctx) });
@@ -197,6 +238,9 @@ export const PICK_DETAIL: DetailSchema<PickRow> = {
     badges: [
       { text: t.status, tone: tone(PICK_TONE, t.status) },
       ...(t.shortCount > 0 ? ([{ text: `ขาด ${t.shortCount} บรรทัด`, tone: "warning" }] as const) : []),
+      ...(t.waitQty > 0 && !["Completed", "Cancelled"].includes(t.status)
+        ? ([{ text: `รอของ ${t.waitLines} บรรทัด`, tone: "warning" }] as const)
+        : []),
       { text: t.priority, tone: tone(PRIORITY_TONE, t.priority) },
     ],
     tags: [t.soRef, t.warehouse, t.assignedTo].filter(Boolean),
@@ -205,13 +249,25 @@ export const PICK_DETAIL: DetailSchema<PickRow> = {
   kpis: (t) => [
     { icon: "box", label: "Ordered Qty", value: fmt(t.orderedQty), sub: "หน่วย", goTab: "lines" },
     { icon: "picking", label: "Picked Qty", value: fmt(t.pickedQty), sub: `${t.pct}%`, goTab: "lines" },
-    {
-      icon: "alert",
-      label: "Short Lines",
-      value: fmt(t.shortCount),
-      sub: t.shortCount > 0 ? "ต้องติดตาม" : "ครบทุกบรรทัด",
-      goTab: "lines",
-    },
+    /* The question this sheet exists to answer: of what is still owed, how
+       much is on the shelf today and how much is waiting on goods. Reads as
+       short lines once the task is closed — there is nothing left to wait for
+       then, only what the picker could not find. */
+    ["Completed", "Cancelled"].includes(t.status)
+      ? {
+          icon: "alert",
+          label: "Short Lines",
+          value: fmt(t.shortCount),
+          sub: t.shortCount > 0 ? "ต้องติดตาม" : "ครบทุกบรรทัด",
+          goTab: "lines",
+        }
+      : {
+          icon: "alert",
+          label: "รอของ",
+          value: fmt(t.waitQty),
+          sub: t.waitQty > 0 ? `พร้อมหยิบ ${fmt(t.readyQty)} หน่วย` : "มีของครบทุกบรรทัด",
+          goTab: "lines",
+        },
     {
       icon: "user",
       label: "Assigned To",
@@ -246,6 +302,15 @@ export const PICK_DETAIL: DetailSchema<PickRow> = {
             title: `หยิบไม่ครบ ${t.shortCount} บรรทัด`,
             message: `หยิบได้ ${fmt(t.pickedQty)} จาก ${fmt(t.orderedQty)} หน่วย — ใบสั่งขาย ${t.soRef} จะยังปิดไม่ได้จนกว่าจะหยิบครบหรือส่งบางส่วน`,
           },
+          /* Stock the warehouse does not have yet, said on the page the
+             warehouse is standing on — and said as what to do about it. */
+          t.waitQty > 0 &&
+            !["Completed", "Cancelled"].includes(t.status) && {
+              type: "alert",
+              tone: "warn",
+              title: `รอของ ${t.waitLines} บรรทัด · ${fmt(t.waitQty)} หน่วย`,
+              message: `พร้อมหยิบตอนนี้ ${fmt(t.readyQty)} หน่วย — ส่งเท่าที่มีก่อนได้ (ใบส่งของและใบแจ้งหนี้บางส่วน) ส่วนที่รอจะค้างอยู่ใน ${t.soRef} และเปิดใบหยิบรอบถัดไปได้`,
+            },
           {
             type: "fields",
             title: "Task Information",
@@ -300,7 +365,7 @@ export const PICK_DETAIL: DetailSchema<PickRow> = {
         {
           type: "table",
           title: `Lines to Pick (${t.itemCount})`,
-          rows: (t.items ?? []).map((it) => ({
+          rows: pickLineViews(t).map((it) => ({
             ...it,
             short: Math.max(0, Number(it.ordered) - Number(it.picked)),
             binShort: paBinShort(it.bin),
@@ -325,6 +390,30 @@ export const PICK_DETAIL: DetailSchema<PickRow> = {
                   DASH
                 ),
             },
+            /* Read live off the stock master every render — a task raised
+               yesterday must not send anybody to a bin another order emptied
+               this morning. */
+            {
+              key: "available",
+              label: "คงเหลือในคลัง",
+              align: "right",
+              muted: true,
+              cell: (r) => (r.available === null ? DASH : fmt(r.available)),
+            },
+            {
+              key: "stock",
+              label: "สถานะของ",
+              cell: (r) =>
+                r.done ? (
+                  <Badge tone="success">หยิบครบแล้ว</Badge>
+                ) : r.waitQty === 0 ? (
+                  <Badge tone="success">มีของ</Badge>
+                ) : r.readyQty > 0 ? (
+                  <Badge tone="warning">มีบางส่วน · รอ {fmt(r.waitQty)}</Badge>
+                ) : (
+                  <Badge tone="danger">รอของ {fmt(r.waitQty)}</Badge>
+                ),
+            },
             { key: "unit", label: "UOM", muted: true },
             {
               key: "status",
@@ -337,15 +426,21 @@ export const PICK_DETAIL: DetailSchema<PickRow> = {
         {
           type: "cards",
           title: "Pick Summary",
-          cols: 3,
+          cols: 4,
           items: [
             { label: "Ordered", value: fmt(t.orderedQty), unit: "หน่วย" },
             { label: "Picked", value: fmt(t.pickedQty), unit: "หน่วย", tone: "accent" },
             {
-              label: "Short",
-              value: fmt(t.orderedQty - t.pickedQty),
+              label: "พร้อมหยิบ",
+              value: fmt(t.readyQty),
               unit: "หน่วย",
-              tone: t.pickedQty < t.orderedQty ? "warn" : undefined,
+              tone: t.readyQty > 0 ? "accent" : undefined,
+            },
+            {
+              label: "รอของ",
+              value: fmt(t.waitQty),
+              unit: "หน่วย",
+              tone: t.waitQty > 0 ? "warn" : undefined,
             },
           ],
         },
@@ -389,6 +484,8 @@ export const PICK_DETAIL: DetailSchema<PickRow> = {
       acts.push({ label: "Assign to me", icon: "user", run: () => pickAssign(t, "Warin S.", ctx) });
     if (t.status === "Assigned")
       acts.push({ label: "Start Picking", icon: "play", run: () => pickStart(t, ctx) });
+    if (["Waiting", "Assigned", "In Progress"].includes(t.status) && t.readyQty > 0)
+      acts.push({ label: "เติมตามของที่มี", icon: "picking", run: () => pickFillAvailable(t, ctx) });
     if (["Assigned", "In Progress"].includes(t.status))
       acts.push({ label: "Complete Picking", icon: "checkCircle", run: () => pickComplete(t, ctx) });
     if (t.status === "Completed" && !t.packRef)

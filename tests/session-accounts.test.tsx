@@ -19,6 +19,7 @@ import { srApprove, srConvert, srReject, srSubmit } from "@/lib/workflows-outbou
 import { srSchemas } from "@/schemas/sales-request";
 import { soSchemas } from "@/schemas/sales-order";
 import { invSchemas } from "@/schemas/sales-invoice";
+import { productSchemas } from "@/schemas/product";
 import type { ActionCtx } from "@/lib/types";
 
 /* ============================================================
@@ -278,15 +279,24 @@ describe("Two accounts — on the screen", () => {
   });
 
   it("gives no Create button on a list the role may only read", () => {
-    /* The rep may look at sales invoices; raising one is finance's job. */
+    /* The rep may look at the product catalogue; maintaining it is not theirs. */
     switchAccount(REP);
-    const { unmount } = render(<ListView schema={invSchemas.list} />);
-    expect(screen.queryByRole("button", { name: /Create Invoice/ })).toBeNull();
+    const { unmount } = render(<ListView schema={productSchemas.list} />);
+    expect(screen.queryByRole("button", { name: /Create Product/ })).toBeNull();
     unmount();
 
     switchAccount(ADMIN);
+    render(<ListView schema={productSchemas.list} />);
+    expect(screen.getByRole("button", { name: /Create Product/ })).toBeInTheDocument();
+  });
+
+  it("gives no Create button on a convert-only document, not even to Super Admin", () => {
+    /* Permission is not the question here: an invoice exists because goods
+       moved, so there is no blank page for anybody to start one on. */
+    switchAccount(ADMIN);
+    expect(can("sales-invoice", "create")).toBe(true);
     render(<ListView schema={invSchemas.list} />);
-    expect(screen.getByRole("button", { name: /Create Invoice/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Create Invoice/ })).toBeNull();
   });
 });
 

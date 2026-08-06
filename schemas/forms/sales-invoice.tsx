@@ -1,4 +1,5 @@
 import {
+  INV_BILLABLE_SOURCE_TYPES,
   INV_BRANCHES,
   INV_CHANNELS,
   INV_DISC_TYPES,
@@ -6,7 +7,6 @@ import {
   INV_PAY_TERMS,
   INV_PAYMENT_METHODS,
   INV_ROUNDING,
-  INV_SOURCE_TYPES,
   INV_TAX_CODES,
   INV_TAX_INVOICE_TYPES,
   INV_TAX_MODES,
@@ -57,6 +57,23 @@ const num = (v: unknown) => Number(v) || 0;
 const isManual = (s: { sourceType?: string }) => s.sourceType === "Manual";
 const isShipment = (s: { sourceType?: string }) => s.sourceType === "Shipment";
 
+/**
+ * Source types this document may be switched to.
+ *
+ * The two billable ones, plus whatever the record already says if that is
+ * something else. An invoice booked against a shipment, or one of the manual
+ * ones raised before billing had to follow a document, still has to open and
+ * still has to save — dropping its own value out of the list would blank the
+ * field the moment somebody edited the address. Nothing new can reach those
+ * types, because a new invoice starts on a billable one and this list only
+ * ever carries the value it was given.
+ */
+const sourceTypeChoices = (s: { sourceType?: string }): string[] => {
+  const own = String(s.sourceType ?? "").trim();
+  const offered: string[] = [...INV_BILLABLE_SOURCE_TYPES];
+  return own && !offered.includes(own) ? [...offered, own] : offered;
+};
+
 /** Totals for whatever is currently in the draft grid. */
 const draftTotals = (s: GridRow) =>
   invoiceTotals({
@@ -103,7 +120,9 @@ export const INV_FORM: FormSchema<InvRow> = {
   blank: () => ({
     _mode: "create",
     code: nextInvoiceCode(),
-    sourceType: "Manual",
+    /* Billing follows goods, so the delivery note is the default way in. The
+       seeded route overwrites both of these before the form is ever rendered. */
+    sourceType: "Delivery Order",
     sourceDoc: "",
     customerPick: "",
     customer: "",
@@ -219,8 +238,8 @@ export const INV_FORM: FormSchema<InvRow> = {
               path: "sourceType",
               label: "Source Type",
               required: true,
-              options: opts(INV_SOURCE_TYPES),
-              hint: "เลือก Manual หากไม่ได้อ้างอิงเอกสารใด",
+              options: opts(sourceTypeChoices(s)),
+              hint: "วางบิลจากใบส่งของตามของที่ส่งจริง หรือจากใบสั่งขายเมื่อเก็บเงินก่อนส่ง",
             },
             {
               type: "select",
@@ -242,6 +261,8 @@ export const INV_FORM: FormSchema<InvRow> = {
               label: "Source Summary",
               span: true,
               value: (st) => {
+                /* Only reachable on an invoice booked before billing had to
+                   follow a document; new ones cannot select this type. */
                 if (isManual(st)) return "ใบแจ้งหนี้แบบ Manual — ไม่อ้างอิงเอกสารต้นทาง";
                 if (!st.sourceDoc) return "ยังไม่ได้เลือกเอกสารต้นทาง";
                 const rows = (st.items ?? []) as GridRow[];

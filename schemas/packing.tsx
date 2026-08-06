@@ -25,10 +25,15 @@ export const PACK_LIST: ListSchema<PackRow> = {
   title: "Packing",
   subtitle: "งานบรรจุสินค้าลงกล่องก่อนส่งมอบ ติดตามจำนวนกล่องและน้ำหนักรวม",
   crumb: "Packing",
-  primaryLabel: "New Packing Task",
+  primaryLabel: "",
   searchPlaceholder: "ค้นหาเลขที่งาน ใบหยิบสินค้า ใบสั่งขาย หรือลูกค้า...",
   emptyTitle: "ไม่พบงานแพ็คที่ตรงกับเงื่อนไข",
   hideImportExport: true,
+  convertOnly: {
+    from: "ใบหยิบสินค้าที่ปิดงานแล้ว",
+    goto: "/m/picking",
+    gotoLabel: "ไปที่ใบหยิบสินค้า",
+  },
 
   source: () => PACKING_TASKS,
   searchFields: ["code", "pickRef", "soRef", "customer", "packer", "warehouse"],

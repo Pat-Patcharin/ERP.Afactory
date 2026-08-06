@@ -237,9 +237,11 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
           ))}
           {/* A role with read-only access to this module gets no Create
               button. The schema says the module has one; the acting role
-              decides whether this person sees it. */}
-          {!schema.hideCreate && can(schema.key, "create") && (
+              decides whether this person sees it — and a convert-only
+              document has no Create button for anybody, whatever the role. */}
+          {!schema.hideCreate && !schema.convertOnly && can(schema.key, "create") && (
             <Button
+              data-testid="list-create"
               variant="primary"
               onClick={() =>
                 schema.onCreate ? schema.onCreate(ctx) : ctx.goto(`/m/${schema.key}/new`)

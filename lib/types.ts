@@ -185,6 +185,41 @@ export interface ListSchema<T extends RecordBase = RecordBase> {
   hideImportExport?: boolean;
   /** Read-only lists (an inquiry screen) have nothing to create. */
   hideCreate?: boolean;
+  /** Documents that may only be raised by converting the document upstream. */
+  convertOnly?: ConvertOnly;
+}
+
+/**
+ * A document nobody may open from a blank page.
+ *
+ * A sales order raised on its own has no approved price and no customer's yes
+ * behind it; a delivery note raised on its own says goods left the building
+ * that no order asked for. Every one of these documents exists because the one
+ * before it produced it, so the way in is that conversion and nothing else.
+ *
+ * Stated as data rather than as a hidden button: the list uses it to drop the
+ * Create button, and the create ROUTE uses it to refuse a URL typed by hand or
+ * kept in a bookmark from before the rule existed. Editing an existing
+ * document is untouched — this closes the front door, not the record.
+ */
+export interface ConvertOnly {
+  /** Which document produces this one, in Thai — for the message. */
+  from: string;
+  /** Where to send someone who came here wanting to raise one. */
+  goto: string;
+  /** How that destination reads on the button. */
+  gotoLabel: string;
+  /**
+   * When the create route may open its form after all, judged on the query
+   * string the conversion handed over.
+   *
+   * A document whose conversion pushes the record straight into the store
+   * omits this: nothing legitimate ever reaches /new, so nothing may. An
+   * invoice is the exception — the conversion cannot write it, because a
+   * human still has to say what is being billed — so it arrives at the form
+   * carrying its source, and that is the only shape of URL allowed through.
+   */
+  allowSeeded?: (params: Record<string, string>) => boolean;
 }
 
 /* ---------- Detail blocks ---------- */

@@ -14,6 +14,8 @@
  * Mock dataset; mutating these arrays is how the prototype persists changes.
  */
 
+import { BULK_ORDER_ITEMS } from "./bulk-order";
+
 export interface SrLine {
   code: string;
   name: string;
@@ -296,5 +298,137 @@ export const SALES_REQUESTS: SalesRequest[] = [
     createdBy: "Somchai S.",
     updated: "02/07/2569 16:40",
     updatedBy: "Pimpaka S.",
+  },
+
+  /* ============================================================
+     THE THREE ORDERS THAT USED TO HAVE NO PAPER BEHIND THEM
+
+     SO2506-0003, -0004 and -0009 were written straight into the
+     order file, from the days when an order could be typed on a
+     blank page. It cannot any more, so the requests that would
+     have produced them are here — Converted, pointing at their
+     order, and carrying the same lines at the same prices.
+
+     Not decoration: the order detail links back to its source,
+     and an order whose link goes nowhere is the first thing that
+     makes somebody distrust the chain.
+     ============================================================ */
+  {
+    code: "SR2506-0006",
+    customer: "โรงพยาบาลสมานบุญ 1",
+    customerCode: "BP000119",
+    salesRep: "SALE003 - Narin Chaiyawat",
+    requestDate: "28/06/2569",
+    requiredDate: "08/07/2569",
+    billType: "Non VAT",
+    status: "Converted",
+    priority: "Critical",
+    warehouse: "WH-BKK Bangkok Main Warehouse",
+    currency: "THB",
+    payTerm: "เครดิต 60 วัน",
+    priceList: "PL-GOV-2026 Government",
+    channel: "Government",
+    customerRef: "HOSP-PO-2569-0771",
+    quotationRef: "",
+    note: "ใบสั่งซื้อจากโรงพยาบาล ยอดสูงกว่าวงเงินเดิม ต้องให้บัญชีดูเครดิตก่อน",
+    items: [
+      { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
+    ],
+    approvedBy: "Pimpaka S.",
+    approvedDate: "29/06/2569 11:30",
+    rejectReason: "",
+    soRef: "SO2506-0003",
+    history: [
+      { t: "Converted to Sales Order", d: "สร้าง SO2506-0003 จากคำขอนี้ — ตั้งเป็น On Hold รอเครดิต", u: "Narin C.", when: "29/06/2569 14:00", kind: "primary" },
+      { t: "Approved", d: "อนุมัติภายในโดย Pimpaka S. — เกินวงเงิน ให้เปิดใบสั่งขายไว้ก่อน", u: "Pimpaka S.", when: "29/06/2569 11:30", kind: "primary" },
+      { t: "Submitted for approval", d: "ส่งขออนุมัติภายใน", u: "Narin C.", when: "28/06/2569 16:20", kind: "info" },
+      { t: "Created", d: "สร้างคำขอขายจากใบสั่งซื้อของโรงพยาบาล", u: "Narin C.", when: "28/06/2569 15:40", kind: "" },
+    ],
+    created: "28/06/2569 15:40",
+    createdBy: "Narin C.",
+    updated: "29/06/2569 14:00",
+    updatedBy: "Narin C.",
+  },
+  {
+    code: "SR2506-0007",
+    customer: "คลินิกทันตกรรม เอบีซี",
+    customerCode: "BP000122",
+    salesRep: "SALE004 - Supavita Yothapun",
+    requestDate: "30/06/2569",
+    requiredDate: "03/07/2569",
+    billType: "VAT",
+    status: "Converted",
+    priority: "Normal",
+    warehouse: "WH-CNX Chiang Mai Warehouse",
+    currency: "THB",
+    payTerm: "เงินสด",
+    priceList: "PL-CLINIC-2026 Clinic",
+    channel: "Direct",
+    customerRef: "",
+    quotationRef: "",
+    note: "ลูกค้าโทรสั่งและจะมารับเองที่คลังเชียงใหม่",
+    items: [
+      { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 24, price: 95, disc: 0, tax: 7, note: "" },
+      { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 12, price: 110, disc: 0, tax: 7, note: "" },
+    ],
+    approvedBy: "Pimpaka S.",
+    approvedDate: "30/06/2569 15:30",
+    rejectReason: "",
+    soRef: "SO2506-0004",
+    history: [
+      { t: "Converted to Sales Order", d: "สร้าง SO2506-0004 จากคำขอนี้", u: "Supavita Y.", when: "30/06/2569 15:45", kind: "primary" },
+      { t: "Approved", d: "อนุมัติภายในโดย Pimpaka S. — ชำระเงินสด ไม่ใช้เครดิต", u: "Pimpaka S.", when: "30/06/2569 15:30", kind: "primary" },
+      { t: "Submitted for approval", d: "ส่งขออนุมัติภายใน", u: "Supavita Y.", when: "30/06/2569 14:50", kind: "info" },
+      { t: "Created", d: "สร้างคำขอขายจากการโทรสั่งของลูกค้า", u: "Supavita Y.", when: "30/06/2569 14:30", kind: "" },
+    ],
+    created: "30/06/2569 14:30",
+    createdBy: "Supavita Y.",
+    updated: "30/06/2569 15:45",
+    updatedBy: "Supavita Y.",
+  },
+  {
+    code: "SR2506-0008",
+    customer: "ห้างหุ้นส่วนจำกัด เดนทัล แม็กซ์ ดีลเลอร์",
+    customerCode: "BP000120",
+    salesRep: "SALE001 - Patcharin Thiengkaew",
+    requestDate: "25/06/2569",
+    requiredDate: "08/07/2569",
+    billType: "VAT",
+    status: "Converted",
+    priority: "High",
+    warehouse: "WH-BKK Bangkok Main Warehouse",
+    currency: "THB",
+    payTerm: "เครดิต 30 วัน",
+    priceList: "PL-DEALER-2026 Dealer",
+    channel: "Dealer",
+    customerRef: "DMX-PO-2569-0442",
+    quotationRef: "",
+    note: "คำสั่งซื้อประจำไตรมาสของดีลเลอร์ ขอให้ส่งครบทุกรายการในรอบเดียว",
+    /* The same 38 lines the order carries — the multi-page print fixture. */
+    items: BULK_ORDER_ITEMS.map((it) => ({
+      code: it.code,
+      name: it.name,
+      unit: it.unit,
+      qty: it.qty,
+      price: it.price,
+      disc: it.disc,
+      tax: it.tax,
+      note: it.note,
+    })),
+    approvedBy: "Pimpaka S.",
+    approvedDate: "26/06/2569 09:20",
+    rejectReason: "",
+    soRef: "SO2506-0009",
+    history: [
+      { t: "Converted to Sales Order", d: "สร้าง SO2506-0009 จากคำขอนี้", u: "Patcharin T.", when: "26/06/2569 10:05", kind: "primary" },
+      { t: "Approved", d: "อนุมัติภายในโดย Pimpaka S. — อนุมัติเกินวงเงินชั่วคราว", u: "Pimpaka S.", when: "26/06/2569 09:20", kind: "primary" },
+      { t: "Submitted for approval", d: "ส่งขออนุมัติภายใน", u: "Patcharin T.", when: "25/06/2569 17:10", kind: "info" },
+      { t: "Created", d: "สร้างคำขอขายจากคำสั่งซื้อประจำไตรมาส", u: "Patcharin T.", when: "25/06/2569 16:30", kind: "" },
+    ],
+    created: "25/06/2569 16:30",
+    createdBy: "Patcharin T.",
+    updated: "26/06/2569 10:05",
+    updatedBy: "Patcharin T.",
   },
 ];
