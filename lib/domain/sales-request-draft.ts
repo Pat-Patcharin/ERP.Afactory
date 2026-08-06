@@ -1,4 +1,5 @@
 import { PAY_TERMS } from "@/data/partners";
+import { displayName } from "./lines";
 import {
   SR_CHANNELS,
   SR_PRICE_LISTS,
@@ -18,8 +19,11 @@ import {
   applyShipToOn,
   blankLine,
   blankParty,
+  detailLines,
   docInsight,
   docTotals,
+  joinDetails,
+  lineExtras,
   validateLines,
   zeroTaxIfNonVat,
   validateParty,
@@ -60,18 +64,23 @@ export {
   DISCOUNT_THRESHOLD,
   applyBillType,
   applyProduct,
+  applyProductForCustomer,
   planBillTypeChange,
   type BillTypeChangePlan,
   blankLine,
   blockingIssues,
+  detailLines,
+  joinDetails,
   lineAvailability,
   productSearch,
   resolvePriceList,
   resolveRep,
   shipToChoices,
+  standardLinePrice,
   warningIssues,
   type DraftIssue,
   type DraftLine,
+  type StandardPrice,
 } from "./doc-draft";
 
 export type SrTotals = DocTotals;
@@ -191,7 +200,11 @@ export function draftFromSalesRequest(r: SalesRequest): SalesRequestDraft {
       price: it.price,
       disc: it.disc,
       tax: it.tax,
-      note: it.note ?? "",
+      /* The record's one note field is the editor's list of detail rows.
+         `note` itself stays blank on the draft so the two cannot disagree —
+         saveSalesRequestDraft writes it back from `details`. Same shape as
+         draftFromQuotation, deliberately. */
+      details: detailLines(it.note ?? ""),
       customName: it.customName ?? "",
       showOnBill: it.showOnBill !== false,
     })),
@@ -248,7 +261,9 @@ export function applyQuotation(draft: SalesRequestDraft, quotationRef: string): 
       price: it.price,
       disc: it.disc,
       tax: it.tax,
-      note: it.note ?? "",
+      /* Detail rows, not a note — the quotation stored them joined into its
+         one note field, and the editor works in rows. */
+      details: detailLines(it.note ?? ""),
       customName: it.customName ?? "",
       showOnBill: it.showOnBill !== false,
     })),
@@ -365,8 +380,12 @@ export function srPrintDoc(draft: SalesRequestDraft, config: PrintConfig): Print
       return {
         no: i + 1,
         code: str(l.code),
-        description: str(l.name),
-        extraLines: [str(l.desc), str(l.note)].filter(Boolean),
+        /* Always the salesperson's own wording, and always the detail rows.
+           `showOnBill` decides what a CUSTOMER sees, and a sales request is
+           internal — hiding a line's wording from the approver would hide
+           exactly the thing they are being asked to approve. */
+        description: displayName(l),
+        extraLines: lineExtras(l),
         warehouse: draft.warehouse,
         location: "",
         bin: "",
@@ -474,7 +493,10 @@ export function saveSalesRequestDraft(
       price: num(l.price),
       disc: num(l.disc),
       tax: num(l.tax),
-      note: str(l.note),
+      /* The customer-facing detail rows, back into the one field the record
+         has. A request loaded from an older record has them in `note` and no
+         `details` yet, so fall back to splitting it. */
+      note: joinDetails(l.details.length ? l.details : detailLines(l.note)),
       customName: str(l.customName),
       showOnBill: l.showOnBill !== false,
     }));

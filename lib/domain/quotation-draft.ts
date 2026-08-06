@@ -16,6 +16,7 @@ import {
   docInsight,
   docTotals,
   joinDetails,
+  lineExtras,
   validateLines,
   zeroTaxIfNonVat,
   validateParty,
@@ -319,20 +320,6 @@ export function validateDraft(draft: QuotationDraft): DraftIssue[] {
  * The internal note is deliberately absent — it is the one field that must
  * never reach paper.
  */
-/**
- * The extra lines this item prints under its name.
- *
- * The editor holds them as `details`; a line that arrived from a conversion
- * still carries them newline-joined in `note`. Reading both means neither a
- * converted quotation nor a typed one loses what was written under the item.
- */
-const lineExtras = (l: DraftLine): string[] =>
-  detailLines(
-    [str(l.desc), l.details.length ? joinDetails(l.details) : str(l.note)]
-      .filter(Boolean)
-      .join("\n"),
-  );
-
 export function draftPrintDoc(draft: QuotationDraft, config: PrintConfig): PrintDoc {
   const t = draftTotals(draft);
   const meta = config.metaFields

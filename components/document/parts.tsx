@@ -590,6 +590,17 @@ export interface ItemTableLayout {
   naming?: boolean;
   /** This customer's catalogue price, under the unit price. */
   standardPrice?: boolean;
+  /**
+   * What the warehouse has, under the quantity, on every line rather than
+   * only on the ones that are short.
+   *
+   * Off leaves the older behaviour untouched: a short line still warns. On,
+   * the number is there before the salesperson types a quantity, which is the
+   * point — it is an aid while the document is being written. Edit mode only,
+   * never in read mode: a figure that was true this afternoon has no business
+   * on the sheet the customer keeps.
+   */
+  stock?: boolean;
 }
 
 const DEFAULT_LAYOUT: Required<ItemTableLayout> = {
@@ -598,6 +609,7 @@ const DEFAULT_LAYOUT: Required<ItemTableLayout> = {
   uom: true,
   naming: false,
   standardPrice: false,
+  stock: false,
 };
 
 export function ItemTable({
@@ -863,8 +875,16 @@ function ItemRow({
             value={String(line.qty)}
             onChange={(e) => onCell(line.id, "qty", e.target.value)}
           />
-          {short && (
-            <p className="mt-0.5 text-right text-[11px] text-warning-text">
+          {/* On when the layout asks for it, and — as before — whenever the
+              line is short. The colour still carries the alarm, so turning it
+              on adds a figure without turning every row into a warning. */}
+          {(layout.stock ? stock?.found : short) && (
+            <p
+              className={cn(
+                "mt-0.5 text-right text-[11px]",
+                short ? "text-warning-text" : "text-ink-3",
+              )}
+            >
               คงเหลือ {fmt(stock!.available)}
             </p>
           )}

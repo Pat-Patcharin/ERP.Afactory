@@ -18,8 +18,10 @@ import {
   blankSrDraft,
   blockingIssues,
   draftFromSalesRequest,
+  lineAvailability,
   quotationChoices,
   saveSalesRequestDraft,
+  standardLinePrice,
   srInsight,
   srPrintDoc,
   srTotals,
@@ -28,6 +30,7 @@ import {
   type SalesRequestDraft,
 } from "@/lib/domain/sales-request-draft";
 import { docTotals } from "@/lib/domain/doc-draft";
+import { ItemTable } from "@/components/document/parts";
 import { buildPrintJob, getPrintConfig } from "@/lib/print";
 import { getSchemas } from "@/schemas/registry";
 import { routeParams } from "./setup";
@@ -501,6 +504,167 @@ describe("Sales Request editor — editor and print modes", () => {
       getPrintConfig("sales-request")!,
     );
     expect(JSON.stringify(doc)).not.toContain("อย่ารับออร์เดอร์");
+  });
+});
+
+/* ============================================================
+   The grid the request shares with the quotation, plus stock
+   ============================================================ */
+
+describe("Sales Request editor — the same grid as the quotation", () => {
+  it("drops Lot No., Serial No. and UOM, for the same reason", () => {
+    /* A request reserves nothing — its own remark says so — so there is no
+       picked stock to record against, and the unit comes with the product. */
+    render(<SalesRequestEditor />);
+    const doc = within(screen.getByTestId("request-document"));
+
+    for (const gone of ["Lot No.", "Serial No.", "UOM"]) {
+      expect(doc.queryByText(gone), gone).not.toBeInTheDocument();
+    }
+    expect(screen.queryByLabelText("Lot 1")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Serial 1")).not.toBeInTheDocument();
+  });
+
+  it("opens a line at this customer's own price", async () => {
+    const user = userEvent.setup();
+    render(<SalesRequestEditor />);
+    await user.selectOptions(screen.getByLabelText("Customer"), CUSTOMER);
+    await user.click(screen.getByLabelText("Item Code 1"));
+    await user.click(await screen.findByText(PRODUCT));
+
+    const expected = standardLinePrice(CUSTOMER, PRODUCT);
+    expect(expected, "this customer has a standard price for this product").not.toBeNull();
+    expect((screen.getByLabelText("Unit Price 1") as HTMLInputElement).value).toBe(
+      String(expected!.price),
+    );
+  });
+
+  it("carries the salesperson's own wording, like the quotation", async () => {
+    const user = userEvent.setup();
+    render(<SalesRequestEditor />);
+    await user.selectOptions(screen.getByLabelText("Customer"), CUSTOMER);
+    await user.click(screen.getByLabelText("Item Code 1"));
+    await user.click(await screen.findByText(PRODUCT));
+
+    expect(screen.getByLabelText("Custom Name 1")).toBeInTheDocument();
+  });
+});
+
+describe("Sales Request editor — what the warehouse has", () => {
+  const stockOf = (code: string) => lineAvailability(code);
+
+  it("shows the figure as soon as a product is picked, not only when short", async () => {
+    /* This is the difference from the quotation. A request is where someone
+       first asks whether we can serve the order at all, so the answer belongs
+       beside the quantity before a quantity has even been typed. */
+    const user = userEvent.setup();
+    render(<SalesRequestEditor />);
+    await user.click(screen.getByLabelText("Item Code 1"));
+    await user.click(await screen.findByText(PRODUCT));
+
+    const st = stockOf(PRODUCT);
+    expect(st.found, "the fixture product is stocked").toBe(true);
+    expect(await screen.findByText(`คงเหลือ ${st.available.toLocaleString()}`)).toBeInTheDocument();
+  });
+
+  it("is absent before a product is chosen", () => {
+    render(<SalesRequestEditor />);
+    expect(screen.queryByText(/^คงเหลือ /)).not.toBeInTheDocument();
+  });
+
+  it("disappears once the request becomes a document", async () => {
+    /* A figure that was true this afternoon has no business on the sheet the
+       approver keeps. Read mode is the document, so it carries no stock. */
+    const user = userEvent.setup();
+    render(<SalesRequestEditor />);
+    await user.selectOptions(screen.getByLabelText("Customer"), CUSTOMER);
+    await user.click(screen.getByLabelText("Item Code 1"));
+    await user.click(await screen.findByText(PRODUCT));
+    expect(screen.getByText(/^คงเหลือ /)).toBeInTheDocument();
+
+    await user.click(within(screen.getByTestId("sr-toolbar")).getByText("Preview"));
+
+    expect(screen.getByTestId("request-document")).toHaveAttribute("data-mode", "read");
+    expect(screen.queryByText(/^คงเหลือ /)).not.toBeInTheDocument();
+  });
+
+  it("never reaches the printed sheet", () => {
+    const st = stockOf(PRODUCT);
+    const doc = srPrintDoc(readyDraft(), getPrintConfig("sales-request")!);
+    expect(JSON.stringify(doc)).not.toContain("คงเหลือ");
+    expect(JSON.stringify(doc)).not.toContain(`"available":${st.available}`);
+  });
+
+  it("leaves the quotation's grid as it was — showing only what is short", () => {
+    /* The flag is off by default, so turning it on for the request changed
+       nothing for any other document. Proved against the shared component,
+       not against the quotation editor, so it stays true if the quotation
+       later changes its mind. */
+    const plenty = { ...applyProduct(blankLine(), PRODUCT), qty: 1 };
+    const short = {
+      ...applyProduct(blankLine(), PRODUCT),
+      qty: stockOf(PRODUCT).available + 50,
+    };
+
+    render(
+      <ItemTable
+        items={[plenty, short]}
+        mode="edit"
+        invalid={new Set()}
+        onCell={() => {}}
+        onPick={() => {}}
+        onRemove={() => {}}
+        onAdd={() => {}}
+        selected={new Set()}
+        onSelect={() => {}}
+        layout={{ lot: false, serial: false, uom: false, naming: true, standardPrice: true }}
+      />,
+    );
+
+    /* One line is short, one is not — and only the short one says so. */
+    expect(screen.getAllByText(/^คงเหลือ /)).toHaveLength(1);
+  });
+});
+
+describe("Sales Request editor — detail rows survive being saved", () => {
+  it("writes them into the record and reads them back as rows", () => {
+    /* The record has one note field and the editor works in rows. Without the
+       round trip the buttons would be there and the typing would vanish on
+       save, which is worse than not offering them at all. */
+    const draft = readyDraft();
+    draft.items[0].details = ["สีขาว", "รับประกัน 2 ปี"];
+
+    const { code } = saveSalesRequestDraft(draft);
+    const stored = SALES_REQUESTS.find((r) => r.code === code)!;
+    expect(stored.items[0].note).toBe("สีขาว\nรับประกัน 2 ปี");
+
+    const reopened = draftFromSalesRequest(stored);
+    expect(reopened.items[0].details).toEqual(["สีขาว", "รับประกัน 2 ปี"]);
+    expect(reopened.items[0].note, "the two must not both hold it").toBe("");
+  });
+
+  it("brings them across from the quotation it was raised from", () => {
+    const qt = QUOTATIONS.find((q) => q.items.length)!;
+    qt.items[0].note = "สีขาว\nรับประกัน 2 ปี";
+    qt.status = "Accepted";
+    qt.srRef = "";
+    qt.soRef = "";
+
+    const draft = applyQuotation(blankSrDraft(), qt.code);
+    expect(draft.items[0].details).toEqual(["สีขาว", "รับประกัน 2 ปี"]);
+  });
+
+  it("prints them under the item, and prints the salesperson's name for it", () => {
+    /* `showOnBill` decides what a CUSTOMER sees; a request goes to an
+       approver, so it shows the wording being approved either way. */
+    const draft = readyDraft();
+    draft.items[0].customName = "ชุดวัสดุอุดฟันสำหรับคลินิกสาขาใหม่";
+    draft.items[0].showOnBill = false;
+    draft.items[0].details = ["สีขาว"];
+
+    const doc = srPrintDoc(draft, getPrintConfig("sales-request")!);
+    expect(doc.lines[0].description).toBe("ชุดวัสดุอุดฟันสำหรับคลินิกสาขาใหม่");
+    expect(doc.lines[0].extraLines).toContain("สีขาว");
   });
 });
 

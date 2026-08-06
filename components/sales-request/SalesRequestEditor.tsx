@@ -7,7 +7,7 @@ import {
   applyBillType,
   applyCustomer,
   planBillTypeChange,
-  applyProduct,
+  applyProductForCustomer,
   applyQuotation,
   applyShipTo,
   blankLine,
@@ -42,6 +42,7 @@ import {
   InsightPanel,
   IssueSummary,
   ItemTable,
+  type ItemTableLayout,
   MetaPanel,
   MetaSelect,
   MetaText,
@@ -88,6 +89,27 @@ const CLOCK_TICK = 20_000;
 const FORM_USER = () => actingUserName();
 
 type SaveState = "idle" | "saving" | "saved" | "failed";
+
+/**
+ * The item grid a sales request shows.
+ *
+ * Lot, serial and UOM go for the same reason they go on the quotation: a
+ * request reserves nothing — its own remark says so — so there is no picked
+ * stock to record against, and the unit comes with the product.
+ *
+ * What it adds over the quotation is the stock figure. A request is the
+ * document where someone first asks "can we actually serve this?", and the
+ * answer belongs beside the quantity while it is being typed. It is a working
+ * aid, not part of the document: read mode never shows it.
+ */
+const SR_ITEM_LAYOUT: ItemTableLayout = {
+  lot: false,
+  serial: false,
+  uom: false,
+  naming: true,
+  standardPrice: true,
+  stock: true,
+};
 
 /** An internal request closes with the approver, never the customer. */
 const SR_SIGNATURES = [
@@ -155,11 +177,24 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
     }));
   }, []);
 
+  const patchLine = useCallback((id: string, patch: Partial<DraftLine>) => {
+    dirty.current = true;
+    setDraft((d) => ({
+      ...d,
+      items: d.items.map((l) => (l.id === id ? { ...l, ...patch } : l)),
+    }));
+  }, []);
+
+  /* The line opens at this customer's own price, not the catalogue's — the
+     tier is known the moment the product is picked, so asking at the wrong
+     one and correcting it later would only make the grid argue with itself. */
   const pickProduct = useCallback((id: string, code: string) => {
     dirty.current = true;
     setDraft((d) => ({
       ...d,
-      items: d.items.map((l) => (l.id === id ? applyProduct(l, code) : l)),
+      items: d.items.map((l) =>
+        l.id === id ? applyProductForCustomer(l, code, d.customerPick) : l,
+      ),
     }));
   }, []);
 
@@ -174,7 +209,13 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
     setDraft((d) => {
       /* An untouched blank row at the end is filler, not data — replace it. */
       const kept = d.items.filter((l) => l.code);
-      return { ...d, items: [...kept, ...codes.map((c) => applyProduct(blankLine(), c))] };
+      return {
+        ...d,
+        items: [
+          ...kept,
+          ...codes.map((c) => applyProductForCustomer(blankLine(), c, d.customerPick)),
+        ],
+      };
     });
   }, []);
 
@@ -711,6 +752,9 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
                 onAdd={addLine}
                 selected={selected}
                 onSelect={selectLine}
+                layout={SR_ITEM_LAYOUT}
+                customerPick={draft.customerPick}
+                onPatch={patchLine}
               />
             </div>
           </section>

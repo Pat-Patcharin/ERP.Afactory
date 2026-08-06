@@ -121,6 +121,23 @@ export const joinDetails = (rows: readonly string[]): string =>
     .filter(Boolean)
     .join("\n");
 
+/**
+ * The extra lines an item prints under its name.
+ *
+ * The editor holds them as `details`; a line that arrived from a conversion
+ * still carries them newline-joined in `note`. Reading both means neither a
+ * converted document nor a typed one loses what was written under the item.
+ *
+ * Lives here rather than in one document's module because every sell-side
+ * preview needs the same answer, and two copies would drift.
+ */
+export const lineExtras = (l: DraftLine): string[] =>
+  detailLines(
+    [String(l.desc ?? "").trim(), l.details.length ? joinDetails(l.details) : String(l.note ?? "").trim()]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
 /* ---------- Parties ---------- */
 
 /** The customer half of any sell-side document. */
