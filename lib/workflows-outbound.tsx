@@ -1405,13 +1405,24 @@ function askAboutShortStock(so: SoRow, short: ShortLine[], ctx: ActionCtx) {
 }
 
 /**
- * Tell whoever raised the order.
+ * The salesperson whose order this is.
  *
- * Addressed by `createdBy` rather than by `salesRep`: the rep field holds a
- * territory label ("SALE001 - Patcharin Thiengkaew") which is not a user of
- * this system, while `createdBy` is the name the session stamped and is what
- * an inbox matches on.
+ * NOT `so.createdBy`: an order is stamped with whoever converted the request,
+ * which is the administrator almost every time. The person who has to ring
+ * the customer is the one who raised the paperwork, and that is the author of
+ * the request behind it. Falls back to the order's own stamp for the older
+ * records that came from a quotation directly.
+ *
+ * Not `so.salesRep` either — that field holds a territory label
+ * ("SALE001 - Patcharin Thiengkaew") which is not a user of this system,
+ * while an inbox matches on the name a session stamps.
  */
+function orderOwner(so: SoRow): string {
+  const sr = so.srRef ? SALES_REQUESTS.find((r) => r.code === so.srRef) : null;
+  return sr?.createdBy || so.createdBy;
+}
+
+/** Tell that person. */
 function notifyOwner(
   so: SoRow,
   n: { kind: "converted" | "rejected" | "escalated"; title: string; body: string },
@@ -1422,7 +1433,7 @@ function notifyOwner(
     docCode: so.code,
     title: n.title,
     body: n.body,
-    toUser: so.createdBy,
+    toUser: orderOwner(so),
   });
 }
 
