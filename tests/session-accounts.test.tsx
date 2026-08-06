@@ -33,6 +33,8 @@ import type { ActionCtx } from "@/lib/types";
 
 const REP = "EMP004";
 const ADMIN = "EMP001";
+const SALES_ADMIN = "EMP013";
+const SALES_MANAGER = "EMP003";
 
 const SEED = JSON.parse(JSON.stringify(SALES_REQUESTS)) as SrRow[];
 
@@ -74,12 +76,23 @@ function approved(): SrRow {
 const labels = (acts: { label?: string }[]) => acts.map((a) => a.label ?? "");
 
 describe("Two accounts — who they are", () => {
-  it("offers exactly the sales rep and the administrator", () => {
+  it("offers the four chairs one order passes through, in that order", () => {
+    /* This used to read "exactly the sales rep and the administrator", from
+       when every outbound approval needed a manager. The sales admin desk
+       exists now, so the demo carries the three sales chairs plus the one
+       that can reach Administration. */
     const codes = demoAccounts().map((a) => a.code);
-    expect(codes).toEqual([REP, ADMIN]);
+    expect(codes).toEqual([REP, SALES_ADMIN, SALES_MANAGER, ADMIN]);
 
-    expect(getRole(demoAccounts()[0].user.roleCode)!.code).toBe("SALES_REP");
-    expect(getRole(demoAccounts()[1].user.roleCode)!.all).toBe(true);
+    const roleOf = (i: number) => getRole(demoAccounts()[i].user.roleCode)!;
+    expect(roleOf(0).code).toBe("SALES_REP");
+    expect(roleOf(1).code).toBe("SALES_ADMIN");
+    expect(roleOf(2).code).toBe("SALES_MANAGER");
+    expect(roleOf(3).all).toBe(true);
+
+    /* Every one of them must be usable — a demo chair nobody can sit in is
+       worse than not offering it. */
+    for (const a of demoAccounts()) expect(a.user.status).toBe("Active");
   });
 
   it("starts in the administrator's chair", () => {

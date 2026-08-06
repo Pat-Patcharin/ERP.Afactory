@@ -254,6 +254,54 @@ export const ROLES: RoleDef[] = [
     createdBy: "System",
   },
   {
+    /* ============================================================
+       THE DESK BETWEEN THE REP AND THE MANAGER
+
+       Every outbound approval used to need a manager, because the
+       only roles holding `approve` on a quotation were the sales
+       manager, management and the super admin. So the person who
+       actually runs the paperwork all day — checks the order, signs
+       off the ordinary price, confirms the partner, pushes it to
+       the warehouse — had to interrupt a manager to do any of it.
+
+       This role is that desk. It signs everything routine. What it
+       deliberately does NOT get is the manager's signature on a
+       price below `price_last`: it is absent from MANAGER_ROLES in
+       workflows-outbound.tsx, so `maySignAt("manager")` refuses it
+       and says who to send it to. That refusal is the whole reason
+       the role exists as a separate one rather than as a wider
+       SALES_REP.
+
+       No cost, no margin, no profit — `fields: []`. Running the
+       paperwork does not require knowing what the company makes on
+       it, and this role is held by the most people.
+       ============================================================ */
+    code: "SALES_ADMIN",
+    name: "Sales Admin",
+    desc: "แอดมินฝ่ายขาย รับออเดอร์ อนุมัติเอกสารขายราคาปกติ คุมงานส่งของและวางบิล ไม่เห็นต้นทุนและกำไร",
+    department: "Sales",
+    scope: "department",
+    status: "Active",
+    system: false,
+    perms: {
+      dashboard: ["view"],
+      /* The whole sell side, including picking, packing, delivery,
+         invoicing and credit notes — those are this desk's daily work. */
+      ...grant(ALL, ["Outbound"]),
+      /* Confirming a partner the rep raised is part of taking the order;
+         deleting one is not. */
+      "business-partner": ["view", "create", "edit", "approve", "export", "print"],
+      ...grant(VIEW_ONLY, ["Master Data"], ["business-partner"]),
+      "stock-inquiry": VIEW_ONLY,
+      "lot-tracking": VIEW_ONLY,
+      "serial-tracking": VIEW_ONLY,
+      reports: VIEW_ONLY,
+    },
+    fields: [],
+    created: "01/08/2569",
+    createdBy: "พิมพกา สุขใจ",
+  },
+  {
     code: "PURCHASE_MANAGER",
     name: "Purchase Manager",
     desc: "หัวหน้าฝ่ายจัดซื้อ อนุมัติใบขอซื้อและใบสั่งซื้อ เห็นราคาทุน",
@@ -660,6 +708,26 @@ export const USERS: UserDef[] = [
     team: "Sales Team B",
     phone: "082-333-4444",
     note: "ระงับชั่วคราว — ลาออกระหว่างพิจารณา",
+  },
+  {
+    /* The third chair in the sales story — see DEMO_ACCOUNTS. The rep
+       (EMP004) and the sales manager (EMP003) were already seeded. */
+    code: "EMP013",
+    username: "nicha.p",
+    name: "ณิชา พงษ์เจริญ",
+    email: "nicha.p@afactory.co.th",
+    department: "Sales",
+    roleCode: "SALES_ADMIN",
+    scope: "department",
+    warehouse: "",
+    salesRep: "",
+    status: "Active",
+    lastLogin: "03/08/2569 08:30",
+    created: "01/08/2569",
+    createdBy: "พิมพกา สุขใจ",
+    team: "Sales Support",
+    phone: "082-555-6666",
+    note: "แอดมินฝ่ายขาย รับออเดอร์และเดินเอกสารต่อจนถึงวางบิล",
   },
   {
     code: "EMP012",

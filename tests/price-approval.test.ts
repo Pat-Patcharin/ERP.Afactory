@@ -5,7 +5,7 @@ import { priceApproval, blankLine } from "@/lib/domain/doc-draft";
 import { priceMasterRows } from "@/lib/domain/price-master";
 import { qtApprove, qtSubmit } from "@/lib/workflows-outbound";
 import { USERS } from "@/data/admin";
-import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
+import { can, resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 
 /* ============================================================
    PRICE APPROVAL
@@ -235,5 +235,46 @@ describe("qtApprove — the level the document asked for is enforced", () => {
     qtApprove(q as never, ctx);
     expect(q.status).toBe("Pending Approval");
     expect(toasts[0].tone).toBe("danger");
+  });
+
+  /* ------------------------------------------------------------
+     The sales admin desk is the reason this level check exists.
+
+     Until it was added, every role holding `approve` on a
+     quotation was also in MANAGER_ROLES, so `maySignAt("manager")`
+     had never turned anybody away. These two tests are the pair
+     that proves it does: the same person, the same document, and
+     the answer changes with the level the document asked for.
+     ------------------------------------------------------------ */
+
+  it("lets the sales admin approve an ordinary quotation", () => {
+    asRole("SALES_ADMIN");
+    const q = pending("admin");
+    const { ctx } = ctxStub();
+
+    qtApprove(q as never, ctx);
+    expect(q.status).toBe("Approved");
+  });
+
+  it("refuses the sales admin a price under the floor, and names who can sign", () => {
+    asRole("SALES_ADMIN");
+    const q = pending("manager");
+    const { toasts, ctx } = ctxStub();
+
+    qtApprove(q as never, ctx);
+
+    expect(q.status, "the document must not move").toBe("Pending Approval");
+    expect(q.approvalStatus).toBe("Pending Approval");
+    expect(toasts[0].tone).toBe("danger");
+    /* Refusing without saying where to take it next is how a document sits
+       for two days. */
+    expect(toasts[0].message).toContain("ผู้จัดการฝ่ายขาย");
+  });
+
+  it("refuses on the level, not on the permission — the admin does hold approve", () => {
+    /* If the refusal above came from the module gate instead, widening the
+       role's permissions later would silently open the floor rule too. */
+    asRole("SALES_ADMIN");
+    expect(can("quotation", "approve")).toBe(true);
   });
 });

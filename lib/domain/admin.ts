@@ -86,9 +86,19 @@ export interface DemoAccount {
 }
 
 /**
- * The two accounts the sales flow is demonstrated with. The seed carries
- * twelve users; these are the two ends of one story — the rep who raises
- * the paperwork and the administrator who approves it and moves it on.
+ * The accounts the sales flow is demonstrated with, in the order the work
+ * actually moves through them.
+ *
+ * The seed carries thirteen users; these four are one story. The rep raises
+ * the paperwork and cannot approve it. The sales admin signs everything
+ * routine and moves it down the line — but not a price below the floor. The
+ * sales manager signs that. The super admin is here because the demo needs a
+ * chair that can reach the Administration module, not because the sales flow
+ * needs one.
+ *
+ * DEMO ONLY. When real authentication lands, this list and the account
+ * switcher in the topbar both go: an account is what you logged in as, not
+ * something you pick from a menu.
  */
 export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
@@ -97,8 +107,18 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     initials: "SY",
   },
   {
+    code: "EMP013",
+    purpose: "อนุมัติเอกสารขายราคาปกติ ยืนยันคู่ค้า เดินเอกสารจนถึงวางบิล",
+    initials: "NP",
+  },
+  {
+    code: "EMP003",
+    purpose: "อนุมัติราคาที่ต่ำกว่าราคาขั้นต่ำ — ด่านที่แอดมินผ่านไม่ได้",
+    initials: "SJ",
+  },
+  {
     code: "EMP001",
-    purpose: "อนุมัติคำขอขายและเดินเอกสารต่อจนจบสาย",
+    purpose: "ดูแลระบบ สิทธิ์ และการตั้งค่าทั้งหมด",
     initials: "PS",
   },
 ];
