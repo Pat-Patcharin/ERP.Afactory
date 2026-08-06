@@ -4,6 +4,7 @@ import { SALES_ORDERS as RAW_SO, type SalesOrder } from "@/data/sales-orders";
 import { PICKING_TASKS as RAW_PK, type PickingTask } from "@/data/picking";
 import { PACKING_TASKS as RAW_PACK, type PackingTask } from "@/data/packing";
 import { DELIVERY_ORDERS as RAW_DO, type DeliveryOrder } from "@/data/delivery-orders";
+import { BP_SELLABLE_STATUS } from "@/data/partners";
 import { BUSINESS_PARTNERS } from "./partner";
 import { SALES_REPRESENTATIVES } from "./sales";
 import { PRODUCTS, productStock } from "./product";
@@ -243,6 +244,38 @@ export interface BillTypeDrift {
   billType: string;
   /** What this document bills as. */
   own: string;
+}
+
+/* ============================================================
+   A PARTNER NOBODY HAS CHECKED YET
+
+   A salesperson can raise a partner and quote against it the
+   same afternoon — waiting on an administrator to confirm a
+   record before a price can be offered is how people end up
+   keeping customers in a spreadsheet.
+
+   A Sales Order is different: it is the document that binds the
+   company, and it feeds picking, delivery and an invoice with a
+   tax ID nobody has verified. So quotations and sales requests
+   are open to a Draft partner and orders are not.
+   ============================================================ */
+
+/**
+ * Why this partner cannot be sold to, or null when they can be.
+ *
+ * Returns the message rather than a boolean because every caller has to say
+ * the same thing, and the thing worth saying is what the salesperson can do
+ * instead — not merely that the door is shut.
+ */
+export function blockedForDraftPartner(customerCode: string): string | null {
+  const bp = BUSINESS_PARTNERS.find((b) => b.code === customerCode);
+  if (!bp) return null;
+  if (BP_SELLABLE_STATUS.includes(bp.status)) return null;
+
+  if (bp.status === "Draft") {
+    return `${bp.code} ${bp.nameTh || bp.nameEn} รอการยืนยันจากผู้ดูแล — เปิดใบเสนอราคาหรือคำขอขายได้ แต่ยังเปิดใบสั่งขายไม่ได้`;
+  }
+  return `${bp.code} ${bp.nameTh || bp.nameEn} อยู่ในสถานะ ${bp.status} — เปิดใบสั่งขายไม่ได้`;
 }
 
 /** Compare against the immediate source. Null when they agree. */

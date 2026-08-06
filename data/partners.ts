@@ -414,7 +414,20 @@ export const SALES_REPS = [
 
 export const CREDIT_STATUS = ["Normal", "Near Limit", "Over Limit", "Credit Hold", "Not Applicable"] as const;
 
-export const BP_STATUS = ["Active", "Inactive", "On Hold", "Blocked"] as const;
+/**
+ * `Draft` means a salesperson raised the partner and nobody has checked it
+ * yet. The name, the tax ID and the addresses are whatever they typed, so the
+ * record may quote and may be asked for, but may not be sold to: a Sales
+ * Order is the document that binds the company.
+ *
+ * `BP_TONE` in lib/badges.ts has carried a colour for Draft since before this
+ * status existed — a tone with no status, the mirror of the problem fixed in
+ * QT_STATUS. The two are edited together from here on.
+ */
+export const BP_STATUS = ["Draft", "Active", "Inactive", "On Hold", "Blocked"] as const;
+
+/** Statuses a partner can be sold to. Everything else stops a Sales Order. */
+export const BP_SELLABLE_STATUS: readonly string[] = ["Active"];
 
 /* ---------- BP Master schema option lists ---------- */
 

@@ -5,15 +5,17 @@ import {
   isQuotationLocked,
   type Quotation,
 } from "@/data/quotations";
-import { docGrandTotal } from "./lines";
+import { billShows, displayName, docGrandTotal } from "./lines";
 import { QUOTATIONS, decorateQuotations, nextQuotationCode, type QtRow } from "./outbound";
 import {
   applyCustomerTo,
   applyShipToOn,
   blankLine,
   blankParty,
+  detailLines,
   docInsight,
   docTotals,
+  joinDetails,
   validateLines,
   zeroTaxIfNonVat,
   validateParty,
@@ -52,21 +54,26 @@ export {
   DISCOUNT_THRESHOLD,
   applyBillType,
   applyProduct,
+  applyProductForCustomer,
   planBillTypeChange,
   type BillTypeChangePlan,
   blankLine,
   blockingIssues,
+  detailLines,
+  joinDetails,
   lineAvailability,
   newLineId,
   productSearch,
   resolvePriceList,
   resolveRep,
   shipToChoices,
+  standardLinePrice,
   warningIssues,
   type DraftIssue,
   type DraftLine,
   type ProductHit,
   type ShipToOption,
+  type StandardPrice,
 } from "./doc-draft";
 
 export type DraftTotals = DocTotals;
@@ -219,7 +226,10 @@ export function draftFromQuotation(q: Quotation): QuotationDraft {
       price: it.price,
       disc: it.disc,
       tax: it.tax,
-      note: it.note ?? "",
+      /* The record's one note field is the editor's list of detail rows.
+         `note` itself stays blank on the draft so the two cannot disagree —
+         saveQuotationDraft writes it back from `details`. */
+      details: detailLines(it.note ?? ""),
       customName: it.customName ?? "",
       showOnBill: it.showOnBill !== false,
     })),
@@ -309,6 +319,20 @@ export function validateDraft(draft: QuotationDraft): DraftIssue[] {
  * The internal note is deliberately absent — it is the one field that must
  * never reach paper.
  */
+/**
+ * The extra lines this item prints under its name.
+ *
+ * The editor holds them as `details`; a line that arrived from a conversion
+ * still carries them newline-joined in `note`. Reading both means neither a
+ * converted quotation nor a typed one loses what was written under the item.
+ */
+const lineExtras = (l: DraftLine): string[] =>
+  detailLines(
+    [str(l.desc), l.details.length ? joinDetails(l.details) : str(l.note)]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
 export function draftPrintDoc(draft: QuotationDraft, config: PrintConfig): PrintDoc {
   const t = draftTotals(draft);
   const meta = config.metaFields
@@ -340,11 +364,15 @@ export function draftPrintDoc(draft: QuotationDraft, config: PrintConfig): Print
     .map((l, i) => {
       const base = num(l.qty) * num(l.price);
       const disc = base * (num(l.disc) / 100);
+      /* Same rule as the mapper that prints a saved quotation: a line the
+         salesperson kept off the bill prints the catalogue name and none of
+         their own wording. Preview would be a lie otherwise. */
+      const hidden = !billShows(l);
       return {
         no: i + 1,
         code: str(l.code),
-        description: str(l.name),
-        extraLines: [str(l.desc), str(l.note)].filter(Boolean),
+        description: hidden ? str(l.name) : displayName(l),
+        extraLines: hidden ? [] : lineExtras(l),
         warehouse: "",
         location: "",
         bin: "",
@@ -470,9 +498,10 @@ export function saveQuotationDraft(
       price: num(l.price),
       disc: num(l.disc),
       tax: num(l.tax),
-      /* The customer-facing line note. The internal note stays out of the
-         record entirely, so it can never reach the printed sheet. */
-      note: str(l.note),
+      /* The customer-facing detail rows, back into the one field the record
+         has. The document's internal note stays out entirely, so it can never
+         reach the printed sheet. */
+      note: joinDetails(l.details.length ? l.details : detailLines(l.note)),
       customName: str(l.customName),
       showOnBill: l.showOnBill !== false,
     }));

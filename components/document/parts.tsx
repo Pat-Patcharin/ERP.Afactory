@@ -8,12 +8,14 @@ import {
   lineAvailability,
   productSearch,
   shipToChoices,
+  standardLinePrice,
   type ChargeFields,
   type DocInsight,
   type DocTotals,
   type DraftLine,
   type PartyFields,
 } from "@/lib/domain/doc-draft";
+import { billName, displayName } from "@/lib/domain/lines";
 import { bahtText } from "@/lib/print/words";
 import { AFactoryLogo, BarcodePlaceholder, QRPlaceholder } from "@/components/print/marks";
 import { fmt, money, money0, toDisplayDate } from "@/lib/format";
@@ -572,6 +574,32 @@ export function PriceTierNotice({ insight }: { insight: DocInsight }) {
 
 const HEAD = "bg-[#2f3542] text-white text-[11px] font-semibold uppercase tracking-[0.03em]";
 
+/**
+ * Which columns and which per-line controls a document's grid carries.
+ *
+ * A quotation is an offer: nothing has been picked, so there is no lot and no
+ * serial to record, and it names the product rather than dictating a unit. A
+ * sales request still shows all three. Every flag defaults to what the grid
+ * has always done, so a caller that passes no layout is unchanged.
+ */
+export interface ItemTableLayout {
+  lot?: boolean;
+  serial?: boolean;
+  uom?: boolean;
+  /** Per-line naming and repeatable detail rows, in a strip under the row. */
+  naming?: boolean;
+  /** This customer's catalogue price, under the unit price. */
+  standardPrice?: boolean;
+}
+
+const DEFAULT_LAYOUT: Required<ItemTableLayout> = {
+  lot: true,
+  serial: true,
+  uom: true,
+  naming: false,
+  standardPrice: false,
+};
+
 export function ItemTable({
   items,
   mode,
@@ -582,6 +610,9 @@ export function ItemTable({
   onAdd,
   selected,
   onSelect,
+  layout,
+  customerPick = "",
+  onPatch,
 }: {
   items: DraftLine[];
   mode: DocMode;
@@ -592,8 +623,16 @@ export function ItemTable({
   onAdd: () => void;
   selected: Set<string>;
   onSelect: (id: string, on: boolean) => void;
+  layout?: ItemTableLayout;
+  /** Whose prices these are — decides the standard price shown per line. */
+  customerPick?: string;
+  /** Writes a line's naming and detail fields. Required by `layout.naming`. */
+  onPatch?: (id: string, patch: Partial<DraftLine>) => void;
 }) {
   const rows = mode === "read" ? items.filter((l) => l.code) : items;
+  const L = { ...DEFAULT_LAYOUT, ...layout };
+  const cols =
+    9 + (mode === "edit" ? 2 : 0) + (L.lot ? 1 : 0) + (L.serial ? 1 : 0) + (L.uom ? 1 : 0);
 
   return (
     <div className="overflow-x-auto rounded-card border border-line">
@@ -604,10 +643,10 @@ export function ItemTable({
             <th className="w-11 px-2 py-2.5 text-center">No.</th>
             <th className="w-[150px] px-2 py-2.5 text-left">Item Code</th>
             <th className="px-2 py-2.5 text-left">Description</th>
-            <th className="w-[110px] px-2 py-2.5 text-left">Lot No.</th>
-            <th className="w-[120px] px-2 py-2.5 text-left">Serial No.</th>
+            {L.lot && <th className="w-[110px] px-2 py-2.5 text-left">Lot No.</th>}
+            {L.serial && <th className="w-[120px] px-2 py-2.5 text-left">Serial No.</th>}
             <th className="w-[86px] px-2 py-2.5 text-right">Quantity</th>
-            <th className="w-[72px] px-2 py-2.5 text-center">UOM</th>
+            {L.uom && <th className="w-[72px] px-2 py-2.5 text-center">UOM</th>}
             <th className="w-[104px] px-2 py-2.5 text-right">Unit Price</th>
             <th className="w-[92px] px-2 py-2.5 text-right">Discount (%)</th>
             <th className="w-[104px] px-2 py-2.5 text-right">Net Price</th>
@@ -628,11 +667,15 @@ export function ItemTable({
               onRemove={onRemove}
               selected={selected.has(l.id)}
               onSelect={onSelect}
+              layout={L}
+              cols={cols}
+              customerPick={customerPick}
+              onPatch={onPatch}
             />
           ))}
           {!rows.length && (
             <tr>
-              <td colSpan={13} className="px-3 py-8 text-center text-ink-3">
+              <td colSpan={cols} className="px-3 py-8 text-center text-ink-3">
                 ยังไม่มีรายการสินค้า
               </td>
             </tr>
@@ -664,6 +707,10 @@ function ItemRow({
   onRemove,
   selected,
   onSelect,
+  layout,
+  cols,
+  customerPick,
+  onPatch,
 }: {
   line: DraftLine;
   index: number;
@@ -674,6 +721,10 @@ function ItemRow({
   onRemove: (id: string) => void;
   selected: boolean;
   onSelect: (id: string, on: boolean) => void;
+  layout: Required<ItemTableLayout>;
+  cols: number;
+  customerPick: string;
+  onPatch?: (id: string, patch: Partial<DraftLine>) => void;
 }) {
   const base = num(line.qty) * num(line.price);
   const amount = base - base * (num(line.disc) / 100);
@@ -682,23 +733,44 @@ function ItemRow({
   const short = stock?.found && stock.available < num(line.qty);
   const deepDiscount = num(line.disc) > DISCOUNT_THRESHOLD;
 
+  /* What this customer is supposed to pay, so the salesperson can see the
+     moment they have moved off it. Recomputed only when the line changes
+     product or the document changes customer. */
+  const standard = useMemo(
+    () => (layout.standardPrice ? standardLinePrice(customerPick, line.code) : null),
+    [customerPick, layout.standardPrice, line.code],
+  );
+  const offStandard = standard !== null && num(line.price) > 0 && num(line.price) !== standard.price;
+
+  /* The rows the salesperson typed. A blank one is kept while it is being
+     filled in; joinDetails drops it on the way to the record. */
+  const details = layout.naming ? line.details : [];
+
   if (mode === "read") {
+    /* Read mode is the document as it will be sent, so the line reads under
+       whichever name is going out — not the one behind it. */
+    const shown = billName(line);
+    const extra = line.showOnBill ? [line.desc, ...details].filter(Boolean) : [];
     return (
       <tr className="border-b border-line align-top last:border-b-0">
         <td className="px-2 py-2.5 text-center tnum">{index + 1}</td>
         <td className="px-2 py-2.5">
           <p className="font-medium">{line.code}</p>
-          <p className="text-cap text-ink-2">{line.name}</p>
+          <p className="text-cap text-ink-2">{shown}</p>
         </td>
         <td className="px-2 py-2.5">
-          {line.desc && <p>{line.desc}</p>}
-          {line.note && <p className="text-cap text-ink-2">{line.note}</p>}
-          {!line.desc && !line.note && <span className="text-ink-3">—</span>}
+          {extra.map((d, i) => (
+            <p key={i} className={i ? "text-cap text-ink-2" : undefined}>
+              {d}
+            </p>
+          ))}
+          {!extra.length && !line.note && <span className="text-ink-3">—</span>}
+          {!layout.naming && line.note && <p className="text-cap text-ink-2">{line.note}</p>}
         </td>
-        <td className="px-2 py-2.5 tnum">{line.lot || "-"}</td>
-        <td className="px-2 py-2.5 tnum">{line.serial || "-"}</td>
+        {layout.lot && <td className="px-2 py-2.5 tnum">{line.lot || "-"}</td>}
+        {layout.serial && <td className="px-2 py-2.5 tnum">{line.serial || "-"}</td>}
         <td className="px-2 py-2.5 text-right tnum">{fmt(num(line.qty))}</td>
-        <td className="px-2 py-2.5 text-center">{line.unit}</td>
+        {layout.uom && <td className="px-2 py-2.5 text-center">{line.unit}</td>}
         <td className="px-2 py-2.5 text-right tnum">{money(num(line.price))}</td>
         <td className="px-2 py-2.5 text-right tnum">{money(num(line.disc))}</td>
         <td className="px-2 py-2.5 text-right tnum">{money(netPrice)}</td>
@@ -708,101 +780,267 @@ function ItemRow({
   }
 
   return (
-    <tr
-      id={anchorId(`item-${line.id}`)}
-      className={cn("border-b border-line last:border-b-0", invalid && "bg-danger-soft")}
-    >
-      <td className="px-2 py-1.5 text-center">
-        <Checkbox
-          checked={selected}
-          aria-label={`เลือกบรรทัดที่ ${index + 1}`}
-          onChange={(e) => onSelect(line.id, e.target.checked)}
-        />
-      </td>
-      <td className="px-2 py-1.5 text-center text-ink-2 tnum">{index + 1}</td>
-      <td className="px-2 py-1.5">
-        <ProductCell line={line} index={index} onPick={onPick} />
-      </td>
-      <td className="px-2 py-1.5">
-        <CellInput
-          aria-label={`Description ${index + 1}`}
-          value={line.name}
-          placeholder="รายละเอียด"
-          onChange={(e) => onCell(line.id, "name", e.target.value)}
-        />
-        <CellInput
-          aria-label={`Additional Description ${index + 1}`}
-          className="mt-1"
-          value={line.desc}
-          placeholder="+ รายละเอียดเพิ่มเติม"
-          onChange={(e) => onCell(line.id, "desc", e.target.value)}
-        />
-      </td>
-      <td className="px-2 py-1.5">
-        <CellInput
-          aria-label={`Lot ${index + 1}`}
-          value={line.lot}
-          placeholder="-"
-          onChange={(e) => onCell(line.id, "lot", e.target.value)}
-        />
-      </td>
-      <td className="px-2 py-1.5">
-        <CellInput
-          aria-label={`Serial ${index + 1}`}
-          value={line.serial}
-          placeholder="-"
-          onChange={(e) => onCell(line.id, "serial", e.target.value)}
-        />
-      </td>
-      <td className="px-2 py-1.5">
-        <CellInput
-          aria-label={`Quantity ${index + 1}`}
-          type="number"
-          min={0}
-          className="text-right"
-          value={String(line.qty)}
-          onChange={(e) => onCell(line.id, "qty", e.target.value)}
-        />
-        {short && (
-          <p className="mt-0.5 text-right text-[11px] text-warning-text">
-            คงเหลือ {fmt(stock!.available)}
-          </p>
+    <>
+      <tr
+        id={anchorId(`item-${line.id}`)}
+        className={cn(
+          "border-b border-line last:border-b-0",
+          invalid && "bg-danger-soft",
+          /* The naming strip belongs to this row, so the border goes under it. */
+          layout.naming && line.code && "border-b-0",
         )}
-      </td>
-      <td className="px-2 py-1.5 text-center text-ink-2">{line.unit || "—"}</td>
-      <td className="px-2 py-1.5">
+      >
+        <td className="px-2 py-1.5 text-center">
+          <Checkbox
+            checked={selected}
+            aria-label={`เลือกบรรทัดที่ ${index + 1}`}
+            onChange={(e) => onSelect(line.id, e.target.checked)}
+          />
+        </td>
+        <td className="px-2 py-1.5 text-center text-ink-2 tnum">{index + 1}</td>
+        <td className="px-2 py-1.5">
+          <ProductCell line={line} index={index} onPick={onPick} />
+        </td>
+        <td className="px-2 py-1.5">
+          {layout.naming ? (
+            /* The catalogue name is the product master's, not a field. What
+               the salesperson may write instead is in the strip below — see
+               LineNaming, and the code has to be picked before it opens. */
+            line.code ? (
+              <>
+                <p className="text-[13px] leading-snug">{displayName(line)}</p>
+                {line.customName.trim() !== "" && (
+                  <p className="text-cap text-ink-3">ชื่อในระบบ: {line.name}</p>
+                )}
+              </>
+            ) : (
+              <span className="text-cap text-ink-3">เลือกรหัสสินค้าก่อน</span>
+            )
+          ) : (
+            <>
+              <CellInput
+                aria-label={`Description ${index + 1}`}
+                value={line.name}
+                placeholder="รายละเอียด"
+                onChange={(e) => onCell(line.id, "name", e.target.value)}
+              />
+              <CellInput
+                aria-label={`Additional Description ${index + 1}`}
+                className="mt-1"
+                value={line.desc}
+                placeholder="+ รายละเอียดเพิ่มเติม"
+                onChange={(e) => onCell(line.id, "desc", e.target.value)}
+              />
+            </>
+          )}
+        </td>
+        {layout.lot && (
+          <td className="px-2 py-1.5">
+            <CellInput
+              aria-label={`Lot ${index + 1}`}
+              value={line.lot}
+              placeholder="-"
+              onChange={(e) => onCell(line.id, "lot", e.target.value)}
+            />
+          </td>
+        )}
+        {layout.serial && (
+          <td className="px-2 py-1.5">
+            <CellInput
+              aria-label={`Serial ${index + 1}`}
+              value={line.serial}
+              placeholder="-"
+              onChange={(e) => onCell(line.id, "serial", e.target.value)}
+            />
+          </td>
+        )}
+        <td className="px-2 py-1.5">
+          <CellInput
+            aria-label={`Quantity ${index + 1}`}
+            type="number"
+            min={0}
+            className="text-right"
+            value={String(line.qty)}
+            onChange={(e) => onCell(line.id, "qty", e.target.value)}
+          />
+          {short && (
+            <p className="mt-0.5 text-right text-[11px] text-warning-text">
+              คงเหลือ {fmt(stock!.available)}
+            </p>
+          )}
+        </td>
+        {layout.uom && (
+          <td className="px-2 py-1.5 text-center text-ink-2">{line.unit || "—"}</td>
+        )}
+        <td className="px-2 py-1.5">
+          <CellInput
+            aria-label={`Unit Price ${index + 1}`}
+            type="number"
+            min={0}
+            className="text-right"
+            value={String(line.price)}
+            onChange={(e) => onCell(line.id, "price", e.target.value)}
+          />
+          {standard && (
+            <p
+              data-testid={`standard-price-${index + 1}`}
+              className={cn(
+                "mt-0.5 text-right text-[11px]",
+                offStandard ? "text-warning-text" : "text-ink-3",
+              )}
+              title={standard.label}
+            >
+              {offStandard ? (
+                <button
+                  type="button"
+                  aria-label={`ใช้ราคามาตรฐาน บรรทัดที่ ${index + 1}`}
+                  className="underline-offset-2 hover:underline"
+                  onClick={() => onCell(line.id, "price", String(standard.price))}
+                >
+                  ราคามาตรฐาน {money(standard.price)}
+                </button>
+              ) : (
+                <>ราคามาตรฐาน {money(standard.price)}</>
+              )}
+            </p>
+          )}
+        </td>
+        <td className="px-2 py-1.5">
+          <CellInput
+            aria-label={`Discount ${index + 1}`}
+            type="number"
+            min={0}
+            max={100}
+            className={cn("text-right", deepDiscount && "border-warning")}
+            value={String(line.disc)}
+            onChange={(e) => onCell(line.id, "disc", e.target.value)}
+          />
+        </td>
+        <td className="px-2 py-1.5 text-right tnum">{money(netPrice)}</td>
+        <td className="px-2 py-1.5 text-right font-medium tnum">{money(amount)}</td>
+        <td className="px-2 py-1.5 text-center">
+          <IconButton
+            size="sm"
+            aria-label={`ลบบรรทัดที่ ${index + 1}`}
+            onClick={() => onRemove(line.id)}
+          >
+            <Icon name="trash" size={15} />
+          </IconButton>
+        </td>
+      </tr>
+
+      {layout.naming && line.code && onPatch && (
+        <tr className={cn("border-b border-line last:border-b-0", invalid && "bg-danger-soft")}>
+          <td />
+          <td colSpan={cols - 1} className="px-2 pb-2">
+            <LineNaming line={line} index={index} details={details} onPatch={onPatch} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+/**
+ * What the customer will read on this line.
+ *
+ * Two separate things sit here because they answer the same question. The
+ * salesperson may call the item whatever the customer calls it — a name that
+ * does not have to match the catalogue — and may add as many detail lines
+ * under it as the offer needs. The tick decides which of the two names goes
+ * out; the catalogue name is what prints when it is off, and the product code
+ * prints either way, so a renamed line is still traceable to the item.
+ *
+ * It only appears once a product has been chosen: a name with no code behind
+ * it is not a line anybody can quote.
+ */
+function LineNaming({
+  line,
+  index,
+  details,
+  onPatch,
+}: {
+  line: DraftLine;
+  index: number;
+  details: string[];
+  onPatch: (id: string, patch: Partial<DraftLine>) => void;
+}) {
+  const n = index + 1;
+  const setDetails = (next: string[]) => onPatch(line.id, { details: next });
+  const custom = line.customName.trim();
+  const printed = billName(line);
+
+  return (
+    <div className="flex flex-col gap-2 rounded-btn border border-line bg-surface px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="w-[92px] flex-shrink-0 text-cap text-ink-2">ชื่อที่ใช้เอง</span>
         <CellInput
-          aria-label={`Unit Price ${index + 1}`}
-          type="number"
-          min={0}
-          className="text-right"
-          value={String(line.price)}
-          onChange={(e) => onCell(line.id, "price", e.target.value)}
+          aria-label={`Custom Name ${n}`}
+          className="min-w-[220px] max-w-[420px] flex-1"
+          value={line.customName}
+          placeholder={line.name}
+          onChange={(e) => onPatch(line.id, { customName: e.target.value })}
         />
-      </td>
-      <td className="px-2 py-1.5">
-        <CellInput
-          aria-label={`Discount ${index + 1}`}
-          type="number"
-          min={0}
-          max={100}
-          className={cn("text-right", deepDiscount && "border-warning")}
-          value={String(line.disc)}
-          onChange={(e) => onCell(line.id, "disc", e.target.value)}
-        />
-      </td>
-      <td className="px-2 py-1.5 text-right tnum">{money(netPrice)}</td>
-      <td className="px-2 py-1.5 text-right font-medium tnum">{money(amount)}</td>
-      <td className="px-2 py-1.5 text-center">
-        <IconButton
-          size="sm"
-          aria-label={`ลบบรรทัดที่ ${index + 1}`}
-          onClick={() => onRemove(line.id)}
-        >
-          <Icon name="trash" size={15} />
-        </IconButton>
-      </td>
-    </tr>
+        <label className="flex cursor-pointer items-center gap-2 text-cap text-ink-2">
+          <Checkbox
+            aria-label={`แสดงชื่อที่ใช้เองในใบเสนอราคา บรรทัดที่ ${n}`}
+            checked={line.showOnBill}
+            onChange={(e) => onPatch(line.id, { showOnBill: e.target.checked })}
+          />
+          แสดงชื่อนี้ในใบเสนอราคา
+        </label>
+        <span data-testid={`printed-name-${n}`} className="text-cap text-ink-3">
+          จะพิมพ์ว่า <span className="font-medium text-ink-2">{printed}</span>
+          {!line.showOnBill && custom !== "" && " (ชื่อตามระบบ)"}
+        </span>
+      </div>
+
+      <div className="flex items-start gap-3">
+        <span className="mt-[9px] w-[92px] flex-shrink-0 text-cap text-ink-2">
+          รายละเอียด
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {details.map((d, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-4 flex-shrink-0 text-right text-cap text-ink-3 tnum">
+                {i + 1}.
+              </span>
+              <CellInput
+                aria-label={`Detail ${n}.${i + 1}`}
+                className="max-w-[520px]"
+                value={d}
+                placeholder="เช่น สี ขนาด หรือกำหนดส่งของบรรทัดนี้"
+                onChange={(e) =>
+                  setDetails(details.map((v, k) => (k === i ? e.target.value : v)))
+                }
+              />
+              <IconButton
+                size="sm"
+                aria-label={`ลบรายละเอียดที่ ${i + 1} ของบรรทัดที่ ${n}`}
+                onClick={() => setDetails(details.filter((_, k) => k !== i))}
+              >
+                <Icon name="trash" size={14} />
+              </IconButton>
+            </div>
+          ))}
+          <div>
+            <button
+              type="button"
+              onClick={() => setDetails([...details, ""])}
+              className="inline-flex items-center gap-1.5 text-cap font-medium text-info hover:underline"
+            >
+              <Icon name="plus" size={14} strokeWidth={2} />
+              เพิ่มรายละเอียด
+            </button>
+            {!line.showOnBill && details.length > 0 && (
+              <span className="ml-3 text-cap text-ink-3">
+                รายละเอียดจะไม่พิมพ์ เมื่อไม่ได้ติ๊กแสดงชื่อนี้
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

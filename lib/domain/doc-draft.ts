@@ -7,7 +7,13 @@ import { checkQuotedPrice } from "./pricing-master";
 import { addressLine, bpBillingAddress, bpDeliveryAddress } from "./partner";
 import { docDiscTotal, docSubtotal, docTaxTotal } from "./lines";
 import { creditCheck, getCustomer, salesRepOptions } from "./outbound";
-import { TIER_TH, tierForPartner, tierNotices, type TierNotice } from "./price-tier";
+import {
+  TIER_TH,
+  resolveCustomerPrice,
+  tierForPartner,
+  tierNotices,
+  type TierNotice,
+} from "./price-tier";
 import { SALES_REPRESENTATIVES } from "./sales";
 import { bpLatestSalesYear, bpSalesOrders } from "./partner-analytics";
 import { SALES_INVOICES } from "./invoice";
@@ -46,6 +52,15 @@ export interface DraftLine {
   lot: string;
   serial: string;
   note: string;
+  /**
+   * The extra description lines printed under the item, one per entry.
+   *
+   * The record keeps them in the single `note` field it has always had,
+   * newline separated — see detailLines / joinDetails. The editor holds them
+   * as a list because a list is what the salesperson is editing, and because
+   * an empty row being typed into must survive until they finish typing.
+   */
+  details: string[];
   /** Salesperson's own name for the line. Blank falls back to `name`. */
   customName: string;
   /** Whether customName and note reach customer-facing paper. */
@@ -68,6 +83,7 @@ export const blankLine = (): DraftLine => ({
   lot: "",
   serial: "",
   note: "",
+  details: [],
   customName: "",
   /* On by default: a salesperson who bothers to rename a line means the
      customer to read it. Hiding it is the deliberate act. */
@@ -76,6 +92,34 @@ export const blankLine = (): DraftLine => ({
 
 /** Above this, a line discount needs a second look — a warning, never a block. */
 export const DISCOUNT_THRESHOLD = 30;
+
+/* ---------- Extra description lines ---------- */
+
+/**
+ * The stored note, read back as the list of lines it holds.
+ *
+ * The print mapper splits a note on the same characters, so three rows typed
+ * into the editor come out as three rows on paper. Blank entries are dropped:
+ * this is the reading side, and nothing prints an empty line.
+ */
+export const detailLines = (note: string): string[] =>
+  String(note ?? "")
+    .split(/\s*\|\s*|\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+/**
+ * The list, written back into the one field the record has.
+ *
+ * A row still being typed can hold a pipe or a newline pasted in from
+ * somewhere else; both are separators here, so they are flattened rather
+ * than allowed to split one detail into two.
+ */
+export const joinDetails = (rows: readonly string[]): string =>
+  rows
+    .map((r) => String(r ?? "").replace(/[\r\n|]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
 
 /* ---------- Parties ---------- */
 
@@ -588,6 +632,71 @@ export function applyProduct(line: DraftLine, code: string): DraftLine {
     tax: line.tax === "" ? 7 : line.tax,
     disc: line.disc === "" ? 0 : line.disc,
   };
+}
+
+/** The catalogue price a line ought to carry, and where it came from. */
+export interface StandardPrice {
+  price: number;
+  /** Which list answered — "ราคาเอกชน", "ราคา Dealer", … for the hint. */
+  label: string;
+  /** True when the price master had a row for this product at this tier. */
+  fromPriceMaster: boolean;
+}
+
+/**
+ * What this customer is supposed to pay for this product, before anyone
+ * negotiates.
+ *
+ * The price master is asked first, through the same tier resolution the BP
+ * record uses, so a dealer sees the dealer price rather than the catalogue
+ * one. Products with no row there — most of the prototype's own records, whose
+ * codes are in a different space from the 807 priced rows — fall back to the
+ * product master's single price rather than showing nothing.
+ *
+ * Never the floor: `price_last` is what approval compares against, not a price
+ * anybody is entitled to quote.
+ */
+export function standardLinePrice(customerPick: string, code: string): StandardPrice | null {
+  const c = str(code);
+  if (!c) return null;
+
+  const bp = getCustomer(customerPick);
+  if (bp) {
+    const resolved = resolveCustomerPrice(bp, c);
+    if (resolved.price !== null && resolved.price > 0) {
+      return { price: resolved.price, label: resolved.tierLabel, fromPriceMaster: true };
+    }
+  }
+
+  const p = PRODUCTS.find((x) => x.code === c);
+  return p && p.price > 0
+    ? { price: p.price, label: "ราคาตามแคตตาล็อก", fromPriceMaster: false }
+    : null;
+}
+
+/**
+ * Fill a line from the product master at this customer's own price.
+ *
+ * `applyProduct` knows nothing about who is buying, and must not: it is called
+ * from conversions and imports that have no customer in hand. This is the
+ * document's version of the same move — pick the product, then quote the tier
+ * price rather than the catalogue one.
+ *
+ * A price already typed is still left alone. Whether it was negotiated is
+ * decided before `applyProduct` runs, because that is the last moment the
+ * answer is knowable.
+ */
+export function applyProductForCustomer(
+  line: DraftLine,
+  code: string,
+  customerPick: string,
+): DraftLine {
+  const negotiated = num(line.price) > 0;
+  const filled = applyProduct(line, code);
+  if (negotiated) return filled;
+
+  const std = standardLinePrice(customerPick, code);
+  return std ? { ...filled, price: std.price } : filled;
 }
 
 /** Stock summary for the reference column. Neither document reserves stock. */

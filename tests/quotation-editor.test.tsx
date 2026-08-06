@@ -16,8 +16,11 @@ import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 import {
   applyCustomer,
   applyProduct,
+  applyProductForCustomer,
   applyShipTo,
   blankDraft,
+  detailLines,
+  joinDetails,
   resolvePriceList,
   resolveRep,
   blankLine,
@@ -28,10 +31,15 @@ import {
   draftTotals,
   saveQuotationDraft,
   shipToChoices,
+  standardLinePrice,
   validateDraft,
   warningIssues,
   type QuotationDraft,
 } from "@/lib/domain/quotation-draft";
+import { ItemTable } from "@/components/document/parts";
+import { priceMasterRows } from "@/lib/domain/price-master";
+import { resolveCustomerPrice } from "@/lib/domain/price-tier";
+import { money } from "@/lib/format";
 import { docGrandTotal } from "@/lib/domain/lines";
 import { buildPrintJob, getPrintConfig, mapQuotationRevision } from "@/lib/print";
 import { PrintDocument } from "@/components/print/PrintDocument";
@@ -327,6 +335,303 @@ describe("Quotation editor — items", () => {
     await user.click(screen.getByLabelText("Quantity 1"));
     await user.keyboard("{Enter}");
     expect(screen.getByLabelText("Item Code 2")).toBeInTheDocument();
+  });
+});
+
+/* ============================================================
+   The item grid a quotation actually needs
+
+   A quotation reserves nothing and picks nothing off a shelf, so
+   the columns that describe picked stock are not on it. What it
+   does carry is the salesperson's own wording for the customer,
+   as many detail lines as the offer needs, and the price this
+   customer is supposed to be paying.
+   ============================================================ */
+
+/** Choose the fixture product on line 1 through the type-ahead. */
+const pickProduct = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(screen.getByLabelText("Item Code 1"));
+  await user.click(await screen.findByText(PRODUCT));
+};
+
+describe("Quotation editor — columns a quotation has no answer for", () => {
+  it("drops Lot No., Serial No. and UOM from the grid", () => {
+    render(<QuotationEditor />);
+    const doc = within(screen.getByTestId("quotation-document"));
+
+    for (const gone of ["Lot No.", "Serial No.", "UOM"]) {
+      expect(doc.queryByText(gone), gone).not.toBeInTheDocument();
+    }
+    expect(screen.queryByLabelText("Lot 1")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Serial 1")).not.toBeInTheDocument();
+  });
+
+  it("keeps the unit on the line even though the column is gone", () => {
+    /* Nothing was removed from the data — the printed sheet still needs a
+       UOM, and it comes from the product master, not from a typed cell. */
+    const p = PRODUCTS.find((x) => x.code === PRODUCT)!;
+    const doc = draftPrintDoc(readyDraft(), getPrintConfig("quotation")!);
+    expect(doc.lines[0].uom).toBe(p.unit);
+  });
+
+  it("leaves the shared grid alone for documents that do pick stock", () => {
+    /* The columns went from the quotation's layout, not from the component
+       every sell-side document shares. */
+    render(
+      <ItemTable
+        items={[blankLine()]}
+        mode="edit"
+        invalid={new Set()}
+        onCell={() => {}}
+        onPick={() => {}}
+        onRemove={() => {}}
+        onAdd={() => {}}
+        selected={new Set()}
+        onSelect={() => {}}
+      />,
+    );
+    for (const kept of ["Lot No.", "Serial No.", "UOM"]) {
+      expect(screen.getByText(kept), kept).toBeInTheDocument();
+    }
+    expect(screen.getByLabelText("Lot 1")).toBeInTheDocument();
+  });
+});
+
+describe("Quotation editor — the salesperson's own name for a line", () => {
+  const OWN = "ชุดวัสดุอุดฟันสำหรับคลินิกสาขาใหม่";
+
+  it("asks for the product code before it offers a name", async () => {
+    const user = userEvent.setup();
+    render(<QuotationEditor />);
+
+    /* An empty row has nothing to rename. */
+    expect(screen.queryByLabelText("Custom Name 1")).not.toBeInTheDocument();
+    expect(screen.getByText("เลือกรหัสสินค้าก่อน")).toBeInTheDocument();
+
+    await pickProduct(user);
+    expect(screen.getByLabelText("Custom Name 1")).toBeInTheDocument();
+  });
+
+  it("types a name that need not match the catalogue", async () => {
+    const user = userEvent.setup();
+    render(<QuotationEditor />);
+    await pickProduct(user);
+
+    await user.type(screen.getByLabelText("Custom Name 1"), OWN);
+
+    /* The line now reads under the salesperson's wording, with the
+       catalogue name kept in view underneath it. */
+    expect(screen.getByTestId("printed-name-1")).toHaveTextContent(OWN);
+    expect(
+      screen.getByText(`ชื่อในระบบ: ${PRODUCTS.find((p) => p.code === PRODUCT)!.name}`),
+    ).toBeInTheDocument();
+  });
+
+  it("ticks which of the two names goes on the quotation", async () => {
+    const user = userEvent.setup();
+    render(<QuotationEditor />);
+    await pickProduct(user);
+    await user.type(screen.getByLabelText("Custom Name 1"), OWN);
+
+    const tick = screen.getByLabelText(
+      "แสดงชื่อที่ใช้เองในใบเสนอราคา บรรทัดที่ 1",
+    ) as HTMLInputElement;
+    expect(tick.checked).toBe(true);
+
+    await user.click(tick);
+    expect(screen.getByTestId("printed-name-1")).toHaveTextContent(
+      PRODUCTS.find((p) => p.code === PRODUCT)!.name,
+    );
+  });
+
+  it("prints whichever name the tick chose, and the code either way", () => {
+    const catalogue = PRODUCTS.find((p) => p.code === PRODUCT)!.name;
+    const config = getPrintConfig("quotation")!;
+    const line = { ...applyProduct(blankLine(), PRODUCT), qty: 1, price: 100, customName: OWN };
+
+    const shown = draftPrintDoc(readyDraft({ items: [{ ...line, showOnBill: true }] }), config);
+    expect(shown.lines[0].description).toBe(OWN);
+
+    const hidden = draftPrintDoc(readyDraft({ items: [{ ...line, showOnBill: false }] }), config);
+    expect(hidden.lines[0].description).toBe(catalogue);
+
+    /* The code is on the sheet whichever name won, so a renamed line is
+       still traceable back to the item that shipped. */
+    expect(shown.lines[0].code).toBe(PRODUCT);
+    expect(hidden.lines[0].code).toBe(PRODUCT);
+  });
+
+  it("keeps the name and the tick on the saved record", () => {
+    const d = readyDraft({
+      items: [{ ...applyProduct(blankLine(), PRODUCT), qty: 1, price: 100, customName: OWN, showOnBill: false }],
+    });
+    saveQuotationDraft(d, { issue: true });
+
+    const saved = QUOTATIONS.find((q) => q.code === d.code)!;
+    expect(saved.items[0].customName).toBe(OWN);
+    expect(saved.items[0].showOnBill).toBe(false);
+    /* And they survive the round trip back into the editor. */
+    const reopened = draftFromQuotation(saved as never);
+    expect(reopened.items[0].customName).toBe(OWN);
+    expect(reopened.items[0].showOnBill).toBe(false);
+  });
+});
+
+describe("Quotation editor — more than one detail per line", () => {
+  it("adds and removes detail rows under a line", async () => {
+    const user = userEvent.setup();
+    render(<QuotationEditor />);
+    await pickProduct(user);
+
+    /* A line starts with none — a detail is something you choose to add. */
+    expect(screen.queryByLabelText("Detail 1.1")).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("เพิ่มรายละเอียด"));
+    await user.type(screen.getByLabelText("Detail 1.1"), "สีขาว");
+    await user.click(screen.getByText("เพิ่มรายละเอียด"));
+    await user.type(screen.getByLabelText("Detail 1.2"), "ส่งภายใน 7 วัน");
+
+    expect((screen.getByLabelText("Detail 1.1") as HTMLInputElement).value).toBe("สีขาว");
+    expect((screen.getByLabelText("Detail 1.2") as HTMLInputElement).value).toBe("ส่งภายใน 7 วัน");
+
+    await user.click(screen.getByLabelText("ลบรายละเอียดที่ 1 ของบรรทัดที่ 1"));
+    expect((screen.getByLabelText("Detail 1.1") as HTMLInputElement).value).toBe("ส่งภายใน 7 วัน");
+    expect(screen.queryByLabelText("Detail 1.2")).not.toBeInTheDocument();
+  });
+
+  it("survives a blank row being typed into", async () => {
+    /* The record keeps details in one newline-separated field; a row that is
+       still empty must not vanish out from under the cursor. */
+    const user = userEvent.setup();
+    render(<QuotationEditor />);
+    await pickProduct(user);
+
+    await user.click(screen.getByText("เพิ่มรายละเอียด"));
+    expect(screen.getByLabelText("Detail 1.1")).toBeInTheDocument();
+    await user.click(screen.getByText("เพิ่มรายละเอียด"));
+    expect(screen.getByLabelText("Detail 1.2")).toBeInTheDocument();
+  });
+
+  it("prints every detail as its own line under the item", () => {
+    const d = readyDraft({
+      items: [
+        {
+          ...applyProduct(blankLine(), PRODUCT),
+          qty: 1,
+          price: 100,
+          details: ["สีขาว", "   ", "ส่งภายใน 7 วัน"],
+        },
+      ],
+    });
+    const doc = draftPrintDoc(d, getPrintConfig("quotation")!);
+    /* Three rows on screen, two of them written — a blank one prints nothing. */
+    expect(doc.lines[0].extraLines).toEqual(["สีขาว", "ส่งภายใน 7 วัน"]);
+  });
+
+  it("stores them in the one note field and reads them back as rows", () => {
+    const d = readyDraft({
+      items: [
+        { ...applyProduct(blankLine(), PRODUCT), qty: 1, price: 100, details: ["สีขาว", "ส่งภายใน 7 วัน"] },
+      ],
+    });
+    saveQuotationDraft(d, { issue: true });
+
+    const saved = QUOTATIONS.find((q) => q.code === d.code)!;
+    expect(saved.items[0].note).toBe("สีขาว\nส่งภายใน 7 วัน");
+    expect(draftFromQuotation(saved as never).items[0].details).toEqual([
+      "สีขาว",
+      "ส่งภายใน 7 วัน",
+    ]);
+  });
+
+  it("holds a detail off the sheet along with the name it belongs to", () => {
+    const d = readyDraft({
+      items: [
+        {
+          ...applyProduct(blankLine(), PRODUCT),
+          qty: 1,
+          price: 100,
+          details: ["ราคาพิเศษเฉพาะรอบนี้"],
+          showOnBill: false,
+        },
+      ],
+    });
+    const doc = draftPrintDoc(d, getPrintConfig("quotation")!);
+    expect(doc.lines[0].extraLines).toEqual([]);
+    expect(JSON.stringify(doc)).not.toContain("ราคาพิเศษเฉพาะรอบนี้");
+  });
+
+  it("round-trips the list through the single stored field", () => {
+    expect(joinDetails(["สีขาว", "  ", "ส่งภายใน 7 วัน"])).toBe("สีขาว\nส่งภายใน 7 วัน");
+    expect(detailLines("สีขาว\nส่งภายใน 7 วัน")).toEqual(["สีขาว", "ส่งภายใน 7 วัน"]);
+    /* A pasted separator is flattened, never allowed to split one detail. */
+    expect(joinDetails(["สีขาว | เขียว"])).toBe("สีขาว   เขียว");
+  });
+});
+
+describe("Quotation editor — the standard price", () => {
+  it("shows it the moment a product is chosen", async () => {
+    const user = userEvent.setup();
+    render(<QuotationEditor />);
+    await user.selectOptions(screen.getByLabelText("Customer"), CUSTOMER);
+    await pickProduct(user);
+
+    const std = standardLinePrice(CUSTOMER, PRODUCT)!;
+    expect(screen.getByTestId("standard-price-1")).toHaveTextContent(
+      `ราคามาตรฐาน ${money(std.price)}`,
+    );
+    /* And the line opened at it, so there is nothing to reconcile. */
+    expect((screen.getByLabelText("Unit Price 1") as HTMLInputElement).value).toBe(
+      String(std.price),
+    );
+  });
+
+  it("flags a price that has moved off it, and puts it back on request", async () => {
+    const user = userEvent.setup();
+    render(<QuotationEditor />);
+    await user.selectOptions(screen.getByLabelText("Customer"), CUSTOMER);
+    await pickProduct(user);
+
+    const std = standardLinePrice(CUSTOMER, PRODUCT)!;
+    const price = screen.getByLabelText("Unit Price 1") as HTMLInputElement;
+    await user.clear(price);
+    await user.type(price, "1");
+
+    const restore = screen.getByLabelText("ใช้ราคามาตรฐาน บรรทัดที่ 1");
+    expect(screen.getByTestId("standard-price-1").className).toContain("warning");
+
+    await user.click(restore);
+    expect(price.value).toBe(String(std.price));
+    expect(
+      screen.queryByLabelText("ใช้ราคามาตรฐาน บรรทัดที่ 1"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("takes it from the price master at this customer's tier", () => {
+    /* The tier resolution is the price master's, not a second opinion. */
+    const bp = getCustomer(CUSTOMER)!;
+    const row = priceMasterRows().find((r) => r.status === "OK" && r.product_code)!;
+    const std = standardLinePrice(CUSTOMER, row.product_code)!;
+
+    expect(std.fromPriceMaster).toBe(true);
+    expect(std.price).toBe(resolveCustomerPrice(bp, row.product_code).price);
+  });
+
+  it("falls back to the catalogue price rather than showing nothing", () => {
+    /* The prototype's own product codes are in a different space from the
+       807 priced rows, so most lines have no price-master row at all. */
+    const p = PRODUCTS.find((x) => x.code === PRODUCT)!;
+    const std = standardLinePrice(CUSTOMER, PRODUCT)!;
+
+    expect(std.fromPriceMaster).toBe(false);
+    expect(std.price).toBe(p.price);
+    expect(standardLinePrice(CUSTOMER, "NO-SUCH-CODE")).toBeNull();
+    expect(standardLinePrice(CUSTOMER, "")).toBeNull();
+  });
+
+  it("never overwrites a price the salesperson already typed", () => {
+    const negotiated = { ...blankLine(), price: 55 };
+    expect(applyProductForCustomer(negotiated, PRODUCT, CUSTOMER).price).toBe(55);
   });
 });
 

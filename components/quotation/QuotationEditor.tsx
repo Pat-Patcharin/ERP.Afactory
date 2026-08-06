@@ -7,7 +7,7 @@ import {
   applyBillType,
   applyCustomer,
   planBillTypeChange,
-  applyProduct,
+  applyProductForCustomer,
   applyShipTo,
   blankDraft,
   blankLine,
@@ -40,6 +40,7 @@ import {
   InsightPanel,
   IssueSummary,
   ItemTable,
+  type ItemTableLayout,
   MetaPanel,
   MetaSelect,
   MetaText,
@@ -85,6 +86,23 @@ const CLOCK_TICK = 20_000;
 const FORM_USER = () => actingUserName();
 
 type SaveState = "idle" | "saving" | "saved" | "failed";
+
+/**
+ * The item grid a quotation shows.
+ *
+ * Lot and serial belong to stock that has been picked; a quotation reserves
+ * nothing, so there is nothing to record against. UOM comes with the product
+ * and is not a per-line decision either. What a quotation does need is the
+ * salesperson's own wording for the customer and the price that customer is
+ * supposed to pay.
+ */
+const QT_ITEM_LAYOUT: ItemTableLayout = {
+  lot: false,
+  serial: false,
+  uom: false,
+  naming: true,
+  standardPrice: true,
+};
 
 /** A quotation closes with the customer accepting it. */
 const QT_SIGNATURES = [
@@ -149,11 +167,25 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
     }));
   }, []);
 
+  /** Fields the item grid writes as a unit — the naming strip's own controls. */
+  const patchLine = useCallback((id: string, patch: Partial<DraftLine>) => {
+    dirty.current = true;
+    setDraft((d) => ({
+      ...d,
+      items: d.items.map((l) => (l.id === id ? { ...l, ...patch } : l)),
+    }));
+  }, []);
+
+  /* The line opens at this customer's own price, not the catalogue's — the
+     tier is known the moment the product is picked, so quoting the wrong one
+     and correcting it later would only make the grid argue with itself. */
   const pickProduct = useCallback((id: string, code: string) => {
     dirty.current = true;
     setDraft((d) => ({
       ...d,
-      items: d.items.map((l) => (l.id === id ? applyProduct(l, code) : l)),
+      items: d.items.map((l) =>
+        l.id === id ? applyProductForCustomer(l, code, d.customerPick) : l,
+      ),
     }));
   }, []);
 
@@ -168,7 +200,13 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
     setDraft((d) => {
       /* An untouched blank row at the end is filler, not data — replace it. */
       const kept = d.items.filter((l) => l.code);
-      return { ...d, items: [...kept, ...codes.map((c) => applyProduct(blankLine(), c))] };
+      return {
+        ...d,
+        items: [
+          ...kept,
+          ...codes.map((c) => applyProductForCustomer(blankLine(), c, d.customerPick)),
+        ],
+      };
     });
   }, []);
 
@@ -705,6 +743,14 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
                 onAdd={addLine}
                 selected={selected}
                 onSelect={selectLine}
+                /* A quotation is an offer: nothing is picked from a shelf, so
+                   there is no lot and no serial to record, and the unit is
+                   the product's own rather than something typed per line.
+                   What it does need is the customer's wording and this
+                   customer's standard price. */
+                layout={QT_ITEM_LAYOUT}
+                customerPick={draft.customerPick}
+                onPatch={patchLine}
               />
             </div>
           </section>

@@ -12,6 +12,7 @@ import {
   SALES_ORDERS,
   SALES_REQUESTS,
   availabilityFor,
+  blockedForDraftPartner,
   creditCheck,
   decorateOutbound,
   getPack,
@@ -432,6 +433,13 @@ export function qtConvert(qt: QtRow, ctx: ActionCtx) {
     return;
   }
 
+  /* Asked here so the salesperson gets the message and the way out. */
+  const blocked = blockedForDraftPartner(qt.customerCode);
+  if (blocked) {
+    ctx.toast("เปิดใบสั่งขายไม่ได้", blocked, "danger");
+    return;
+  }
+
   const credit = creditCheck(`${qt.customerCode} - ${qt.customer}`, qt.amount);
 
   ctx.confirm({
@@ -825,6 +833,11 @@ function createSalesOrderFrom(
   credit: ReturnType<typeof creditCheck>,
 ): string {
   const now = stamp();
+  /* Both conversion routes come through here, so the partner check sits here
+     rather than in each of them. The callers ask first so they can show the
+     message; this is the backstop that holds if one ever forgets. */
+  const blocked = blockedForDraftPartner(draft.customerCode);
+  if (blocked) throw new Error(blocked);
   const soCode = nextSOCode();
 
   SALES_ORDERS.unshift({
@@ -912,6 +925,13 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
       `${sr.code} อยู่ในสถานะ ${sr.status} — อนุมัติคำขอขายก่อนจึงจะแปลงเป็นใบสั่งขายได้`,
       "warning",
     );
+    return;
+  }
+
+  /* Asked here so the salesperson gets the message and the way out. */
+  const blocked = blockedForDraftPartner(sr.customerCode);
+  if (blocked) {
+    ctx.toast("เปิดใบสั่งขายไม่ได้", blocked, "danger");
     return;
   }
 
