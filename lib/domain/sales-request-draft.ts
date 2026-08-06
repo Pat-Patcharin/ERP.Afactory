@@ -543,6 +543,9 @@ export function saveSalesRequestDraft(
     approvedBy: "",
     approvedDate: "",
     rejectReason: "",
+    /* Neither is judged until the request is submitted — see srSubmit. */
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     soRef: "",
     created: now,
     createdBy: user,

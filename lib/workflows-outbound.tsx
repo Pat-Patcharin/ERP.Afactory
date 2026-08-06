@@ -1,7 +1,7 @@
 import { actingUserName, can, currentRole, currentUser, getRole } from "./domain/admin";
 import { useState } from "react";
 import { docDiscTotal, docGrandTotal, docSubtotal, docTaxTotal } from "./domain/lines";
-import { priceApproval } from "./domain/doc-draft";
+import { MANAGER_ONLY_REASON, maySignAt, priceApproval } from "./domain/doc-draft";
 import { fmt, money0, stamp } from "./format";
 import type { ActionCtx } from "./types";
 import {
@@ -190,25 +190,8 @@ export function qtSubmit(qt: QtRow, ctx: ActionCtx) {
   );
 }
 
-/**
- * Roles that may approve a price below the floor.
- *
- * Read off the role rather than the permission matrix, deliberately: the
- * matrix has one `approve` bit per module, and splitting it would change how
- * every other document is approved to solve a problem only this one has.
- *
- * Sales Manager is the role the rule is written for. Management is here too
- * because an executive outranks the sales manager — only Super Admin carries
- * the `all` flag, so without naming Management explicitly an executive could
- * approve every ordinary quotation but not one priced below the floor.
- */
-const MANAGER_ROLES = ["SALES_MANAGER", "MANAGEMENT"];
-
-const maySignAt = (level: string): boolean => {
-  const code = currentUser().roleCode;
-  if (getRole(code)?.all) return true;
-  return level !== "manager" || MANAGER_ROLES.includes(code);
-};
+/* Who may sign at a given price level now lives beside the function that
+   decides the level — the dashboard asks the same question. See doc-draft. */
 
 /** Pending Approval → Approved. From here the quote may be sent out. */
 export function qtApprove(qt: QtRow, ctx: ActionCtx) {
@@ -217,11 +200,7 @@ export function qtApprove(qt: QtRow, ctx: ActionCtx) {
   /* The level the document asked for when it was submitted, not one worked
      out again now against a price master that may have moved since. */
   if (!maySignAt(qt.priceApprovalLevel)) {
-    ctx.toast(
-      "อนุมัติไม่ได้",
-      `${qt.code} มีราคาต่ำกว่าราคาขั้นต่ำ — ต้องให้ผู้จัดการฝ่ายขายอนุมัติเท่านั้น`,
-      "danger",
-    );
+    ctx.toast("อนุมัติไม่ได้", `${qt.code} ${MANAGER_ONLY_REASON}`, "danger");
     return;
   }
 
@@ -656,22 +635,72 @@ export function qtDelete(qt: QtRow, ctx: ActionCtx) {
    Approving a request does NOT reserve stock.
    ============================================================ */
 
+/**
+ * Draft → Submitted, judged on price exactly as `qtSubmit` is.
+ *
+ * The floor rule used to live only on the quotation, which made it optional:
+ * a salesperson who raised a request directly — the route that exists
+ * precisely for customers who never asked for a quotation — never met it. The
+ * same three outcomes apply here, from the same function, for the same
+ * reasons: no cost blocks, a price under the floor escalates, an unknown
+ * product is carried as unchecked rather than refused.
+ */
 export function srSubmit(sr: SrRow, ctx: ActionCtx) {
   if (denied(ctx, "sales-request", "edit", "ส่งขออนุมัติไม่ได้")) return;
   if (!(sr.items ?? []).length) {
     ctx.toast("ยังไม่มีรายการสินค้า", "เพิ่มรายการอย่างน้อย 1 บรรทัดก่อนส่งขออนุมัติ", "warning");
     return;
   }
+
+  const price = priceApproval(sr.items ?? []);
+
+  /* No cost means nobody can judge the price — not the rep, not the approver.
+     Blocked rather than escalated, and the message says where to fix it. */
+  if (price.noCost.length) {
+    ctx.toast(
+      "ส่งขออนุมัติไม่ได้",
+      `${price.noCost.length} รายการยังไม่มีต้นทุน (${price.noCost
+        .map((l) => l.code)
+        .join(", ")}) — ไปตั้งต้นทุนที่ทะเบียนสินค้าก่อน แล้วจึงส่งขออนุมัติได้`,
+      "danger",
+    );
+    return;
+  }
+
   sr.status = "Submitted";
+  /* Frozen here, not read again at approval time — see the field's comment. */
+  sr.priceApprovalLevel = price.level;
+  sr.uncheckedPriceLines = price.uncheckable.length;
   sr.updated = stamp();
   sr.updatedBy = USER();
-  log(sr, "Submitted for approval", "ส่งขออนุมัติภายใน", "info");
-  commit(ctx, "ส่งขออนุมัติแล้ว", `${sr.code} — รอผู้จัดการฝ่ายขายอนุมัติ`);
+  log(
+    sr,
+    "Submitted for approval",
+    price.level === "manager"
+      ? `ส่งขออนุมัติภายใน — ต้องให้ผู้จัดการอนุมัติ (${price.flagged.length} รายการต่ำกว่าราคาขั้นต่ำ)`
+      : "ส่งขออนุมัติภายใน",
+    "info",
+  );
+  commit(
+    ctx,
+    "ส่งขออนุมัติแล้ว",
+    price.level === "manager"
+      ? `${sr.code} — ต้องให้ผู้จัดการฝ่ายขายอนุมัติ`
+      : `${sr.code} — รอผู้อนุมัติ`,
+  );
 }
 
 /** Internal approval. Credit is checked here so the order does not stall later. */
 export function srApprove(sr: SrRow, ctx: ActionCtx) {
   if (denied(ctx, "sales-request", "approve", "อนุมัติคำขอขายไม่ได้")) return;
+
+  /* The level the document asked for when it was submitted, not one worked
+     out again now against a price master that may have moved since. */
+  if (!maySignAt(sr.priceApprovalLevel)) {
+    ctx.toast("อนุมัติไม่ได้", `${sr.code} ${MANAGER_ONLY_REASON}`, "danger");
+    return;
+  }
+
   const credit = creditCheck(`${sr.customerCode} - ${sr.customer}`, sr.amount);
 
   ctx.confirm({
@@ -743,6 +772,11 @@ export function srReopen(sr: SrRow, ctx: ActionCtx) {
   sr.approvedBy = "";
   sr.approvedDate = "";
   sr.rejectReason = "";
+  /* The level belonged to the figures that were submitted. Whoever edits now
+     may raise or lower a price, so it is judged again on the way back in
+     rather than carried across and quietly reused. */
+  sr.priceApprovalLevel = "admin";
+  sr.uncheckedPriceLines = 0;
   sr.updated = stamp();
   sr.updatedBy = USER();
   log(sr, "Reopened", "ส่งกลับเป็นร่างเพื่อแก้ไข", "info");

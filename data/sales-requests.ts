@@ -68,6 +68,21 @@ export interface SalesRequest {
   approvedBy: string;
   approvedDate: string;
   rejectReason: string;
+  /**
+   * The lowest authority that may approve this request, frozen at submission.
+   *
+   * The quotation has carried one since the price floor was enforced; the
+   * request did not, so a salesperson who skipped the quotation skipped the
+   * floor with it. Same field, same two values ("admin" | "manager"), read
+   * the same way — see `priceApproval` and `maySignAt` in doc-draft.
+   *
+   * Frozen rather than recomputed at approval time for the same reason as on
+   * the quotation: the approver signs the document that was put in front of
+   * them, not one re-judged against a price master that has moved since.
+   */
+  priceApprovalLevel: string;
+  /** Lines the price master had nothing to compare against, at submission. */
+  uncheckedPriceLines: number;
   soRef: string;
   history: { t: string; d: string; u: string; when: string; kind: string }[];
   created: string;
@@ -145,6 +160,8 @@ export const SALES_REQUESTS: SalesRequest[] = [
     approvedBy: "Pimpaka S.",
     approvedDate: "25/06/2569 09:50",
     rejectReason: "",
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     soRef: "SO2506-0001",
     history: [
       { t: "Converted to Sales Order", d: "สร้าง SO2506-0001 จากคำขอนี้", u: "Patcharin T.", when: "25/06/2569 10:12", kind: "primary" },
@@ -182,6 +199,8 @@ export const SALES_REQUESTS: SalesRequest[] = [
     approvedBy: "",
     approvedDate: "",
     rejectReason: "",
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     soRef: "",
     history: [
       { t: "Submitted for approval", d: "ส่งขออนุมัติภายใน — ยอดสูง ต้องตรวจเครดิต", u: "Narin C.", when: "26/06/2569 16:30", kind: "info" },
@@ -218,6 +237,8 @@ export const SALES_REQUESTS: SalesRequest[] = [
     approvedBy: "Pimpaka S.",
     approvedDate: "28/06/2569 08:55",
     rejectReason: "",
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     soRef: "SO2506-0002",
     history: [
       { t: "Converted to Sales Order", d: "สร้าง SO2506-0002 จากคำขอนี้", u: "Somchai S.", when: "28/06/2569 09:20", kind: "primary" },
@@ -255,6 +276,8 @@ export const SALES_REQUESTS: SalesRequest[] = [
     approvedBy: "",
     approvedDate: "",
     rejectReason: "",
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     soRef: "",
     history: [
       { t: "Created", d: "สร้างคำขอขายจากการโทรสั่งของลูกค้า", u: "Supavita Y.", when: "01/07/2569 15:50", kind: "" },
@@ -288,6 +311,8 @@ export const SALES_REQUESTS: SalesRequest[] = [
     approvedBy: "Pimpaka S.",
     approvedDate: "",
     rejectReason: "ราคาต่ำกว่าเกณฑ์กำไรขั้นต่ำ",
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     soRef: "",
     history: [
       { t: "Rejected", d: "ไม่อนุมัติ: ส่วนลด 25% ทำให้กำไรต่ำกว่าเกณฑ์", u: "Pimpaka S.", when: "02/07/2569 16:40", kind: "warn" },
@@ -338,6 +363,8 @@ export const SALES_REQUESTS: SalesRequest[] = [
     approvedBy: "Pimpaka S.",
     approvedDate: "29/06/2569 11:30",
     rejectReason: "",
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     soRef: "SO2506-0003",
     history: [
       { t: "Converted to Sales Order", d: "สร้าง SO2506-0003 จากคำขอนี้ — ตั้งเป็น On Hold รอเครดิต", u: "Narin C.", when: "29/06/2569 14:00", kind: "primary" },
@@ -375,6 +402,8 @@ export const SALES_REQUESTS: SalesRequest[] = [
     approvedBy: "Pimpaka S.",
     approvedDate: "30/06/2569 15:30",
     rejectReason: "",
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     soRef: "SO2506-0004",
     history: [
       { t: "Converted to Sales Order", d: "สร้าง SO2506-0004 จากคำขอนี้", u: "Supavita Y.", when: "30/06/2569 15:45", kind: "primary" },
@@ -419,6 +448,8 @@ export const SALES_REQUESTS: SalesRequest[] = [
     approvedBy: "Pimpaka S.",
     approvedDate: "26/06/2569 09:20",
     rejectReason: "",
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     soRef: "SO2506-0009",
     history: [
       { t: "Converted to Sales Order", d: "สร้าง SO2506-0009 จากคำขอนี้", u: "Patcharin T.", when: "26/06/2569 10:05", kind: "primary" },

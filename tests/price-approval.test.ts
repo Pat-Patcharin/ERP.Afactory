@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { QUOTATIONS as RAW_QT } from "@/data/quotations";
-import { QUOTATIONS } from "@/lib/domain/outbound";
+import { SALES_REQUESTS as RAW_SR } from "@/data/sales-requests";
+import { QUOTATIONS, SALES_REQUESTS, decorateOutbound } from "@/lib/domain/outbound";
 import { priceApproval, blankLine } from "@/lib/domain/doc-draft";
 import { priceMasterRows } from "@/lib/domain/price-master";
-import { qtApprove, qtSubmit } from "@/lib/workflows-outbound";
+import {
+  qtApprove,
+  qtSubmit,
+  srApprove,
+  srReopen,
+  srSubmit,
+} from "@/lib/workflows-outbound";
 import { USERS } from "@/data/admin";
 import { can, resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 
@@ -21,10 +28,14 @@ import { can, resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
    ============================================================ */
 
 const QT_SNAP = JSON.stringify(RAW_QT);
+const SR_SNAP = JSON.stringify(RAW_SR);
 
 beforeEach(() => {
   QUOTATIONS.length = 0;
   QUOTATIONS.push(...(JSON.parse(QT_SNAP) as never[]));
+  SALES_REQUESTS.length = 0;
+  SALES_REQUESTS.push(...(JSON.parse(SR_SNAP) as never[]));
+  decorateOutbound();
   resetCurrentUser();
 });
 
@@ -276,5 +287,128 @@ describe("qtApprove — the level the document asked for is enforced", () => {
        role's permissions later would silently open the floor rule too. */
     asRole("SALES_ADMIN");
     expect(can("quotation", "approve")).toBe(true);
+  });
+});
+
+/* ============================================================
+   THE SAME FLOOR ON THE OTHER ROUTE
+
+   The rule used to live only on the quotation, which made it
+   optional: the sales request route exists precisely for the
+   customer who never asked for a quotation, and a salesperson
+   taking it met no floor at all. These tests are the ones that
+   would have caught that.
+   ============================================================ */
+
+describe("srSubmit / srApprove — the floor holds without a quotation", () => {
+  const asRole = (roleCode: string) =>
+    setCurrentUser(USERS.find((u) => u.roleCode === roleCode && u.status === "Active")!.code);
+
+  const draftRequest = () => {
+    const r = SALES_REQUESTS.find((x) => x.status === "Draft")!;
+    r.status = "Draft";
+    r.priceApprovalLevel = "admin";
+    r.uncheckedPriceLines = 0;
+    return r;
+  };
+
+  const priceLine = (code: string, price: number) => ({
+    code,
+    name: code,
+    unit: "ea",
+    qty: 1,
+    price,
+    disc: 0,
+    tax: 7,
+    note: "",
+  });
+
+  it("escalates a request priced under the floor, exactly as a quotation does", () => {
+    const row = priced();
+    const r = draftRequest();
+    r.items = [priceLine(row.product_code, row.price_last! - 1)];
+    const { ctx } = ctxStub();
+
+    srSubmit(r as never, ctx);
+
+    expect(r.status).toBe("Submitted");
+    expect(r.priceApprovalLevel).toBe("manager");
+  });
+
+  it("leaves an ordinary request at the level the admin can sign", () => {
+    const row = priced();
+    const r = draftRequest();
+    r.items = [priceLine(row.product_code, row.price_last!)];
+    const { ctx } = ctxStub();
+
+    srSubmit(r as never, ctx);
+
+    expect(r.status).toBe("Submitted");
+    expect(r.priceApprovalLevel).toBe("admin");
+  });
+
+  it("refuses to submit a request whose product has no cost", () => {
+    const row = costless();
+    const r = draftRequest();
+    r.items = [priceLine(row.product_code, 100)];
+    const { toasts, ctx } = ctxStub();
+
+    srSubmit(r as never, ctx);
+
+    expect(r.status, "still a draft").toBe("Draft");
+    expect(toasts[0].tone).toBe("danger");
+    expect(toasts[0].message).toContain("ทะเบียนสินค้า");
+  });
+
+  it("refuses the sales admin a request priced under the floor", () => {
+    const row = priced();
+    const r = draftRequest();
+    r.items = [priceLine(row.product_code, row.price_last! - 1)];
+    const { ctx } = ctxStub();
+
+    asRole("SALES_REP");
+    srSubmit(r as never, ctx);
+
+    asRole("SALES_ADMIN");
+    const { toasts, ctx: approveCtx } = ctxStub();
+    srApprove(r as never, approveCtx);
+
+    expect(r.status, "the request must not move").toBe("Submitted");
+    expect(r.approvedBy, "and nobody is recorded as having signed it").toBe("");
+    expect(toasts[0].tone).toBe("danger");
+    expect(toasts[0].message).toContain("ผู้จัดการฝ่ายขาย");
+  });
+
+  it("lets the sales manager sign the same request", () => {
+    const row = priced();
+    const r = draftRequest();
+    r.items = [priceLine(row.product_code, row.price_last! - 1)];
+    const { ctx } = ctxStub();
+
+    asRole("SALES_REP");
+    srSubmit(r as never, ctx);
+
+    asRole("SALES_MANAGER");
+    srApprove(r as never, ctxStub().ctx);
+
+    expect(r.status).toBe("Approved");
+  });
+
+  it("judges the request again after it goes back for edits", () => {
+    /* The level belonged to the figures that were submitted. Carrying it
+       across would let a manager-signed level stick to a document whose
+       prices have since been raised — or, worse, lowered. */
+    const row = priced();
+    const r = draftRequest();
+    r.items = [priceLine(row.product_code, row.price_last! - 1)];
+
+    asRole("SALES_REP");
+    srSubmit(r as never, ctxStub().ctx);
+    expect(r.priceApprovalLevel).toBe("manager");
+
+    asRole("SALES_MANAGER");
+    srReopen(r as never, ctxStub().ctx);
+    expect(r.status).toBe("Draft");
+    expect(r.priceApprovalLevel, "judged again on the way back in").toBe("admin");
   });
 });

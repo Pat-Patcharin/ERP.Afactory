@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import DashboardPage from "@/app/(erp)/dashboard/page";
 import {
   DASH_ACTIONS,
@@ -21,9 +21,17 @@ import {
   pendingApprovalCount,
 } from "@/lib/domain/dashboard";
 import { invSnapshot } from "@/lib/domain/inventory";
+import { can, resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
+import { SALES_REQUESTS, decorateOutbound } from "@/lib/domain/outbound";
 import { NAV_INDEX } from "@/lib/nav";
 import { pageHref } from "@/lib/routes";
 import { routerPush } from "./setup";
+
+/** The four demo chairs, by the code the seed gives them. */
+const REP = "EMP004";
+const SALES_ADMIN = "EMP013";
+const SALES_MANAGER = "EMP003";
+const ADMIN = "EMP001";
 
 /* ============================================================
    DASHBOARD regression suite.
@@ -204,10 +212,12 @@ describe("Dashboard — quick actions", () => {
 /* ---------- Section 3 ---------- */
 
 describe("Dashboard — my pending tasks", () => {
-  it("renders the ten queues the spec lists", () => {
+  it("renders every queue this account may act on", () => {
+    /* The count is no longer fixed — the box is what THIS person owes, and
+       the default demo account can reach everything. What is asserted is
+       that nothing was lost when the sell side joined the list. */
     render(<DashboardPage />);
     const list = screen.getByTestId("dash-task-list");
-    expect(within(list).getAllByRole("listitem")).toHaveLength(10);
 
     for (const title of [
       "Purchase Request รออนุมัติ",
@@ -220,9 +230,18 @@ describe("Dashboard — my pending tasks", () => {
       "Sales Return รออนุมัติ",
       "Credit Note รออนุมัติ",
       "Supplier Invoice รออนุมัติ",
+      /* Section 4 of the spec — the sell side, which had no row at all. */
+      "ใบเสนอราคารออนุมัติ",
+      "ใบเสนอราคารอลูกค้าตอบ",
+      "คำขอขายรออนุมัติ",
+      "คู่ค้ารอยืนยัน",
+      "ใบสั่งขายรอเปิดใบหยิบสินค้า",
+      "ใบส่งของรอวางบิล",
     ]) {
-      expect(within(list).getByText(title)).toBeInTheDocument();
+      expect(within(list).getByText(title), title).toBeInTheDocument();
     }
+
+    expect(within(list).getAllByRole("listitem").length).toBe(dashPendingTasks().length);
   });
 
   it("gives every row an icon, a count and a priority", () => {
@@ -246,6 +265,95 @@ describe("Dashboard — my pending tasks", () => {
 
     await user.click(within(list).getByText("QC รอตรวจสอบ").closest("button")!);
     expect(routerPush).toHaveBeenCalledWith(pageHref("QC Inspection"));
+  });
+});
+
+/* ============================================================
+   THE BOX IS WHAT YOU OWE, NOT WHAT THE COMPANY OWES
+
+   Every row now carries the permission it needs, and the two
+   priced-under-the-floor rows carry the level as well. What
+   follows is mostly refusals, because a row appearing for
+   somebody who cannot act on it is the failure mode: they open
+   it, get turned away at the last click, and stop reading the
+   box altogether.
+   ============================================================ */
+
+describe("Dashboard — the task box follows the chair", () => {
+  const asAccount = (code: string) => setCurrentUser(code);
+  const titles = () => dashPendingTasks().map((t) => t.title);
+
+  afterEach(resetCurrentUser);
+
+  it("keeps the purchase side out of the sales admin's box", () => {
+    asAccount(SALES_ADMIN);
+    const mine = titles();
+
+    expect(mine).not.toContain("Purchase Request รออนุมัติ");
+    expect(mine).not.toContain("Purchase Order รออนุมัติ");
+    expect(mine).not.toContain("QC รอตรวจสอบ");
+    /* And keeps the work that IS theirs. */
+    expect(mine).toContain("คำขอขายรออนุมัติ");
+    expect(mine).toContain("คู่ค้ารอยืนยัน");
+  });
+
+  it("never puts manager-only work in the sales admin's box", () => {
+    /* The rule this whole step exists for. Being shown work and then refused
+       at the approve button is worse than never having been shown it. */
+    asAccount(SALES_ADMIN);
+    expect(titles()).not.toContain("คำขอขายราคาต่ำกว่าขั้นต่ำ");
+    expect(titles()).not.toContain("ใบเสนอราคาราคาต่ำกว่าขั้นต่ำ");
+
+    asAccount(SALES_MANAGER);
+    expect(titles()).toContain("คำขอขายราคาต่ำกว่าขั้นต่ำ");
+    expect(titles()).toContain("ใบเสนอราคาราคาต่ำกว่าขั้นต่ำ");
+  });
+
+  it("does not count a manager-level request in the admin's ordinary queue", () => {
+    /* Not just hidden as a row — the number on the row they DO see must not
+       include work they cannot sign, or the box lies by arithmetic. */
+    const submitted = SALES_REQUESTS.filter((r) => r.status === "Submitted");
+    const victim = submitted[0];
+    const wasLevel = victim.priceApprovalLevel;
+    victim.priceApprovalLevel = "manager";
+    decorateOutbound();
+
+    try {
+      asAccount(SALES_ADMIN);
+      const adminRow = dashPendingTasks().find((t) => t.key === "srApproval")!;
+
+      asAccount(SALES_MANAGER);
+      const managerRow = dashPendingTasks().find((t) => t.key === "srApproval")!;
+
+      expect(managerRow.count).toBe(submitted.length);
+      expect(adminRow.count).toBe(submitted.length - 1);
+    } finally {
+      victim.priceApprovalLevel = wasLevel;
+      decorateOutbound();
+    }
+  });
+
+  it("gives the sales rep no approval queue at all", () => {
+    asAccount(REP);
+    const mine = titles();
+
+    expect(mine).not.toContain("ใบเสนอราคารออนุมัติ");
+    expect(mine).not.toContain("คำขอขายรออนุมัติ");
+    expect(mine).not.toContain("คู่ค้ารอยืนยัน");
+    /* What a rep does have is their own follow-up. */
+    expect(mine).toContain("ใบเสนอราคารอลูกค้าตอบ");
+  });
+
+  it("asks the permission matrix, never the role code", () => {
+    /* A row must be reachable exactly when `can()` says so — the same call
+       the module's own buttons make. Checked across every account so a row
+       wired to the wrong module or action shows up here. */
+    for (const code of [REP, SALES_ADMIN, SALES_MANAGER, ADMIN]) {
+      asAccount(code);
+      for (const t of dashPendingTasks()) {
+        expect(can(t.needs.module, t.needs.action), `${code} · ${t.title}`).toBe(true);
+      }
+    }
   });
 });
 

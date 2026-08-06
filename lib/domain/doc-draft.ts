@@ -1,4 +1,5 @@
 import { COMPANY } from "@/data/admin";
+import { currentUser, getRole } from "./admin";
 import { PAY_TERMS } from "@/data/partners";
 import { QT_CHANNELS, QT_PRICE_LISTS } from "@/data/quotations";
 import { PRODUCTS, productStock } from "./product";
@@ -411,6 +412,40 @@ export function priceApproval(items: readonly PlanLine[]): PriceApproval {
     uncheckable,
   };
 }
+
+/* ============================================================
+   WHO MAY SIGN AT THAT LEVEL
+
+   Lives here, beside the function that decides the level, and
+   not in the workflow file that first needed it: the dashboard
+   has to ask the same question to keep manager-only work out of
+   an administrator's task box, and two copies of this list would
+   drift the day somebody adds a role.
+
+   Read off the role rather than the permission matrix, which is
+   deliberate: the matrix has one `approve` bit per module, and
+   splitting it would change how every other document is approved
+   to solve a problem only this one has.
+
+   Sales Manager is the role the rule is written for. Management
+   is here too because an executive outranks the sales manager —
+   only Super Admin carries the `all` flag, so without naming
+   Management explicitly an executive could approve every ordinary
+   quotation but not one priced below the floor.
+   ============================================================ */
+
+export const MANAGER_ROLES = ["SALES_MANAGER", "MANAGEMENT"];
+
+/** May the acting user sign a document that asked for this level? */
+export const maySignAt = (level: string): boolean => {
+  const code = currentUser().roleCode;
+  if (getRole(code)?.all) return true;
+  return level !== "manager" || MANAGER_ROLES.includes(code);
+};
+
+/** How the refusal reads. One wording, so every surface says the same thing. */
+export const MANAGER_ONLY_REASON =
+  "มีราคาต่ำกว่าราคาขั้นต่ำ — ต้องให้ผู้จัดการฝ่ายขายอนุมัติเท่านั้น";
 
 /* ============================================================
    CHANGING HOW A DOCUMENT IS BILLED

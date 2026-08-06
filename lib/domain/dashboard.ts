@@ -21,6 +21,10 @@ import {
   SO_TONE,
   tone,
 } from "@/lib/badges";
+import type { Action } from "@/data/admin";
+import { applyScope, can } from "./admin";
+import { maySignAt } from "./doc-draft";
+import { BUSINESS_PARTNERS } from "./partner";
 import { PURCHASE_ORDERS, PURCHASE_REQUESTS } from "./purchase";
 import { GOODS_RECEIPTS, PUTAWAY_TASKS, QC_INSPECTIONS } from "./inbound";
 import {
@@ -29,6 +33,7 @@ import {
   PICKING_TASKS,
   QUOTATIONS,
   SALES_ORDERS,
+  SALES_REQUESTS,
 } from "./outbound";
 import { SALES_INVOICES } from "./invoice";
 import { SHIPMENTS } from "./shipment";
@@ -381,14 +386,173 @@ export interface DashTask {
   tone: string;
   /** Set when the queue is declared because the module is not built. */
   future?: boolean;
+  /**
+   * The permission that decides whether this row is anybody's business.
+   *
+   * A module key and the action the row actually asks somebody to perform —
+   * approving a purchase request needs `approve`, not `view`. Written as data
+   * so the box never names a role: adding one is a permission change, and
+   * this function does not have to hear about it.
+   */
+  needs: { module: string; action: Action };
+  /**
+   * A second gate for work the module permission alone does not settle.
+   *
+   * The price floor is the case: an administrator holds `approve` on a
+   * quotation and still may not sign one priced under the floor. Asked of
+   * `maySignAt`, the same authority the approve button consults — never of a
+   * role code.
+   */
+  when?: () => boolean;
 }
 
+/* ============================================================
+   SECTION 3 — MY pending tasks, and only mine
+
+   The box used to be the same eleven rows for everybody, which
+   made it a list of what the company owes rather than of what
+   you owe. Two things now decide whether a row is yours:
+
+     · the permission the row needs, asked of `can()`
+     · for the price floor, `maySignAt()` — the same authority the
+       approve button itself consults
+
+   Neither is a role check. A row a person cannot act on is
+   dropped entirely rather than shown greyed out: being told to do
+   something and then refused at the door is worse than never
+   having been told, and it is how a task box stops being read.
+   ============================================================ */
+
+/** Requests still waiting on a signature that THIS person is allowed to give. */
+const signableRequests = () =>
+  SALES_REQUESTS.filter((r) => r.status === "Submitted" && maySignAt(r.priceApprovalLevel));
+
+const managerOnlyRequests = () =>
+  SALES_REQUESTS.filter((r) => r.status === "Submitted" && r.priceApprovalLevel === "manager");
+
+const managerOnlyQuotes = () =>
+  QUOTATIONS.filter((q) => q.status === "Pending Approval" && q.priceApprovalLevel === "manager");
+
 /**
- * Only work that is waiting on a decision. Ordered by priority then size,
- * so the top of the list is always the thing to open first.
+ * Only work that is waiting on a decision, and only the part of it the acting
+ * user may actually act on. Ordered by priority then size, so the top of the
+ * list is always the thing to open first.
  */
 export function dashPendingTasks(): DashTask[] {
   const tasks: DashTask[] = [
+    /* ---------- The sell side ---------- */
+    {
+      key: "qtApproval",
+      icon: "quotation",
+      title: "ใบเสนอราคารออนุมัติ",
+      /* Quotes priced under the floor are counted only for whoever may sign
+         them, so an administrator is never sent to a document that will
+         refuse them at the last click. */
+      count: QUOTATIONS.filter(
+        (q) => q.status === "Pending Approval" && maySignAt(q.priceApprovalLevel),
+      ).length,
+      priority: "High",
+      goto: "Quotation",
+      tone: "warning",
+      needs: { module: "quotation", action: "approve" },
+    },
+    {
+      key: "qtManager",
+      icon: "alert",
+      title: "ใบเสนอราคาราคาต่ำกว่าขั้นต่ำ",
+      count: managerOnlyQuotes().length,
+      priority: "Critical",
+      goto: "Quotation",
+      tone: "danger",
+      needs: { module: "quotation", action: "approve" },
+      /* The row disappears for anyone who cannot sign at this level. Showing
+         it with a count of nought would be worse than useless: it would read
+         as "nothing to do" on work that is in fact waiting. */
+      when: () => maySignAt("manager"),
+    },
+    {
+      key: "qtSent",
+      icon: "send",
+      title: "ใบเสนอราคารอลูกค้าตอบ",
+      /* The rep's own follow-up list. Scoped rather than filtered by name:
+         a rep sees their customers, a manager sees the team's, and the rule
+         for which is which already exists. */
+      count: applyScope(
+        QUOTATIONS.filter((q) => q.status === "Sent"),
+        (q) => ({ owner: q.createdBy, salesRep: q.salesRep }),
+      ).length,
+      priority: "Medium",
+      goto: "Quotation",
+      tone: "info",
+      needs: { module: "quotation", action: "edit" },
+    },
+    {
+      key: "srApproval",
+      icon: "salesRequest",
+      title: "คำขอขายรออนุมัติ",
+      count: signableRequests().length,
+      priority: "High",
+      goto: "Sales Request",
+      tone: "warning",
+      needs: { module: "sales-request", action: "approve" },
+    },
+    {
+      key: "srManager",
+      icon: "alert",
+      title: "คำขอขายราคาต่ำกว่าขั้นต่ำ",
+      count: managerOnlyRequests().length,
+      priority: "Critical",
+      goto: "Sales Request",
+      tone: "danger",
+      needs: { module: "sales-request", action: "approve" },
+      when: () => maySignAt("manager"),
+    },
+    {
+      key: "bpDraft",
+      icon: "partner",
+      title: "คู่ค้ารอยืนยัน",
+      /* A rep can raise a partner and quote against it the same afternoon,
+         but no order can be opened until somebody confirms the record. */
+      count: BUSINESS_PARTNERS.filter((b) => b.status === "Draft").length,
+      priority: "High",
+      goto: "Business Partner",
+      tone: "warning",
+      needs: { module: "business-partner", action: "approve" },
+    },
+    {
+      key: "soPick",
+      icon: "picking",
+      title: "ใบสั่งขายรอเปิดใบหยิบสินค้า",
+      count: SALES_ORDERS.filter(
+        (s) =>
+          s.status === "Confirmed" &&
+          !PICKING_TASKS.some(
+            (t) => t.soRef === s.code && !["Completed", "Cancelled"].includes(t.status),
+          ),
+      ).length,
+      priority: "High",
+      goto: "Sales Order",
+      tone: "warning",
+      needs: { module: "picking", action: "create" },
+    },
+    {
+      key: "doInvoice",
+      icon: "invoice",
+      title: "ใบส่งของรอวางบิล",
+      count: DELIVERY_ORDERS.filter(
+        (d) =>
+          ["Shipped", "Delivered"].includes(d.status) &&
+          !SALES_INVOICES.some(
+            (i) => i.sourceDoc === d.code && !["Cancelled", "Void"].includes(i.status),
+          ),
+      ).length,
+      priority: "Medium",
+      goto: "Sales Invoice",
+      tone: "info",
+      needs: { module: "sales-invoice", action: "create" },
+    },
+
+    /* ---------- The buy side and the warehouse ---------- */
     {
       key: "pr",
       icon: "purchaseRequest",
@@ -397,6 +561,7 @@ export function dashPendingTasks(): DashTask[] {
       priority: "High",
       goto: "Purchase Request",
       tone: "warning",
+      needs: { module: "purchase-request", action: "approve" },
     },
     {
       key: "po",
@@ -406,6 +571,7 @@ export function dashPendingTasks(): DashTask[] {
       priority: "High",
       goto: "Purchase Order",
       tone: "warning",
+      needs: { module: "purchase-order", action: "approve" },
     },
     {
       key: "qc",
@@ -415,6 +581,7 @@ export function dashPendingTasks(): DashTask[] {
       priority: "Critical",
       goto: "QC Inspection",
       tone: "danger",
+      needs: { module: "qc-inspection", action: "edit" },
     },
     {
       key: "putaway",
@@ -424,6 +591,7 @@ export function dashPendingTasks(): DashTask[] {
       priority: "High",
       goto: "Put Away",
       tone: "warning",
+      needs: { module: "put-away", action: "edit" },
     },
     {
       key: "shipment",
@@ -433,6 +601,7 @@ export function dashPendingTasks(): DashTask[] {
       priority: "Critical",
       goto: "Shipment",
       tone: "danger",
+      needs: { module: "shipment", action: "edit" },
     },
     {
       key: "count",
@@ -446,6 +615,7 @@ export function dashPendingTasks(): DashTask[] {
       priority: "Medium",
       goto: "Cycle Count",
       tone: "info",
+      needs: { module: "cycle-count", action: "approve" },
     },
     {
       key: "claim",
@@ -456,6 +626,7 @@ export function dashPendingTasks(): DashTask[] {
       goto: "Supplier Claim",
       tone: "info",
       future: true,
+      needs: { module: "purchase-order", action: "create" },
     },
     {
       key: "return",
@@ -467,6 +638,7 @@ export function dashPendingTasks(): DashTask[] {
       priority: "High",
       goto: "Sales Return",
       tone: "warning",
+      needs: { module: "sales-return", action: "approve" },
     },
     {
       key: "creditNote",
@@ -476,6 +648,7 @@ export function dashPendingTasks(): DashTask[] {
       priority: "Medium",
       goto: "Credit Note",
       tone: "info",
+      needs: { module: "credit-note", action: "approve" },
     },
     {
       key: "supplierInvoice",
@@ -486,11 +659,14 @@ export function dashPendingTasks(): DashTask[] {
       goto: "Supplier Invoice",
       tone: "info",
       future: true,
+      needs: { module: "finance", action: "approve" },
     },
   ];
 
   const rank = { Critical: 0, High: 1, Medium: 2, Low: 3 };
-  return tasks.sort((a, b) => rank[a.priority] - rank[b.priority] || b.count - a.count);
+  return tasks
+    .filter((t) => can(t.needs.module, t.needs.action) && (t.when?.() ?? true))
+    .sort((a, b) => rank[a.priority] - rank[b.priority] || b.count - a.count);
 }
 
 /* ============================================================
