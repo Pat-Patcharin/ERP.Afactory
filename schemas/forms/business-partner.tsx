@@ -23,6 +23,7 @@ import {
   SUPPLIER_TYPES,
 } from "@/data/partners";
 import { SALES_AREA_NAMES, resolveSalesArea } from "@/data/sales-areas";
+import { can } from "@/lib/domain/admin";
 import { PRODUCTS } from "@/lib/domain/product";
 import { PO_CURRENCIES, PO_INCOTERMS, PO_BUYERS } from "@/data/purchase-orders";
 import {
@@ -96,6 +97,25 @@ const ACC_TYPES = ["ออมทรัพย์", "กระแสรายว�
 const BANKS = ["กสิกรไทย", "ไทยพาณิชย์", "กรุงเทพ", "กรุงไทย", "กรุงศรีอยุธยา", "ทหารไทยธนชาต"];
 const RATINGS = ["A - ดีเยี่ยม", "B - ดี", "C - พอใช้", "D - ต้องปรับปรุง"];
 
+/**
+ * Whether the legal name and tax ID may still be typed.
+ *
+ * Yes while the partner is being created or is still a Draft — nothing
+ * references it, and a record that locks the instant it is saved turns one
+ * typo into an errand for an administrator. People route around that by
+ * abandoning the record and raising another, and the system fills with
+ * duplicate partners, which is worse than the problem being solved.
+ *
+ * Once confirmed the pair is fixed: quotations, orders and invoices carry it,
+ * and changing it retroactively rewrites what those documents claim. Whoever
+ * may approve the module can still edit, because they are the ones who would
+ * be asked anyway.
+ */
+const identityEditable = (s: { _mode?: unknown; status?: unknown }): boolean =>
+  s._mode === "create" ||
+  String(s.status ?? "") === "Draft" ||
+  can("business-partner", "approve");
+
 const isCustomer = (s: { roles?: Record<string, boolean> }) =>
   Boolean(s.roles?.customer || s.roles?.dealer);
 const isSupplier = (s: { roles?: Record<string, boolean> }) => Boolean(s.roles?.supplier);
@@ -124,7 +144,15 @@ export const BP_FORM: FormSchema<BpRow> = {
     trade: "",
     type: "Company",
     website: "",
-    status: "Active",
+    /**
+     * A salesperson raises a partner as a Draft; whoever may approve the
+     * module raises one that is live straight away.
+     *
+     * Decided from the permission rather than from a role name, so adding a
+     * role that should be able to confirm partners is a change in the matrix
+     * and not in this file.
+     */
+    status: can("business-partner", "approve") ? "Active" : "Draft",
     notes: "",
     since: new Date().toISOString().slice(0, 10),
     billType: "VAT",
@@ -291,6 +319,19 @@ export const BP_FORM: FormSchema<BpRow> = {
               required: true,
               options: opts(BP_STATUS),
             },
+            /**
+             * The legal identity — the name on the invoice and the tax ID the
+             * revenue department will match it against.
+             *
+             * A salesperson may type both while the partner is still a Draft:
+             * nothing references it yet, and locking a record the moment it is
+             * created means one typo needs an administrator. Once the partner
+             * is confirmed the pair is fixed, because documents now carry it.
+             *
+             * Two declarations rather than a conditional `readonly`, which the
+             * field contract does not take — the same `when` pairing the Sales
+             * Order form uses for its source request.
+             */
             {
               type: "text",
               path: "nameTh",
@@ -298,6 +339,15 @@ export const BP_FORM: FormSchema<BpRow> = {
               required: true,
               span: true,
               placeholder: "บริษัท เดนทัล สมายล์ จำกัด",
+              when: identityEditable,
+            },
+            {
+              type: "static",
+              path: "nameTh",
+              label: "ชื่อภาษาไทย",
+              span: true,
+              hint: "ชื่อนิติบุคคลของคู่ค้าที่ยืนยันแล้วแก้ไม่ได้ — ติดต่อผู้ดูแลหากต้องแก้",
+              when: (s) => !identityEditable(s),
             },
             { type: "text", path: "nameEn", label: "English Name" },
             { type: "text", path: "trade", label: "Trade Name", placeholder: "Dental Smile" },
@@ -423,7 +473,7 @@ export const BP_FORM: FormSchema<BpRow> = {
               required: true,
               placeholder: "0105560112347",
               hint: "13 หลัก ระบบตรวจสอบหลักตรวจสอบให้อัตโนมัติ",
-              when: (s) => Boolean(s.tax?.vatReg),
+              when: (s) => Boolean(s.tax?.vatReg) && identityEditable(s),
             },
             {
               type: "text",
@@ -431,7 +481,15 @@ export const BP_FORM: FormSchema<BpRow> = {
               label: "Tax ID",
               placeholder: "0105560112347",
               hint: "ไม่จด VAT จึงไม่บังคับ — ถ้ากรอกต้องเป็น 13 หลักที่ถูกต้อง",
-              when: (s) => !s.tax?.vatReg,
+              when: (s) => !s.tax?.vatReg && identityEditable(s),
+            },
+            {
+              /* Confirmed partner: the tax ID is already on documents. */
+              type: "static",
+              path: "tax.taxId",
+              label: "Tax ID",
+              hint: "เลขผู้เสียภาษีของคู่ค้าที่ยืนยันแล้วแก้ไม่ได้ — ติดต่อผู้ดูแลหากต้องแก้",
+              when: (s) => !identityEditable(s),
             },
             {
               type: "select",

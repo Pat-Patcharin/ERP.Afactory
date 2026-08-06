@@ -44,7 +44,8 @@ import {
 } from "@/data/partners";
 import { SALES_AREA_NAMES } from "@/data/sales-areas";
 import { BP_TONE, CREDIT_TONE, tone } from "@/lib/badges";
-import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
+import { DASH, daysUntil, fmt, money0, stamp } from "@/lib/format";
+import { actingUserName, can } from "@/lib/domain/admin";
 import { checkPermission, maskAccount } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import type {
@@ -438,6 +439,9 @@ export const BP_LIST: ListSchema<BpRow> = {
 
   tabs: [
     { key: "all", label: "All" },
+    /* First, and named for what has to happen rather than for the status:
+       a partner waiting here is a salesperson blocked from raising an order. */
+    { key: "draft", label: "รอยืนยัน", test: (b) => b.status === "Draft" },
     { key: "cust", label: "Customers", test: (b) => b.roles.customer },
     { key: "sup", label: "Suppliers", test: (b) => b.roles.supplier },
     {
@@ -728,6 +732,54 @@ export const BP_LIST: ListSchema<BpRow> = {
         run: (r) => ctx.toast("ทำสำเนาผู้ค้า", `${r.code} — Future support`, "info"),
       },
       { sep: true },
+      /**
+       * Confirming a Draft is its own act, not "activate" under another name:
+       * it is the moment somebody takes responsibility for the legal name and
+       * the tax ID a salesperson typed, and from here the partner can be sold
+       * to. Who did it and when goes into the partner's own history — the
+       * record already keeps one, so nothing new was invented for this.
+       */
+      ...(bp.status === "Draft" && can("business-partner", "approve")
+        ? ([
+            {
+              label: "ยืนยันคู่ค้า",
+              icon: "checkCircle",
+              run: (r: BpRow) =>
+                ctx.confirm({
+                  title: "ยืนยันคู่ค้ารายนี้?",
+                  message: (
+                    <>
+                      <strong>{r.code}</strong> — {r.nameTh}
+                      <br />
+                      ยืนยันแล้วจะเปิดใบสั่งขายได้ และชื่อนิติบุคคลกับเลขผู้เสียภาษีจะแก้ไม่ได้อีก
+                      <br />
+                      <span className="text-ink-2">
+                        เลขผู้เสียภาษี {r.tax?.taxId || "— ยังไม่ได้กรอก"}
+                      </span>
+                    </>
+                  ),
+                  confirmText: "ยืนยันคู่ค้า",
+                  tone: "primary",
+                  onConfirm: () => {
+                    const now = stamp();
+                    r.status = "Active";
+                    r.updated = now;
+                    r.updatedBy = actingUserName();
+                    (r.history ??= []).unshift({
+                      t: "Partner confirmed",
+                      d: "ยืนยันคู่ค้าที่พนักงานขายสร้างไว้ — เปิดใบสั่งขายได้",
+                      u: actingUserName(),
+                      when: now,
+                      kind: "primary",
+                    });
+                    decorateBPs();
+                    ctx.refresh();
+                    ctx.toast("ยืนยันคู่ค้าแล้ว", `${r.code} — ${r.nameTh}`, "success");
+                  },
+                }),
+            },
+          ] as const)
+        : []),
       bp.status === "Active"
         ? {
             label: "Deactivate",

@@ -14,6 +14,7 @@ import {
   SALES_ORDERS,
   SALES_REQUESTS,
   availabilityFor,
+  blockedForDraftPartner,
   creditCheck,
   customerOptions,
   decorateSOs,
@@ -639,6 +640,16 @@ export const SO_FORM: FormSchema<SoRow> = {
     const now = stamp();
     const code = String(s.code ?? "").trim();
     const existing = SALES_ORDERS.find((x) => x.code === code);
+
+    /* A partner nobody has confirmed cannot be sold to. Checked here, at the
+       write, rather than by hiding the customer from the picker: the picker
+       is also how an existing order's customer is read back, and a stale tab
+       reaches this function without passing the form at all. */
+    const draftPartner = blockedForDraftPartner(String(s.customerCode ?? ""));
+    if (draftPartner) {
+      ctx.toast("บันทึกใบสั่งขายไม่ได้", draftPartner, "danger");
+      return;
+    }
 
     /* The bill type moved since this order was last saved. `save` is the
        first point on this surface that has a ctx, so this is where the
