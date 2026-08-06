@@ -1197,11 +1197,233 @@ export function soConfirm(so: SoRow, ctx: ActionCtx) {
     return;
   }
 
+  /* Stock is read at the moment of confirming, not taken from the screen —
+     the page may have been open since before somebody else's order took the
+     same units. See soShortLines. */
+  const short = soShortLines(so);
+  if (short.length) {
+    askAboutShortStock(so, short, ctx);
+    return;
+  }
+
+  confirmOrder(so, ctx, "ยืนยันคำสั่งขาย พร้อมจัดของ");
+}
+
+/** The part of confirming that is the same however the shortage was answered. */
+function confirmOrder(so: SoRow, ctx: ActionCtx, detail: string) {
   so.status = "Confirmed";
   so.updated = stamp();
   so.updatedBy = USER();
-  log(so, "Confirmed", "ยืนยันคำสั่งขาย พร้อมจัดของ");
+  log(so, "Confirmed", detail);
   commit(ctx, "ยืนยันใบสั่งขายแล้ว", `${so.code} — พร้อมสร้างใบหยิบสินค้า`);
+}
+
+/* ============================================================
+   NOT ENOUGH STOCK — ASKED WHILE IT STILL MATTERS
+
+   The order used to find out at the loading bay: `Partially
+   Delivered` was set when a delivery was confirmed, by which
+   point the lorry has gone and the customer has been told a date
+   that is already wrong.
+
+   Confirming the order is the last moment a person is still in
+   front of the paperwork with the customer reachable, so the
+   question is asked here, and it is a question rather than a
+   warning: a shortage has three honest answers and the software
+   should not pick one.
+
+   The dialog at conversion time stays as it is — it warns, it
+   does not ask. Nothing is committed there, so there is nothing
+   to decide yet.
+   ============================================================ */
+
+interface ShortLine {
+  code: string;
+  name: string;
+  unit: string;
+  ordered: number;
+  available: number;
+  shortBy: number;
+}
+
+/** Lines this warehouse cannot cover today, with how far short each one is. */
+export function soShortLines(so: { items?: SoRow["items"] }): ShortLine[] {
+  const out: ShortLine[] = [];
+  for (const it of so.items ?? []) {
+    const avail = availabilityFor(it.code, Number(it.qty));
+    if (!avail || avail.shortBy <= 0) continue;
+    out.push({
+      code: it.code,
+      name: it.name,
+      unit: it.unit,
+      ordered: Number(it.qty),
+      available: avail.available,
+      shortBy: avail.shortBy,
+    });
+  }
+  return out;
+}
+
+type ShortAnswer = "backorder" | "trim" | "cancel";
+
+/**
+ * The three answers, as radio buttons rather than three dialogs.
+ *
+ * Trimming asks who at the customer agreed to it. Cutting a line a customer
+ * ordered is a change to what was agreed, and a change nobody can name later
+ * is indistinguishable from the warehouse quietly shipping less.
+ */
+function ShortStockForm({
+  short,
+  onAnswer,
+  onWho,
+}: {
+  short: ShortLine[];
+  onAnswer: (a: ShortAnswer) => void;
+  onWho: (v: string) => void;
+}) {
+  const [answer, setAnswer] = useState<ShortAnswer>("backorder");
+
+  const option = (value: ShortAnswer, label: string, detail: string) => (
+    <label className="flex cursor-pointer gap-2.5 rounded-btn border border-line p-3 hover:bg-surface">
+      <input
+        type="radio"
+        name="short-stock"
+        value={value}
+        checked={answer === value}
+        onChange={() => {
+          setAnswer(value);
+          onAnswer(value);
+        }}
+        className="mt-0.5"
+      />
+      <span className="flex flex-col">
+        <span className="font-medium">{label}</span>
+        <span className="text-cap text-ink-2">{detail}</span>
+      </span>
+    </label>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-btn border border-[#FDE68A] bg-warning-soft p-3">
+        <p className="mb-1.5 text-[13px] font-semibold text-warning-text">
+          สต๊อกไม่พอ {short.length} รายการ
+        </p>
+        <ul className="flex flex-col gap-0.5 text-[13px] text-ink-2">
+          {short.map((l) => (
+            <li key={l.code} className="tnum">
+              {l.code} — สั่ง {fmt(l.ordered)} {l.unit} · มี {fmt(l.available)} · ขาด{" "}
+              <span className="font-semibold text-warning-text">{fmt(l.shortBy)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {option(
+        "backorder",
+        "เปิดเป็นของค้างส่ง",
+        "ยืนยันตามจำนวนเดิม ส่งเท่าที่มีก่อน ส่วนที่เหลือค้างไว้ในใบสั่งขาย",
+      )}
+      {option(
+        "trim",
+        "ยกเลิกส่วนที่ขาด",
+        "ตัดจำนวนลงเหลือเท่าที่มี — ใช้เมื่อลูกค้ายืนยันแล้วว่าไม่รอ",
+      )}
+      {option("cancel", "ยกเลิกทั้งใบ", "ปิดใบสั่งขายนี้ทั้งใบ")}
+
+      {answer === "trim" && (
+        <TextField
+          label="ใครที่ลูกค้ายืนยัน"
+          placeholder="เช่น คุณสมหญิง ฝ่ายจัดซื้อ — ยืนยันทางโทรศัพท์"
+          onChange={onWho}
+        />
+      )}
+    </div>
+  );
+}
+
+function askAboutShortStock(so: SoRow, short: ShortLine[], ctx: ActionCtx) {
+  let answer: ShortAnswer = "backorder";
+  let who = "";
+  const summary = short.map((l) => `${l.code} ขาด ${fmt(l.shortBy)} ${l.unit}`).join(" · ");
+
+  ctx.formModal({
+    title: "สต๊อกไม่พอ — จะเดินต่ออย่างไร",
+    body: () => (
+      <ShortStockForm
+        short={short}
+        onAnswer={(a) => (answer = a)}
+        onWho={(v) => (who = v)}
+      />
+    ),
+    confirmText: "ยืนยันตามที่เลือก",
+    onConfirm: () => {
+      const now = stamp();
+
+      if (answer === "backorder") {
+        confirmOrder(so, ctx, `ยืนยันคำสั่งขาย — เปิดเป็นของค้างส่ง: ${summary}`);
+        return;
+      }
+
+      if (answer === "trim") {
+        if (!who.trim()) {
+          ctx.toast(
+            "ต้องระบุผู้ยืนยัน",
+            "การตัดจำนวนคือการเปลี่ยนสิ่งที่ตกลงกับลูกค้า — ต้องบอกได้ว่าใครยืนยัน",
+            "danger",
+          );
+          return false;
+        }
+        for (const line of so.items ?? []) {
+          const cut = short.find((s) => s.code === line.code);
+          if (cut) line.qty = cut.available;
+        }
+        so.remark = `${so.remark ? `${so.remark} · ` : ""}ตัดจำนวนที่ของไม่พอ ${now} — ลูกค้ายืนยันโดย ${who}`;
+        log(so, "Shortfall cancelled", `ตัดจำนวนลงเหลือเท่าที่มี — ลูกค้ายืนยันโดย ${who} (${summary})`, "warn");
+        notifyOwner(so, {
+          kind: "converted",
+          title: `${so.code} ถูกตัดจำนวนที่ของไม่พอ`,
+          body: `${summary} — ลูกค้ายืนยันโดย ${who}`,
+        });
+        confirmOrder(so, ctx, `ยืนยันคำสั่งขายหลังตัดจำนวน — ลูกค้ายืนยันโดย ${who}`);
+        return;
+      }
+
+      so.status = "Cancelled";
+      so.updated = now;
+      so.updatedBy = USER();
+      log(so, "Cancelled", `ยกเลิกทั้งใบเพราะของไม่พอ: ${summary}`, "warn");
+      notifyOwner(so, {
+        kind: "rejected",
+        title: `${so.code} ถูกยกเลิกเพราะของไม่พอ`,
+        body: summary,
+      });
+      commit(ctx, "ยกเลิกใบสั่งขายแล้ว", `${so.code} — ของไม่พอ`, "danger");
+    },
+  });
+}
+
+/**
+ * Tell whoever raised the order.
+ *
+ * Addressed by `createdBy` rather than by `salesRep`: the rep field holds a
+ * territory label ("SALE001 - Patcharin Thiengkaew") which is not a user of
+ * this system, while `createdBy` is the name the session stamped and is what
+ * an inbox matches on.
+ */
+function notifyOwner(
+  so: SoRow,
+  n: { kind: "converted" | "rejected" | "escalated"; title: string; body: string },
+) {
+  notify({
+    kind: n.kind,
+    docType: "sales-order",
+    docCode: so.code,
+    title: n.title,
+    body: n.body,
+    toUser: so.createdBy,
+  });
 }
 
 /** Sales admin overriding a credit hold. */
@@ -1590,6 +1812,31 @@ export function pickComplete(task: PickRow, ctx: ActionCtx) {
         }
         so.updated = now;
         log(so, "Picking completed", `${task.code} หยิบครบ ${fmt(task.pickedQty)} หน่วย`, "info");
+
+        /* A short pick is the moment the order actually became partial, and
+           it is hours or days before the lorry leaves — early enough for
+           somebody to ring the customer, which was the whole complaint.
+           The status moves now rather than at delivery.
+
+           Worth knowing when reading a report: from here the status says
+           "partial" while `delivered` is still nought on every line. The
+           quantities are what the fulfilment figures are computed from, so
+           they stay correct; it is the STATUS that now means "this order will
+           not go out in one piece", earlier than its name suggests. */
+        if (short > 0 && !["Cancelled", "Completed"].includes(so.status)) {
+          so.status = "Partially Delivered";
+          log(
+            so,
+            "Short picked",
+            `${task.code} หยิบได้ ${fmt(task.pickedQty)} จาก ${fmt(task.orderedQty)} หน่วย — ขาด ${fmt(short)}`,
+            "warn",
+          );
+          notifyOwner(so, {
+            kind: "escalated",
+            title: `${so.code} หยิบของไม่ครบ`,
+            body: `ขาด ${fmt(short)} หน่วย จาก ${task.code} — ติดต่อลูกค้าเรื่องกำหนดส่งได้เลย`,
+          });
+        }
       }
 
       commit(
