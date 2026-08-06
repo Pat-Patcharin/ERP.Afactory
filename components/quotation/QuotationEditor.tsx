@@ -58,6 +58,7 @@ import {
   billTypeConfirmText,
   billTypeDialogTitle,
 } from "@/components/document/BillTypeNotice";
+import { PriceApprovalNotice } from "@/components/document/PriceApprovalNotice";
 import { PO_CURRENCIES } from "@/data/purchase-orders";
 import { warehouseOptions, salesRepOptions } from "@/lib/domain/outbound";
 import { toDisplayDate } from "@/lib/format";
@@ -642,6 +643,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
               <InsightPanel insight={insight} />
               <CreditWarning insight={insight} />
               <PriceTierNotice insight={insight} />
+              {insight.priceApproval && <PriceApprovalNotice plan={insight.priceApproval} />}
               <IssueSummary issues={shownIssues} onJump={jumpTo} />
             </div>
           )}

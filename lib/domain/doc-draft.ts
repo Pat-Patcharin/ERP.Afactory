@@ -2,6 +2,8 @@ import { COMPANY } from "@/data/admin";
 import { PAY_TERMS } from "@/data/partners";
 import { QT_CHANNELS, QT_PRICE_LISTS } from "@/data/quotations";
 import { PRODUCTS, productStock } from "./product";
+import { priceMasterByProduct } from "./price-master";
+import { checkQuotedPrice } from "./pricing-master";
 import { addressLine, bpBillingAddress, bpDeliveryAddress } from "./partner";
 import { docDiscTotal, docSubtotal, docTaxTotal } from "./lines";
 import { creditCheck, getCustomer, salesRepOptions } from "./outbound";
@@ -230,6 +232,123 @@ export function zeroTaxIfNonVat<T extends { tax?: number | "" }>(
 ): T[] {
   if (billType !== "Non VAT") return lines;
   return lines.map((l) => ({ ...l, tax: 0 }));
+}
+
+/* ============================================================
+   WHO HAS TO SIGN THIS PRICE OFF
+
+   CLAUDE.md states the rule as iron: nothing is sold below
+   `price_last` without approval. `checkQuotedPrice()` in
+   pricing-master.ts has always implemented it — and until now
+   nothing called it, so the rule lived in a document rather than
+   in the software. This is the wrapper that connects them.
+
+   No pricing rule is restated here. Every verdict comes from
+   `checkQuotedPrice`; this decides only who must sign, and it is
+   the single place all three editing surfaces ask.
+
+   The price compared is the NET unit price, after the line
+   discount. Comparing the list price would make the rule
+   meaningless: quote high, discount 60%, and the floor is never
+   breached on paper.
+   ============================================================ */
+
+/**
+ * Who has to sign.
+ *
+ * `admin` is the ordinary case — every quotation goes through approval
+ * regardless of price, so there is no "nobody". `manager` is the escalation:
+ * a price the ordinary approver may not wave through on their own.
+ */
+export type PriceApprovalLevel = "admin" | "manager";
+
+/** One line the approver needs to look at, and why. */
+export interface PriceApprovalLine {
+  code: string;
+  name: string;
+  /** Net unit price after the line discount — what was actually checked. */
+  quoted: number;
+  /** `price_last` from the price master, when the row has one. */
+  floor: number | null;
+  /** Gross profit rate at the quoted price, as a decimal. */
+  gp: number | null;
+  /** Messages straight from checkQuotedPrice, not re-worded. */
+  reasons: string[];
+}
+
+export interface PriceApproval {
+  /** The lowest authority that may approve this document as it stands. */
+  level: PriceApprovalLevel;
+  /** Lines below the floor or under the GP threshold — a manager decides. */
+  flagged: PriceApprovalLine[];
+  /**
+   * Lines whose product has no cost recorded. These stop the document being
+   * submitted at all: approving a price whose cost is unknown is approving
+   * with no information, and CLAUDE.md puts PENDING_COST behind a sales block
+   * rather than an approval.
+   */
+  noCost: PriceApprovalLine[];
+  /**
+   * Lines with no row in the price master — a new product, or one of the
+   * rows that never had a code. Not blocked, because refusing would make new
+   * products unsellable, but carried onto the document so the approver knows
+   * how much of it the system could not check.
+   */
+  uncheckable: PriceApprovalLine[];
+}
+
+/** Net unit price: what the customer pays per unit once the discount is off. */
+const netUnitPrice = (l: PlanLine): number =>
+  num(l.price) * (1 - num(l.disc) / 100);
+
+/**
+ * What this document's prices need before it can go out.
+ *
+ * Called by the quotation editor, the sales request editor and the sales
+ * order form — all three read this, none of them works it out.
+ */
+export function priceApproval(items: readonly PlanLine[]): PriceApproval {
+  const flagged: PriceApprovalLine[] = [];
+  const noCost: PriceApprovalLine[] = [];
+  const uncheckable: PriceApprovalLine[] = [];
+
+  for (const l of items) {
+    const code = str(l.code);
+    if (!code) continue;
+
+    const quoted = netUnitPrice(l);
+    const base = { code, name: str(l.name), quoted };
+
+    /* A product code can name more than one row — five are duplicated in the
+       master — so prefer a sellable one, exactly as resolveCustomerPrice does. */
+    const candidates = priceMasterByProduct(code);
+    const row = candidates.find((r) => r.status === "OK") ?? candidates[0] ?? null;
+
+    if (!row) {
+      uncheckable.push({ ...base, floor: null, gp: null, reasons: ["ไม่มีราคากลางสำหรับสินค้านี้"] });
+      continue;
+    }
+
+    const verdict = checkQuotedPrice(row, quoted);
+    const line = {
+      ...base,
+      floor: row.price_last,
+      gp: verdict.gp,
+      reasons: verdict.violations.map((v) => v.message),
+    };
+
+    /* PR-06 is the no-cost case and is a different kind of problem: it is not
+       that the price is too low, it is that nobody can tell. */
+    if (verdict.violations.some((v) => v.rule === "PR-06")) noCost.push(line);
+    else if (verdict.requiresApproval) flagged.push(line);
+  }
+
+  return {
+    level: flagged.length ? "manager" : "admin",
+    flagged,
+    noCost,
+    uncheckable,
+  };
 }
 
 /* ============================================================
@@ -572,10 +691,22 @@ export interface DocInsight {
   priceTierLabel: string;
   /** ข้อสังเกตที่คนขายต้องเห็นตอนออกเอกสาร ไม่ใช่แค่ในหน้า BP */
   tierNotices: TierNotice[];
+  /**
+   * Who has to sign these prices off, computed from the lines as they stand.
+   *
+   * Present so the salesperson learns it while typing rather than when the
+   * document comes back rejected. Null when no lines were supplied.
+   */
+  priceApproval: PriceApproval | null;
 }
 
 /** Read-only context for the customer panel. Never any cost or margin. */
-export function docInsight(customerPick: string, documentValue: number, fallback: TermFields): DocInsight {
+export function docInsight(
+  customerPick: string,
+  documentValue: number,
+  fallback: TermFields,
+  items: readonly PlanLine[] = [],
+): DocInsight {
   const bp = getCustomer(customerPick);
   const credit = creditCheck(customerPick, documentValue);
 
@@ -606,6 +737,7 @@ export function docInsight(customerPick: string, documentValue: number, fallback
     priceTier: bp ? tierForPartner(bp) : "private",
     priceTierLabel: bp ? TIER_TH[tierForPartner(bp)] : TIER_TH.private,
     tierNotices: bp ? tierNotices(bp) : [],
+    priceApproval: items.length ? priceApproval(items) : null,
   };
 }
 

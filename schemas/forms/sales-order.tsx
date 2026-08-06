@@ -3,7 +3,8 @@ import { BILL_TYPES, PAY_TERMS } from "@/data/partners";
 import { PO_CURRENCIES } from "@/data/purchase-orders";
 import { PRODUCTS, productStock } from "@/lib/domain/product";
 import { docGrandTotal, docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
-import { STANDARD_VAT_RATE, planBillTypeChange } from "@/lib/domain/doc-draft";
+import { STANDARD_VAT_RATE, planBillTypeChange, priceApproval } from "@/lib/domain/doc-draft";
+import { PriceApprovalNotice } from "@/components/document/PriceApprovalNotice";
 import {
   BillTypeNotice,
   billTypeConfirmText,
@@ -537,8 +538,21 @@ export const SO_FORM: FormSchema<SoRow> = {
           )
         : null;
 
+    /* The same wrapper the two document editors read — no second opinion
+       about what a price needs. */
+    const price = priceApproval(rows);
+
     return (
       <>
+        {(price.level === "manager" || price.noCost.length || price.uncheckable.length) && (
+          <RailCard
+            icon="shield"
+            title="การอนุมัติราคา"
+            tone={price.noCost.length || price.level === "manager" ? "warn" : "default"}
+          >
+            <PriceApprovalNotice plan={price} />
+          </RailCard>
+        )}
         {billPlan && (
           <RailCard icon="pricing" title="เปลี่ยนประเภทใบกำกับ" tone="warn">
             <BillTypeNotice plan={billPlan} />

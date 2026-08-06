@@ -1,6 +1,7 @@
-import { actingUserName, can, currentRole } from "./domain/admin";
+import { actingUserName, can, currentRole, currentUser, getRole } from "./domain/admin";
 import { useState } from "react";
 import { docDiscTotal, docGrandTotal, docSubtotal, docTaxTotal } from "./domain/lines";
+import { priceApproval } from "./domain/doc-draft";
 import { fmt, money0, stamp } from "./format";
 import type { ActionCtx } from "./types";
 import {
@@ -146,17 +147,81 @@ export function qtSubmit(qt: QtRow, ctx: ActionCtx) {
     ctx.toast("ยังไม่มีรายการสินค้า", "เพิ่มรายการอย่างน้อย 1 บรรทัดก่อนส่งขออนุมัติ", "warning");
     return;
   }
+
+  const price = priceApproval(qt.items ?? []);
+
+  /* No cost means nobody can judge the price — not the rep, not the approver.
+     Blocked rather than escalated, and the message says where to fix it. */
+  if (price.noCost.length) {
+    ctx.toast(
+      "ส่งขออนุมัติไม่ได้",
+      `${price.noCost.length} รายการยังไม่มีต้นทุน (${price.noCost
+        .map((l) => l.code)
+        .join(", ")}) — ไปตั้งต้นทุนที่ทะเบียนสินค้าก่อน แล้วจึงส่งขออนุมัติได้`,
+      "danger",
+    );
+    return;
+  }
+
   qt.status = "Pending Approval";
   qt.approvalStatus = "Pending Approval";
+  /* Frozen here, not read again at approval time — see the field's comment. */
+  qt.priceApprovalLevel = price.level;
+  qt.uncheckedPriceLines = price.uncheckable.length;
   qt.updated = stamp();
   qt.updatedBy = USER();
-  log(qt, "Submitted for approval", "ส่งขออนุมัติภายใน", "info");
-  commit(ctx, "ส่งขออนุมัติแล้ว", `${qt.code} — รอผู้จัดการฝ่ายขายอนุมัติ`);
+  log(
+    qt,
+    "Submitted for approval",
+    price.level === "manager"
+      ? `ส่งขออนุมัติภายใน — ต้องให้ผู้จัดการอนุมัติ (${price.flagged.length} รายการต่ำกว่าราคาขั้นต่ำ)`
+      : "ส่งขออนุมัติภายใน",
+    "info",
+  );
+  commit(
+    ctx,
+    "ส่งขออนุมัติแล้ว",
+    price.level === "manager"
+      ? `${qt.code} — ต้องให้ผู้จัดการฝ่ายขายอนุมัติ`
+      : `${qt.code} — รอผู้จัดการฝ่ายขายอนุมัติ`,
+  );
 }
+
+/**
+ * Roles that may approve a price below the floor.
+ *
+ * Read off the role rather than the permission matrix, deliberately: the
+ * matrix has one `approve` bit per module, and splitting it would change how
+ * every other document is approved to solve a problem only this one has.
+ *
+ * Sales Manager is the role the rule is written for. Management is here too
+ * because an executive outranks the sales manager — only Super Admin carries
+ * the `all` flag, so without naming Management explicitly an executive could
+ * approve every ordinary quotation but not one priced below the floor.
+ */
+const MANAGER_ROLES = ["SALES_MANAGER", "MANAGEMENT"];
+
+const maySignAt = (level: string): boolean => {
+  const code = currentUser().roleCode;
+  if (getRole(code)?.all) return true;
+  return level !== "manager" || MANAGER_ROLES.includes(code);
+};
 
 /** Pending Approval → Approved. From here the quote may be sent out. */
 export function qtApprove(qt: QtRow, ctx: ActionCtx) {
   if (denied(ctx, "quotation", "approve", "อนุมัติใบเสนอราคาไม่ได้")) return;
+
+  /* The level the document asked for when it was submitted, not one worked
+     out again now against a price master that may have moved since. */
+  if (!maySignAt(qt.priceApprovalLevel)) {
+    ctx.toast(
+      "อนุมัติไม่ได้",
+      `${qt.code} มีราคาต่ำกว่าราคาขั้นต่ำ — ต้องให้ผู้จัดการฝ่ายขายอนุมัติเท่านั้น`,
+      "danger",
+    );
+    return;
+  }
+
   if (qt.status !== "Pending Approval") {
     ctx.toast(
       "อนุมัติไม่ได้",

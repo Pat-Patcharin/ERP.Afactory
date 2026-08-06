@@ -97,6 +97,22 @@ export interface Quotation {
    * on a printed sheet identifies exactly which version was agreed.
    */
   revision: number;
+  /**
+   * The authority this issue needs, frozen when it was submitted.
+   *
+   * "manager" when a line was priced below `price_last` or under the GP
+   * threshold; "admin" otherwise. Stored rather than recomputed at approval
+   * time on purpose: the price master can move afterwards, and the level a
+   * document needed is a fact about the moment it was sent up, not about
+   * today's catalogue. Same reasoning as the revision snapshots.
+   */
+  priceApprovalLevel: string;
+  /**
+   * How many lines the system could not price-check — no row in the price
+   * master. Carried onto the document so the approver knows how much of it
+   * was verified, rather than the count living only on the rep's screen.
+   */
+  uncheckedPriceLines: number;
   /** Earlier issues, oldest first. Append-only — see QtRevision. */
   revisions: QtRevision[];
   /** Who cleared the current issue for sending, and when. */
@@ -234,6 +250,8 @@ export const QUOTATIONS: Quotation[] = [
     approvalStatus: "Approved",
     revision: 1,
     revisions: [],
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     approvedBy: "สมชาย ใจดี",
     approvedAt: "22/06/2569 15:00",
     sentAt: "22/06/2569 15:20",
@@ -276,6 +294,8 @@ export const QUOTATIONS: Quotation[] = [
     approvalStatus: "Approved",
     revision: 1,
     revisions: [],
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     approvedBy: "สมชาย ใจดี",
     approvedAt: "24/06/2569 15:45",
     sentAt: "24/06/2569 16:30",
@@ -317,6 +337,8 @@ export const QUOTATIONS: Quotation[] = [
     approvalStatus: "Approved",
     revision: 1,
     revisions: [],
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     approvedBy: "สมชาย ใจดี",
     approvedAt: "25/06/2569 14:10",
     sentAt: "25/06/2569 14:40",
@@ -359,6 +381,8 @@ export const QUOTATIONS: Quotation[] = [
     approvalStatus: "Approved",
     revision: 1,
     revisions: [],
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     approvedBy: "สมชาย ใจดี",
     approvedAt: "18/06/2569 09:55",
     sentAt: "18/06/2569 10:00",
@@ -398,6 +422,8 @@ export const QUOTATIONS: Quotation[] = [
     approvalStatus: "Approved",
     revision: 1,
     revisions: [],
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     approvedBy: "สมชาย ใจดี",
     approvedAt: "02/07/2569 10:20",
     sentAt: "02/07/2569 10:30",
@@ -437,6 +463,8 @@ export const QUOTATIONS: Quotation[] = [
     approvalStatus: "Not Submitted",
     revision: 1,
     revisions: [],
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     approvedBy: "",
     approvedAt: "",
     sentAt: "",
@@ -477,6 +505,8 @@ export const QUOTATIONS: Quotation[] = [
     approvalStatus: "Approved",
     revision: 1,
     revisions: [],
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     approvedBy: "สมชาย ใจดี",
     approvedAt: "01/07/2569 08:35",
     sentAt: "01/07/2569 08:40",

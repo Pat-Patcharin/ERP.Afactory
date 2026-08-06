@@ -255,7 +255,7 @@ export const draftGrandTotal = (draft: QuotationDraft) =>
 
 /** Read-only customer context. Never any cost or margin. */
 export const draftInsight = (draft: QuotationDraft): DraftInsight =>
-  docInsight(draft.customerPick, draftTotals(draft).grandTotal, draft);
+  docInsight(draft.customerPick, draftTotals(draft).grandTotal, draft, draft.items);
 
 /* ---------- Validation ---------- */
 
@@ -514,6 +514,9 @@ export function saveQuotationDraft(
     status: "Draft",
     approvalStatus: "Not Submitted",
     revision: 1,
+    /* Decided at submission, not at creation — see qtSubmit. */
+    priceApprovalLevel: "admin",
+    uncheckedPriceLines: 0,
     rejectReason: "",
     soRef: "",
     srRef: "",

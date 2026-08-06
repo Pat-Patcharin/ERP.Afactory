@@ -204,6 +204,12 @@ export interface QuoteCheckResult {
  * ตรวจราคาที่พนักงานขายกรอกใน SR/SO
  * เรียกฟังก์ชันนี้ **หลังจาก** คำนวณส่วนลดและโปรโมชั่นทุกชั้นเสร็จแล้ว
  * ไม่ใช่ตอนกรอกราคาต่อบรรทัดอย่างเดียว
+ *
+ * CALLED BY `priceApproval()` in lib/domain/doc-draft.ts — this is not dead
+ * code. That wrapper is the only caller, and it is what the quotation editor,
+ * the sales request editor and the sales order form all read: it feeds this
+ * the NET unit price after the line discount, and turns the verdict into who
+ * must sign the document off. Nothing outside it restates these rules.
  */
 export function checkQuotedPrice(item: PriceListItem, quotedPrice: number): QuoteCheckResult {
   const violations: PriceViolation[] = [];

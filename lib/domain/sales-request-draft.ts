@@ -276,7 +276,7 @@ export function quotationChoices(customerCode = ""): string[] {
 export const srTotals = (draft: SalesRequestDraft): SrTotals => docTotals(draft.items, draft);
 
 export const srInsight = (draft: SalesRequestDraft): SrInsight =>
-  docInsight(draft.customerPick, srTotals(draft).grandTotal, draft);
+  docInsight(draft.customerPick, srTotals(draft).grandTotal, draft, draft.items);
 
 /* ---------- Validation ---------- */
 

@@ -306,6 +306,10 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
     badges: [
       { text: q.status, tone: tone(QT_TONE, q.status) },
       ...(q.revision > 1 ? ([{ text: `Rev. ${q.revision}`, tone: "info" }] as const) : []),
+      /* An approver must see this before opening anything. */
+      ...(q.priceApprovalLevel === "manager"
+        ? ([{ text: "ต้องผู้จัดการอนุมัติ", tone: "warning" }] as const)
+        : []),
       ...(q.isExpired ? ([{ text: "Expired", tone: "danger" }] as const) : []),
       ...(q.isExpiring ? ([{ text: `อีก ${q.daysLeft} วัน`, tone: "warning" }] as const) : []),
     ],
@@ -415,6 +419,26 @@ export const QT_DETAIL: DetailSchema<QtRow> = {
               /* Always shown here, unlike the list: on the document itself the
                  issue number is part of identifying it. */
               { label: "Revision", value: `ฉบับที่ ${fmt(q.revision)}` },
+              {
+                /* Frozen at submission — what this issue asked for, not what
+                   today's price master would ask for. */
+                label: "ระดับการอนุมัติราคา",
+                value:
+                  q.priceApprovalLevel === "manager" ? (
+                    <Badge tone="warning">ต้องให้ผู้จัดการฝ่ายขายอนุมัติ</Badge>
+                  ) : (
+                    "ปกติ"
+                  ),
+              },
+              {
+                /* The approver has to know how much of the document the system
+                   could not check, not just what it flagged. */
+                label: "บรรทัดที่ตรวจราคาไม่ได้",
+                value: q.uncheckedPriceLines
+                  ? `${fmt(q.uncheckedPriceLines)} รายการ — ไม่มีราคากลางให้เทียบ`
+                  : "ไม่มี",
+                muted: !q.uncheckedPriceLines,
+              },
               { label: "Sales Rep", value: q.salesRep },
               { label: "Price List", value: q.priceList },
               { label: "Quote Date", value: q.quoteDate },
