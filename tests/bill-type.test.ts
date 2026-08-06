@@ -5,6 +5,7 @@ import { BILL_TYPES } from "@/data/partners";
 import { BUSINESS_PARTNERS } from "@/lib/domain/partner";
 import { QUOTATIONS, SALES_ORDERS, SALES_REQUESTS } from "@/lib/domain/outbound";
 import { billableLinesFrom } from "@/lib/domain/invoice";
+import { buildPrintJob, printTypesFor } from "@/lib/print";
 import { applyBillType, planBillTypeChange, zeroTaxIfNonVat } from "@/lib/domain/doc-draft";
 import {
   applyCustomer,
@@ -288,5 +289,66 @@ describe("A sealed quotation refuses a bill type change too", () => {
 
     expect(res.blocked).toBeTruthy();
     expect(QUOTATIONS.find((x) => x.code === "QT2507-0006")!.billType).toBe(was);
+  });
+});
+
+/* ============================================================
+   THE PRINTED SHEET (step 8c, task 1)
+
+   A Non VAT document gets its own form rather than the VAT one
+   with a zero in the tax row. The engine is untouched: the form
+   is a config entry that declares who it is for.
+   ============================================================ */
+
+describe("Non VAT print forms", () => {
+  it("offers the VAT form to a VAT document and nothing else", () => {
+    const types = printTypesFor("quotation", { billType: "VAT" });
+    expect(types).toContain("quotation");
+    expect(types).not.toContain("quotation-non-vat");
+  });
+
+  it("offers the Non VAT form to a Non VAT document and nothing else", () => {
+    const types = printTypesFor("quotation", { billType: "Non VAT" });
+    expect(types).toContain("quotation-non-vat");
+    expect(types, "a customer must never be handed the VAT sheet").not.toContain("quotation");
+  });
+
+  it("does the same for a sales order", () => {
+    expect(printTypesFor("sales-order", { billType: "Non VAT" })).toEqual(["sales-order-non-vat"]);
+    expect(printTypesFor("sales-order", { billType: "VAT" })).toEqual(["sales-order"]);
+  });
+
+  it("still lists every form when no record is given", () => {
+    /* The old signature, which the rest of the app still uses. */
+    expect(printTypesFor("quotation")).toEqual(["quotation", "quotation-non-vat"]);
+    expect(printTypesFor("delivery-order").length).toBeGreaterThan(1);
+  });
+
+  it("prints no tax row and no tax-invoice wording on the Non VAT form", () => {
+    const q = QUOTATIONS.find((x) => x.billType === "Non VAT")!;
+    const job = buildPrintJob("quotation-non-vat", q.code)!;
+    expect(job).toBeTruthy();
+
+    expect(job.config.showTax, "no VAT line on a document that carries none").toBe(false);
+    expect(job.config.itemColumns).not.toContain("vat");
+    expect(job.config.titleTH).toContain("ไม่มีภาษี");
+
+    const printed = [job.config.titleTH, job.config.titleEN, ...job.config.remarks].join(" ");
+    expect(printed).not.toContain("เอกสารฉบับนี้เป็นใบกำกับภาษี");
+    expect(printed).toContain("ไม่ใช่ใบกำกับภาษี");
+  });
+
+  it("carries no tax figure on the mapped document", () => {
+    const q = QUOTATIONS.find((x) => x.billType === "Non VAT")!;
+    const job = buildPrintJob("quotation-non-vat", q.code)!;
+    expect(job.doc.totals!.vat).toBe(0);
+    /* Every line rate is 0 too, so nothing can add up to tax later. */
+    for (const l of job.doc.lines) expect(l.vatRate ?? 0).toBe(0);
+  });
+
+  it("keeps the VAT form printing its tax row", () => {
+    const q = QUOTATIONS.find((x) => x.billType === "VAT")!;
+    const job = buildPrintJob("quotation", q.code)!;
+    expect(job.config.showTax).toBe(true);
   });
 });

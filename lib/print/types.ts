@@ -3,7 +3,7 @@ import type { BadgeTone } from "@/lib/types";
 /* ============================================================
    OUTBOUND PRINT — the contract.
 
-   One engine prints sixteen document types. It manages that by
+   One engine prints eighteen document types. It manages that by
    never knowing what a Sales Invoice is: every source document
    is mapped into the neutral `PrintDoc` below, and a `PrintConfig`
    says which parts of it to show.
@@ -57,8 +57,10 @@ export type CopyType =
 /** Document types the engine prints. Keyed by the registry entity where one exists. */
 export type PrintDocType =
   | "quotation"
+  | "quotation-non-vat"
   | "sales-request"
   | "sales-order"
+  | "sales-order-non-vat"
   | "picking"
   | "packing"
   | "delivery-order"
@@ -108,6 +110,18 @@ export interface PrintConfig {
   /** Numbered remarks printed under the item table. */
   remarks: string[];
   signatureRoles: SignatureRole[];
+  /**
+   * Which records this form is for, when it is not all of them.
+   *
+   * A Delivery Order may legitimately be printed with price, without price or
+   * as a tax invoice — the user picks. VAT versus Non VAT is not a choice: the
+   * document already says which it is, and offering the wrong form invites
+   * someone to hand a customer a sheet that contradicts their own order.
+   *
+   * Omitted on every form that applies to its whole entity, which is most of
+   * them, so nothing changes for them.
+   */
+  appliesTo?: (record: { billType?: string }) => boolean;
   supportedCopyTypes: CopyType[];
   /** Operational documents put the signature block on page 1. */
   signaturesOnFirstPage?: boolean;

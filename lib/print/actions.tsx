@@ -41,7 +41,9 @@ export function printActions<T extends RecordBase>(
   record: T,
   ctx: ActionCtx,
 ): RowAction<T>[] {
-  const types = printTypesFor(entity);
+  /* Pass the record so a form that declares appliesTo is only offered for
+     the records it suits — a Non VAT order never sees the VAT sheet. */
+  const types = printTypesFor(entity, record as { billType?: string });
   if (!types.length) return [];
 
   const primary = getPrintConfig(types[0]);

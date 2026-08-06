@@ -107,12 +107,13 @@ const cfg = (over: Partial<PrintConfig> = {}): PrintConfig => ({
 });
 
 /* ============================================================
-   Configuration — sixteen documents, one engine
+   Configuration — eighteen documents, one engine
    ============================================================ */
 
 describe("Print framework — configuration", () => {
   it("configures every declared document type", () => {
-    expect(PRINT_DOC_TYPES).toHaveLength(16);
+    /* Grew from sixteen when the two Non VAT forms were added. */
+    expect(PRINT_DOC_TYPES).toHaveLength(18);
     for (const t of PRINT_DOC_TYPES) {
       const c = PRINT_CONFIGS[t];
       expect(c.documentType, t).toBe(t);

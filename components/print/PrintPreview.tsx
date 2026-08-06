@@ -13,6 +13,7 @@ import {
   recordPrint,
 } from "@/lib/print";
 import type { CopyType, PrintDocType } from "@/lib/print/types";
+import { findRecord } from "@/schemas/registry";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/lib/icons";
 import { useUI } from "@/lib/store";
@@ -86,8 +87,16 @@ export function PrintPreview({
   /* Sibling documents from the same source — a Delivery Order can print with
      or without price, and both read the same record. */
   const siblings = useMemo(
-    () => (config ? printTypesFor(config.entity) : []),
-    [config],
+    /* Filtered by the record: a Non VAT order must not be able to reach the
+       VAT sheet from the dropdown either. */
+    () =>
+      config
+        ? printTypesFor(
+            config.entity,
+            (findRecord(config.entity, code) as { billType?: string } | null) ?? undefined,
+          )
+        : [],
+    [config, code],
   );
   const copies = useMemo(() => (config ? allowedCopyTypes(config) : []), [config]);
 

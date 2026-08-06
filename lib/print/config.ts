@@ -3,7 +3,7 @@ import type { CopyType, PrintConfig, PrintDocType } from "./types";
 /* ============================================================
    DOCUMENT CONFIGURATION
 
-   Sixteen documents, one engine. Everything that differs between
+   Eighteen documents, one engine. Everything that differs between
    a Picking List and a Tax Invoice is declared here — which
    columns exist, whether money is shown at all, how many row
    units fit on each page, who signs.
@@ -100,6 +100,46 @@ export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
     ],
     signatureRoles: ["preparedBy", "approvedBy", "customer"],
     supportedCopyTypes: ["ORIGINAL", "CUSTOMER", "COMPANY", "REPRINT"],
+    appliesTo: (r) => r.billType !== "Non VAT",
+  },
+
+  /**
+   * The same quotation for a customer who is not VAT registered.
+   *
+   * Every line is already at 0% — `billType` enforces that where the document
+   * is written — so a VAT row would print "0.00" and invite the question of
+   * why. It is dropped instead, and the header says plainly what kind of sheet
+   * this is so nobody files it as a tax document.
+   */
+  "quotation-non-vat": {
+    ...BASE,
+    documentType: "quotation-non-vat",
+    entity: "quotation",
+    titleTH: "ใบเสนอราคา (ไม่มีภาษีมูลค่าเพิ่ม)",
+    titleEN: "QUOTATION — NON VAT",
+    showTax: false,
+    showPayment: false,
+    showDueDate: false,
+    metaFields: [
+      "docNo",
+      "revision",
+      "docDate",
+      "customerCode",
+      "salesRep",
+      "payTerm",
+      "currency",
+      "reference",
+      "approvedBy",
+      "approvedAt",
+    ],
+    remarks: [
+      "ราคานี้ยืนราคาตามวันที่ระบุในเอกสาร",
+      "ราคาดังกล่าวยังไม่รวมค่าขนส่ง เว้นแต่ระบุไว้เป็นอย่างอื่น",
+      "เอกสารฉบับนี้ไม่ใช่ใบกำกับภาษี และราคาไม่รวมภาษีมูลค่าเพิ่ม",
+    ],
+    signatureRoles: ["preparedBy", "approvedBy", "customer"],
+    supportedCopyTypes: ["ORIGINAL", "CUSTOMER", "COMPANY", "ACCOUNTING", "REPRINT"],
+    appliesTo: (r) => r.billType === "Non VAT",
   },
 
   "sales-request": {
@@ -127,6 +167,24 @@ export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
       "salesRep", "payTerm", "deliveryDate", "warehouse", "currency",
     ],
     signatureRoles: ["preparedBy", "approvedBy", "customer"],
+    appliesTo: (r) => r.billType !== "Non VAT",
+  },
+
+  /** The same order for a customer who is not VAT registered. */
+  "sales-order-non-vat": {
+    ...BASE,
+    documentType: "sales-order-non-vat",
+    entity: "sales-order",
+    titleTH: "ใบสั่งขาย (ไม่มีภาษีมูลค่าเพิ่ม)",
+    titleEN: "SALES ORDER — NON VAT",
+    showTax: false,
+    metaFields: [
+      "docNo", "docDate", "customerCode", "customerPo", "requestNo",
+      "salesRep", "payTerm", "deliveryDate", "warehouse", "currency",
+    ],
+    remarks: ["เอกสารฉบับนี้ไม่ใช่ใบกำกับภาษี และราคาไม่รวมภาษีมูลค่าเพิ่ม"],
+    signatureRoles: ["preparedBy", "approvedBy", "customer"],
+    appliesTo: (r) => r.billType === "Non VAT",
   },
 
   /* ---------- Warehouse operations ---------- */
@@ -345,8 +403,21 @@ export const PRINT_DOC_TYPES = Object.keys(PRINT_CONFIGS) as PrintDocType[];
 export const getPrintConfig = (t: PrintDocType): PrintConfig | null => PRINT_CONFIGS[t] ?? null;
 
 /** Every document type an entity can be printed as, in menu order. */
-export function printTypesFor(entity: string): PrintDocType[] {
-  return PRINT_DOC_TYPES.filter((t) => PRINT_CONFIGS[t].entity === entity);
+/**
+ * The forms that can print a given entity.
+ *
+ * Pass the record too and forms that declare `appliesTo` are filtered to the
+ * ones that suit it — which is how a Non VAT order is never offered the VAT
+ * sheet. Called without a record the answer is every form for the entity, as
+ * it always was.
+ */
+export function printTypesFor(entity: string, record?: { billType?: string }): PrintDocType[] {
+  return PRINT_DOC_TYPES.filter((t) => {
+    const config = PRINT_CONFIGS[t];
+    if (config.entity !== entity) return false;
+    if (!record || !config.appliesTo) return true;
+    return config.appliesTo(record);
+  });
 }
 
 /* ---------- Copy types ---------- */
