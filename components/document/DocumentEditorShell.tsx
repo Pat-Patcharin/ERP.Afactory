@@ -45,11 +45,31 @@ export interface DocumentEditorTestIds {
   stickySummary: string;
 }
 
+/**
+ * Completion across the document's required fields.
+ *
+ * Optional: a quotation has never shown one and still does not. A purchase
+ * request does, because it came from the stepped form where the count was the
+ * only signal of how much was left, and losing it on the way to one page
+ * would be a downgrade the person filling it in would feel.
+ *
+ * The numbers come from `formStatus()` in lib/form.ts — the same pure
+ * function the stepped engine uses, so the two cannot disagree.
+ */
+export interface DocumentProgress {
+  done: number;
+  total: number;
+  percent: number;
+  /** Shown beside the count at the foot. The stepped form said "3 หัวข้อ". */
+  sectionCount: number;
+}
+
 export function DocumentEditorShell<TDraft extends EditableDraft>({
   api,
   labels,
   testIds,
   printJob,
+  progress,
   onSaveDraft,
   onSave,
   onCancel,
@@ -63,6 +83,8 @@ export function DocumentEditorShell<TDraft extends EditableDraft>({
   testIds: DocumentEditorTestIds;
   /** Built by the document from what is on screen, or null when not previewing. */
   printJob: PrintJob | null;
+  /** Omit for a document that has never shown a completion count. */
+  progress?: DocumentProgress;
   onSaveDraft: () => void;
   onSave: () => void;
   onCancel: () => void;
@@ -188,6 +210,38 @@ export function DocumentEditorShell<TDraft extends EditableDraft>({
         </div>
       </div>
 
+      {/* ---------- Completion ----------
+          Markup moved from MasterForm rather than rewritten, so the bar the
+          purchase request had as a stepped form is the bar it has now. The
+          fill follows the document accent instead of the brand, because it
+          measures the document. */}
+      {progress && (
+        <div
+          className="mx-auto mt-4 flex max-w-[1180px] items-center gap-3 px-6 max-md:px-3"
+          data-testid="doc-progress"
+        >
+          <div
+            className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-pill bg-neutral-soft"
+            role="progressbar"
+            aria-valuenow={progress.percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="ความคืบหน้าการกรอกข้อมูล"
+          >
+            <div
+              className={cn(
+                "h-full rounded-pill transition-[width] duration-slow ease-out",
+                progress.percent === 100 ? "bg-success" : "bg-doc-accent",
+              )}
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+          <span className="flex-shrink-0 text-cap font-medium text-ink-2 tnum">
+            {progress.done}/{progress.total} ช่องที่จำเป็น · {progress.percent}%
+          </span>
+        </div>
+      )}
+
       {/* ---------- Recovered draft ---------- */}
       {recovered && (
         <div className="mx-auto mt-4 flex max-w-[1180px] flex-wrap items-center gap-3 rounded-card border border-info/30 bg-info-soft px-4 py-3 text-[13px] max-md:mx-4">
@@ -221,6 +275,13 @@ export function DocumentEditorShell<TDraft extends EditableDraft>({
           data-testid={testIds.stickySummary}
           className="fixed inset-x-0 bottom-0 z-20 flex flex-wrap items-center gap-4 border-t border-line bg-card px-6 py-2.5 shadow-[0_-2px_12px_rgba(16,24,40,.06)] max-md:px-3"
         >
+          {/* The stepped form's foot line, kept word for word so the count a
+              requester was reading before is the count they read now. */}
+          {progress && (
+            <span className="text-cap text-ink-3 tnum" data-testid="doc-progress-foot">
+              {progress.done}/{progress.total} ช่องที่จำเป็น · {progress.sectionCount} หัวข้อ
+            </span>
+          )}
           <span className="text-cap text-ink-2">
             รายการ <span className="font-semibold text-ink tnum">{totals.itemCount}</span>
           </span>

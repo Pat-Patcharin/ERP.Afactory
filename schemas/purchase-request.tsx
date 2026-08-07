@@ -4,6 +4,7 @@ import {
   type PrRow,
 } from "@/lib/domain/purchase";
 import { productStock } from "@/lib/domain/product";
+import { PurchaseRequestEditor } from "@/components/purchase-request/PurchaseRequestEditor";
 import { PR_DEPARTMENTS, PR_PRIORITY, PR_STATUS } from "@/data/purchase-requests";
 import { PR_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money0 } from "@/lib/format";
@@ -358,5 +359,10 @@ export const PR_DETAIL: DetailSchema<PrRow> = {
 export const prSchemas: EntitySchemas<PrRow> = {
   list: PR_LIST,
   detail: PR_DETAIL,
+  /* Kept alongside the editor rather than deleted: `PR_FORM` still supplies
+     the `required` list the progress bar counts, and it remains the fallback
+     if the document editor is ever rolled back. The route prefers `editor`
+     when it is present — see app/(erp)/m/[entity]/new/page.tsx. */
   form: PR_FORM,
+  editor: ({ record }) => <PurchaseRequestEditor record={record} />,
 };

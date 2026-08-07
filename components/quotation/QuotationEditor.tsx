@@ -122,7 +122,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
     blank: blankDraft,
     fromRecord: draftFromQuotation,
     totals: draftTotals,
-    insight: draftInsight,
+
     validate: validateDraft,
     /* A quotation has no patch of its own beyond the sell-side three. */
     onPatch: sellSidePatch,
@@ -145,7 +145,6 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
     selectLine,
     selected,
     totals,
-    insight,
     invalid,
     shownIssues,
     docMode,
@@ -164,6 +163,11 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
   } = api;
 
   useCrumbCode(mode === "edit" ? (record?.code ?? null) : "New");
+
+  /* Credit, price tier and the approval level — all of it about a customer,
+     so it is worked out here rather than by the shared editor, which serves
+     documents that have no customer at all. */
+  const insight = useMemo(() => draftInsight(draft), [draft]);
 
   /**
    * Switching VAT ⇄ Non VAT rewrites the tax on every line, so it is shown

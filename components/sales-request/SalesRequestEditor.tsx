@@ -128,7 +128,7 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
     blank: blankSrDraft,
     fromRecord: draftFromSalesRequest,
     totals: srTotals,
-    insight: srInsight,
+
     validate: validateSrDraft,
     /* Tried in this order deliberately. Adopting a quotation is this
        document's own move — the whole reason a quotation exists is that the
@@ -158,7 +158,6 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
     selectLine,
     selected,
     totals,
-    insight,
     invalid,
     shownIssues,
     docMode,
@@ -177,6 +176,11 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
   } = api;
 
   useCrumbCode(mode === "edit" ? (record?.code ?? null) : "New");
+
+  /* Credit, price tier and the approval level — all of it about a customer,
+     so it is worked out here rather than by the shared editor, which serves
+     documents that have no customer at all. */
+  const insight = useMemo(() => srInsight(draft), [draft]);
 
   /**
    * Switching VAT ⇄ Non VAT rewrites the tax on every line, so it is shown

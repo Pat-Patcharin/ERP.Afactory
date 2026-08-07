@@ -5,7 +5,6 @@ import { actingUserName, can } from "@/lib/domain/admin";
 import {
   blankLine,
   blockingIssues,
-  type DocInsight,
   type DocTotals,
   type DraftIssue,
   type DraftLine,
@@ -86,7 +85,6 @@ export interface DocumentEditorConfig<TDraft extends EditableDraft, TRecord> {
   blank: () => TDraft;
   fromRecord: (record: TRecord) => TDraft;
   totals: (draft: TDraft) => DocTotals;
-  insight: (draft: TDraft) => DocInsight;
   validate: (draft: TDraft) => DraftIssue[];
   /**
    * Write to the document's own store.
@@ -158,7 +156,6 @@ export interface DocumentEditorApi<TDraft extends EditableDraft> {
   selected: Set<string>;
 
   totals: DocTotals;
-  insight: DocInsight;
   issues: DraftIssue[];
   blocking: DraftIssue[];
   invalid: Set<string>;
@@ -354,7 +351,6 @@ export function useDocumentEditor<TDraft extends EditableDraft, TRecord>(
   /* ---------- Derived ---------- */
 
   const totals = useMemo(() => config.totals(draft), [config, draft]);
-  const insight = useMemo(() => config.insight(draft), [config, draft]);
   const issues = useMemo(() => config.validate(draft), [config, draft]);
   const blocking = useMemo(() => blockingIssues(issues), [issues]);
   const invalid = useMemo(
@@ -533,7 +529,6 @@ export function useDocumentEditor<TDraft extends EditableDraft, TRecord>(
     selectLine,
     selected,
     totals,
-    insight,
     issues,
     blocking,
     invalid,
