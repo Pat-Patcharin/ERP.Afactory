@@ -15,6 +15,32 @@
   --c-primary-soft: #fff7ed;
   --c-primary-border: #fed7aa;
 
+  /* ----------------------------------------------------------
+     DOCUMENT ACCENT — the colour of the paper, not of the app
+
+     The sidebar, the logo and the top bar are the company and
+     stay orange whatever document is open. These four tokens
+     colour the DOCUMENT itself: the rule under its header, its
+     table heads, its primary action, its progress bar and its
+     document number.
+
+     They default to the brand orange, so every document that
+     does not ask for anything else looks exactly as it did.
+     A family opts in by putting `data-doc-family` on one
+     container — see the override block below — and everything
+     inside it changes together. Nothing has to be edited
+     component by component.
+     ---------------------------------------------------------- */
+  --c-doc-accent: var(--c-primary);
+  --c-doc-accent-hover: var(--c-primary-hover);
+  --c-doc-accent-soft: var(--c-primary-soft);
+  --c-doc-accent-border: var(--c-primary-border);
+  /* The item table's head band. Slate rather than the accent, because a
+     colour band behind eleven columns of figures fights the figures. Kept as
+     a token so a family can tint it without touching the component. */
+  --c-doc-head: #2f3542;
+  --c-doc-head-text: #ffffff;
+
   /* Surface */
   --c-bg: #f8fafc;
   --c-card: #ffffff;
@@ -76,6 +102,36 @@
   --w-sidebar-collapsed: 72px;
   --h-topbar: 68px;
   --w-drawer: 400px;
+}
+
+/* ============================================================
+   DOCUMENT FAMILIES
+
+   One attribute on one container re-points the four document
+   accent tokens for everything inside it. The brand tokens are
+   untouched, so the sidebar, the logo and the top bar stay
+   orange on every screen — the paper changes, the application
+   does not.
+
+   `inbound` covers the buying side: purchase request, purchase
+   order, goods receipt. They share a family because they are
+   one job seen at three stages, and a buyer moving between them
+   should not feel they have changed system.
+
+   Adding a family means adding a block here. It never means
+   editing a component.
+   ============================================================ */
+[data-doc-family="inbound"] {
+  /* Values land in P2b, once the tone is chosen. Until then this
+     block deliberately restates the defaults: the mechanism ships
+     first and is proven not to change anything, exactly as the
+     shared editor did in P1a. */
+  --c-doc-accent: var(--c-primary);
+  --c-doc-accent-hover: var(--c-primary-hover);
+  --c-doc-accent-soft: var(--c-primary-soft);
+  --c-doc-accent-border: var(--c-primary-border);
+  --c-doc-head: #2f3542;
+  --c-doc-head-text: #ffffff;
 }
 
 /* ---------- Base ---------- */

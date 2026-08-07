@@ -25,6 +25,24 @@ const config: Config = {
           soft: "var(--c-primary-soft)",
           border: "var(--c-primary-border)",
         },
+        /**
+         * The document's own accent, which follows `data-doc-family`.
+         *
+         * Use these on anything that belongs to the PAPER — the rule under a
+         * document header, table heads, the primary action on a document, a
+         * document number. Use `primary` for anything that belongs to the
+         * APPLICATION: the sidebar, the logo, the top bar. Getting the two
+         * the wrong way round is what makes a recoloured module look like a
+         * different product rather than a different job.
+         */
+        doc: {
+          accent: "var(--c-doc-accent)",
+          "accent-hover": "var(--c-doc-accent-hover)",
+          "accent-soft": "var(--c-doc-accent-soft)",
+          "accent-border": "var(--c-doc-accent-border)",
+          head: "var(--c-doc-head)",
+          "head-text": "var(--c-doc-head-text)",
+        },
         surface: "var(--c-bg)",
         card: "var(--c-card)",
         sidebar: {

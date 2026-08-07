@@ -97,7 +97,13 @@ export const DocValue = ({ value }: { value: string }) => (
   <span className={cn(!value && "text-ink-3")}>{value || "—"}</span>
 );
 
-/* ---------- Header ---------- */
+/* ---------- Header ----------
+
+   Two colours meet here and they answer to different things. The rule under
+   the header and the document number are the DOCUMENT's, so they follow
+   `doc-accent` and change with the family. The company name beside the logo
+   is the COMPANY's and stays on the brand colour whatever is being printed —
+   a purchase request is still issued by the same firm as a quotation. */
 
 export function DocHeader({
   title,
@@ -111,7 +117,7 @@ export function DocHeader({
   status: string;
 }) {
   return (
-    <header className="flex flex-wrap items-start justify-between gap-6 border-b-[3px] border-primary pb-5">
+    <header className="flex flex-wrap items-start justify-between gap-6 border-b-[3px] border-doc-accent pb-5">
       <div className="flex min-w-0 items-start gap-4">
         <AFactoryLogo size={22} src={COMPANY.logoUrl} />
         <div className="min-w-0">
@@ -137,7 +143,7 @@ export function DocHeader({
         <div className="text-right">
           <p className="text-[26px] font-bold leading-none tracking-[-0.01em]">{title}</p>
           <p className="mt-0.5 text-[13px] text-ink-2">{titleTh}</p>
-          <p className="mt-2 text-[22px] font-bold tracking-[0.01em] text-primary tnum">
+          <p className="mt-2 text-[22px] font-bold tracking-[0.01em] text-doc-accent tnum">
             {code}
           </p>
           <p className="mt-2 flex items-center justify-end gap-2 text-cap text-ink-2">
@@ -612,7 +618,10 @@ export function PriceTierNotice({ insight }: { insight: DocInsight }) {
 
 /* ---------- Item table ---------- */
 
-const HEAD = "bg-[#2f3542] text-white text-[11px] font-semibold uppercase tracking-[0.03em]";
+/* The item table's head band. Tokenised so an inbound document can carry its
+   own, and defaulted to the slate it has always been so nothing moves today. */
+const HEAD =
+  "bg-doc-head text-doc-head-text text-[11px] font-semibold uppercase tracking-[0.03em]";
 
 /**
  * Which columns and which per-line controls a document's grid carries.
@@ -1286,7 +1295,7 @@ export function TotalsPanel({
       {editable("Other Charges", "otherCharges", totals.otherCharges)}
       {row("Rounding", totals.rounding, totals.rounding !== 0)}
 
-      <div className="flex items-center justify-between bg-primary px-4 py-2.5 text-white">
+      <div className="flex items-center justify-between bg-doc-accent px-4 py-2.5 text-white">
         <span className="text-[13px] font-bold uppercase tracking-[0.03em]">Grand Total</span>
         <span className="text-[17px] font-bold tnum">{money(totals.grandTotal)}</span>
       </div>
