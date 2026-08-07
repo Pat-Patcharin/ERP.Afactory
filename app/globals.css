@@ -33,6 +33,10 @@
      ---------------------------------------------------------- */
   --c-doc-accent: var(--c-primary);
   --c-doc-accent-hover: var(--c-primary-hover);
+  /* Present so the document button has the same pressed state the brand
+     button does. Without it `variant="doc"` would look identical to
+     `variant="primary"` at rest and differ under the finger. */
+  --c-doc-accent-active: var(--c-primary-active);
   --c-doc-accent-soft: var(--c-primary-soft);
   --c-doc-accent-border: var(--c-primary-border);
   /* The item table's head band. Slate rather than the accent, because a
@@ -137,6 +141,7 @@
      neither AA nor the 3:1 large-text floor — see BACKLOG N-6. */
   --c-doc-accent: #0f766e;
   --c-doc-accent-hover: #115e59;
+  --c-doc-accent-active: #134e4a;
   --c-doc-accent-soft: #f0fdfa;
   --c-doc-accent-border: #99f6e4;
   /* A deep shade of the same hue rather than the shared slate: a

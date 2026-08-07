@@ -114,11 +114,24 @@ export interface DocumentEditorConfig<TDraft extends EditableDraft, TRecord> {
   /**
    * How a product chosen in the grid fills its line.
    *
-   * Required rather than defaulted, because the answer is a business rule and
-   * every document has a different one: a quotation opens the line at this
-   * customer's tier price, a purchase request would open it at what the
-   * supplier last charged. A neutral default here would quietly price
-   * documents at the catalogue and look like it was working.
+   * **Required on purpose. Do not give this a default.**
+   *
+   * It is tempting to default it to the plain `applyProduct()` from
+   * doc-draft.ts so every document does not have to declare one. That default
+   * would price a purchase-request line at the catalogue price instead of
+   * what the supplier last charged — and nothing would go red. The grid would
+   * fill in, the totals would add up, and the person raising the request
+   * would read a wrong number and believe it.
+   *
+   * That is the same failure as `num(taxRate) || 7`, which turns a
+   * deliberately exempt line into a 7% one because zero is falsy. See the
+   * note above `billedTaxRate` in lib/domain/invoice.ts, written after that
+   * one bit. A silently wrong figure is worse than a crash precisely because
+   * it looks like it worked.
+   *
+   * Making every document state where its opening price comes from moves that
+   * whole class of mistake to compile time. The small annoyance of declaring
+   * it each time is the price of that, and it is cheap.
    */
   applyProduct: (line: DraftLine, code: string, draft: TDraft) => DraftLine;
 }

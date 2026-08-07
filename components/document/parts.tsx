@@ -110,11 +110,22 @@ export function DocHeader({
   titleTh,
   code,
   status,
+  showVerifyCode = true,
 }: {
   title: string;
   titleTh: string;
   code: string;
   status: string;
+  /**
+   * The "scan to verify document" QR and barcode.
+   *
+   * On by default so every document that already showed them still does.
+   * An internal document turns it off: a purchase request never leaves the
+   * company, so there is nobody outside to scan it and nothing for them to
+   * verify against. A verification mark that verifies nothing teaches people
+   * to ignore the ones that matter.
+   */
+  showVerifyCode?: boolean;
 }) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-6 border-b-[3px] border-doc-accent pb-5">
@@ -154,17 +165,19 @@ export function DocHeader({
           </p>
         </div>
 
-        <div className="text-center max-md:hidden">
-          <p className="mb-1 text-[9px] font-semibold uppercase leading-tight tracking-[0.06em] text-ink-3">
-            Scan to verify
-            <br />
-            document
-          </p>
-          <QRPlaceholder value={code} size={17} />
-          <div className="mt-1.5">
-            <BarcodePlaceholder value={code} width={34} height={7} />
+        {showVerifyCode && (
+          <div className="text-center max-md:hidden" data-testid="doc-verify-code">
+            <p className="mb-1 text-[9px] font-semibold uppercase leading-tight tracking-[0.06em] text-ink-3">
+              Scan to verify
+              <br />
+              document
+            </p>
+            <QRPlaceholder value={code} size={17} />
+            <div className="mt-1.5">
+              <BarcodePlaceholder value={code} width={34} height={7} />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </header>
   );
@@ -326,6 +339,177 @@ export function ShipToPanel({
             />
           ) : (
             <DocValue value={draft.shipInstruction} />
+          )}
+        </DocRow>
+      </div>
+    </section>
+  );
+}
+
+/* ============================================================
+   REQUESTER / DESTINATION — the inbound pair
+
+   These sit where Bill To and Ship To sit on a sales document,
+   and they are deliberately NOT those components with different
+   labels.
+
+   A requester is not a customer. Nobody is billed, no credit is
+   checked, no tax ID applies, and the "address" is a warehouse
+   the company already owns. Sharing `PartyFields` between them
+   would tie a purchase request to every future change made for
+   the sell side — and the first field one of them needs that the
+   other does not would have to be added to both.
+
+   They look alike today. That is not a reason to make them the
+   same thing.
+   ============================================================ */
+
+export interface RequesterFields {
+  dept: string;
+  requester: string;
+  needBy: string;
+}
+
+export function RequesterPanel({
+  draft,
+  mode,
+  set,
+  invalid,
+  departments,
+  requesters,
+}: {
+  draft: RequesterFields;
+  mode: DocMode;
+  set: (patch: Partial<RequesterFields>) => void;
+  invalid: Set<string>;
+  departments: readonly string[];
+  requesters: readonly string[];
+}) {
+  return (
+    <section className="rounded-card border border-line p-4">
+      <DocLabel en="Requested By" th="ผู้ขอ" />
+      <div className="mt-2">
+        <DocRow label="Department" required field="dept" invalid={invalid.has("dept")}>
+          {mode === "edit" ? (
+            <Select
+              aria-label="Department"
+              className="h-9"
+              value={draft.dept}
+              onChange={(e) => set({ dept: e.target.value })}
+            >
+              <option value="">— เลือกแผนก —</option>
+              {departments.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <DocValue value={draft.dept} />
+          )}
+        </DocRow>
+        <DocRow label="Requester" required field="requester" invalid={invalid.has("requester")}>
+          {mode === "edit" ? (
+            <Select
+              aria-label="Requester"
+              className="h-9"
+              value={draft.requester}
+              onChange={(e) => set({ requester: e.target.value })}
+            >
+              <option value="">— เลือกผู้ขอ —</option>
+              {requesters.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <DocValue value={draft.requester} />
+          )}
+        </DocRow>
+        {/* The date the goods are actually wanted, which is what a buyer
+            plans the order around — not the date the request was raised. */}
+        <DocRow label="Needed By" required field="needBy" invalid={invalid.has("needBy")}>
+          {mode === "edit" ? (
+            <Input
+              aria-label="Needed By"
+              type="date"
+              className="h-9"
+              value={draft.needBy}
+              onChange={(e) => set({ needBy: e.target.value })}
+            />
+          ) : (
+            <DocValue value={toDisplayDate(draft.needBy)} />
+          )}
+        </DocRow>
+      </div>
+    </section>
+  );
+}
+
+export interface DestinationFields {
+  warehouse: string;
+  supplier: string;
+}
+
+export function DestinationPanel({
+  draft,
+  mode,
+  set,
+  invalid,
+  warehouses,
+  suppliers,
+}: {
+  draft: DestinationFields;
+  mode: DocMode;
+  set: (patch: Partial<DestinationFields>) => void;
+  invalid: Set<string>;
+  warehouses: readonly string[];
+  suppliers: readonly string[];
+}) {
+  return (
+    <section className="rounded-card border border-line p-4">
+      <DocLabel en="Deliver To" th="ปลายทาง" />
+      <div className="mt-2">
+        <DocRow label="Warehouse" required field="warehouse" invalid={invalid.has("warehouse")}>
+          {mode === "edit" ? (
+            <Select
+              aria-label="Deliver To Warehouse"
+              className="h-9"
+              value={draft.warehouse}
+              onChange={(e) => set({ warehouse: e.target.value })}
+            >
+              <option value="">— เลือกคลัง —</option>
+              {warehouses.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <DocValue value={draft.warehouse} />
+          )}
+        </DocRow>
+        {/* A suggestion, not a commitment. Purchasing chooses the supplier on
+            the purchase order; the requester only says who they had in mind,
+            which is why this is the one field here that is not required. */}
+        <DocRow label="Suggested Supplier">
+          {mode === "edit" ? (
+            <Select
+              aria-label="Suggested Supplier"
+              className="h-9"
+              value={draft.supplier}
+              onChange={(e) => set({ supplier: e.target.value })}
+            >
+              <option value="">— ยังไม่ระบุ —</option>
+              {suppliers.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <DocValue value={draft.supplier} />
           )}
         </DocRow>
       </div>

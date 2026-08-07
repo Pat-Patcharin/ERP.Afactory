@@ -637,6 +637,15 @@ export function sellSidePatch<T extends PartyFields & TermFields & { items: Draf
   draft: T,
   patch: Partial<T>,
 ): T | null {
+  /**
+   * Deliberately NOT `str()`, the helper two hundred lines up.
+   *
+   * `str()` trims. The editor that used to hold this code did not, so
+   * switching to the helper would change what reaches `applyCustomerTo` for
+   * any value carrying whitespace — a behaviour change smuggled in under a
+   * tidy-up. If trimming is wanted here it should be its own decision with
+   * its own test, not a side effect of using the house helper everywhere.
+   */
   const read = (key: string) => String((patch as Record<string, unknown>)[key] ?? "");
 
   /* Order matters and matches what the editor did before: the customer is

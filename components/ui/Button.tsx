@@ -3,12 +3,24 @@
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "doc";
 type Size = "md" | "sm";
 
+/**
+ * `primary` is the APPLICATION's action and is always the brand orange.
+ * `doc` is the DOCUMENT's action and follows `data-doc-family`, so the same
+ * button reads orange on a quotation and teal on a purchase request without
+ * either page knowing a colour.
+ *
+ * They are separate entries rather than one that switches, because most
+ * primary buttons in this app are not on a document at all — Save on a master
+ * record, Confirm in a dialog — and those must not change with whatever paper
+ * happens to be open behind them.
+ */
 const VARIANT: Record<Variant, string> = {
   primary:
     "bg-primary text-white shadow-xs hover:bg-primary-hover active:bg-primary-active",
+  doc: "bg-doc-accent text-white shadow-xs hover:bg-doc-accent-hover active:bg-doc-accent-active",
   secondary:
     "bg-card text-ink border-line hover:bg-surface hover:border-line-strong",
   ghost: "bg-transparent text-ink-2 hover:bg-neutral-soft hover:text-ink",

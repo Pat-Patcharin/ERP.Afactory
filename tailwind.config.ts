@@ -38,6 +38,7 @@ const config: Config = {
         doc: {
           accent: "var(--c-doc-accent)",
           "accent-hover": "var(--c-doc-accent-hover)",
+          "accent-active": "var(--c-doc-accent-active)",
           "accent-soft": "var(--c-doc-accent-soft)",
           "accent-border": "var(--c-doc-accent-border)",
           head: "var(--c-doc-head)",

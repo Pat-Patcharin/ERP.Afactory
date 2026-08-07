@@ -127,7 +127,7 @@ export function DocumentEditorShell<TDraft extends EditableDraft>({
           <Button size="sm" onClick={onSaveDraft}>
             Save Draft
           </Button>
-          <Button size="sm" variant="primary" onClick={onSave}>
+          <Button size="sm" variant="doc" onClick={onSave}>
             <Icon name="save" size={15} strokeWidth={2} />
             {labels.primaryAction}
           </Button>
@@ -229,7 +229,10 @@ export function DocumentEditorShell<TDraft extends EditableDraft>({
           </span>
           <span className="text-cap text-ink-2">
             Grand Total{" "}
-            <span className="text-[15px] font-bold text-primary tnum">
+            {/* The same figure as the Grand Total bar on the paper above, so
+                it takes the same colour. Leaving it on the brand would put an
+                orange total under a teal one on the same screen. */}
+            <span className="text-[15px] font-bold text-doc-accent tnum">
               {money(totals.grandTotal)}
             </span>
           </span>
@@ -237,7 +240,7 @@ export function DocumentEditorShell<TDraft extends EditableDraft>({
             <Button size="sm" onClick={onSaveDraft}>
               Save Draft
             </Button>
-            <Button size="sm" variant="primary" onClick={onSave}>
+            <Button size="sm" variant="doc" onClick={onSave}>
               {labels.primaryAction}
             </Button>
           </div>

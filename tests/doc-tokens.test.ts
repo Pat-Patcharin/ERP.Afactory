@@ -208,3 +208,73 @@ describe("Shared document editor — the contract stays narrow", () => {
     }
   });
 });
+
+/* ============================================================
+   THE TWO BUTTON VOCABULARIES
+
+   `variant="primary"` is the application's action and must stay
+   on the brand. `variant="doc"` is the document's and follows
+   the family. Adding the second must not have moved the first.
+   ============================================================ */
+
+describe("Button — the brand variant is untouched by the document one", () => {
+  const button = read("components/ui/Button.tsx");
+
+  it("keeps primary on the brand tokens", () => {
+    const line = button.split("\n").find((l) => l.trim().startsWith("primary:")) ?? "";
+    const body = line + button.split("\n")[button.split("\n").indexOf(line) + 1];
+    expect(body).toContain("bg-primary");
+    expect(body, "the application button must not follow the paper").not.toContain("doc-accent");
+  });
+
+  it("gives doc the same states primary has, so only the hue differs", () => {
+    const doc = button.split("\n").find((l) => l.trim().startsWith("doc:")) ?? "";
+    for (const state of ["bg-doc-accent", "hover:bg-doc-accent-hover", "active:bg-doc-accent-active"]) {
+      expect(doc, `doc variant needs ${state}`).toContain(state);
+    }
+  });
+
+  it("uses the document variant only for the document's own action", () => {
+    /* The print overlay and the import dialog are application chrome sitting
+       over the paper, not part of it. They stay on the brand. */
+    const shell = read("components/document/DocumentEditorShell.tsx");
+    expect(shell.match(/variant="doc"/g) ?? []).toHaveLength(2);
+    expect(shell.match(/variant="primary"/g) ?? []).toHaveLength(2);
+  });
+});
+
+describe("DocHeader — the verify mark is opt-out, never opt-in", () => {
+  const parts = read("components/document/parts.tsx");
+
+  it("defaults to showing it, so every existing document is unchanged", () => {
+    expect(parts).toContain("showVerifyCode = true");
+  });
+
+  it("puts it behind the flag rather than deleting it", () => {
+    expect(parts).toContain("{showVerifyCode && (");
+    expect(parts, "the QR itself must survive for sales documents").toContain("QRPlaceholder");
+  });
+});
+
+describe("Inbound panels — not the sell-side ones wearing new labels", () => {
+  const parts = read("components/document/parts.tsx");
+
+  it("gives the requester and destination their own field types", () => {
+    expect(parts).toContain("export interface RequesterFields");
+    expect(parts).toContain("export interface DestinationFields");
+  });
+
+  it("keeps them off PartyFields", () => {
+    /* A requester is not a customer: nobody is billed, no credit is checked,
+       no tax ID applies. Sharing the type would tie a purchase request to
+       every future change made for the sell side. */
+    const block = parts.slice(
+      parts.indexOf("export interface RequesterFields"),
+      parts.indexOf("/* ---------- Metadata ---------- */"),
+    );
+    expect(block).not.toContain("PartyFields");
+    for (const field of ["customerPick", "taxId", "billAddress", "shipAddressPick"]) {
+      expect(block, `an inbound panel must not carry '${field}'`).not.toContain(field);
+    }
+  });
+});
