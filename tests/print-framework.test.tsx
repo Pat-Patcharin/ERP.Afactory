@@ -112,8 +112,9 @@ const cfg = (over: Partial<PrintConfig> = {}): PrintConfig => ({
 
 describe("Print framework — configuration", () => {
   it("configures every declared document type", () => {
-    /* Grew from sixteen when the two Non VAT forms were added. */
-    expect(PRINT_DOC_TYPES).toHaveLength(18);
+    /* Grew from sixteen when the two Non VAT forms were added, and to
+       nineteen when the purchase request became the first inbound sheet. */
+    expect(PRINT_DOC_TYPES).toHaveLength(19);
     for (const t of PRINT_DOC_TYPES) {
       const c = PRINT_CONFIGS[t];
       expect(c.documentType, t).toBe(t);
@@ -292,6 +293,7 @@ describe("Print framework — data mapping", () => {
 
   it("maps every configured document type without throwing", () => {
     const SAMPLE: Record<string, string> = {
+      "purchase-request": "PR2506-0124",
       quotation: "QT2506-0001",
       "sales-request": "SR2506-0001",
       "sales-order": "SO2506-0001",

@@ -10,6 +10,7 @@ import {
   applyProductForPurchase,
   blankPrDraft,
   draftFromPurchaseRequest,
+  prPrintDoc,
   prTotals,
   savePurchaseRequestDraft,
   suggestedSupplierFor,
@@ -17,6 +18,7 @@ import {
   type PurchaseRequestDraft,
 } from "@/lib/domain/purchase-request-draft";
 import type { PurchaseRequest } from "@/data/purchase-requests";
+import { buildPrintJob, getPrintConfig } from "@/lib/print";
 import { toDisplayDate } from "@/lib/format";
 import { useActionCtx } from "@/components/engine/useActionCtx";
 import { useCrumbCode } from "@/components/layout/Topbar";
@@ -133,6 +135,7 @@ export function PurchaseRequestEditor({ record }: { record?: PurchaseRequest }) 
     invalid,
     shownIssues,
     docMode,
+    preview,
     setPasteOpen,
     savedLabel,
     user,
@@ -209,6 +212,19 @@ export function PurchaseRequestEditor({ record }: { record?: PurchaseRequest }) 
     });
   }, [ctx, resetDraft]);
 
+  /** Built from what is on screen right now, not from the stored record. */
+  const printJob = useMemo(() => {
+    if (preview !== "print") return null;
+    const config = getPrintConfig("purchase-request");
+    if (!config) return null;
+    return buildPrintJob("purchase-request", draft.code, {
+      document: prPrintDoc(draft, config),
+      /* Anything not yet approved is stamped, so a sheet pulled off the
+         printer mid-approval can never be filed as the approved one. */
+      watermark: draft.status === "Approved" ? undefined : "DRAFT",
+    });
+  }, [draft, preview]);
+
   /**
    * The completion count, from the same `formStatus()` the stepped form used.
    *
@@ -273,8 +289,7 @@ export function PurchaseRequestEditor({ record }: { record?: PurchaseRequest }) 
           document: "purchase-request-document",
           stickySummary: "pr-sticky-summary",
         }}
-        /* No print config for this document type yet — P1c. */
-        printJob={null}
+        printJob={printJob}
         progress={progress}
         onSaveDraft={() => saveDraftNow(reporter)}
         onSave={() => saveDocument(reporter)}

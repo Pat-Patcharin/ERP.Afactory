@@ -21,6 +21,8 @@ import {
 import { actingUserName } from "./admin";
 import { stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
 import { warehouseOptions } from "./outbound";
+import { META_LABELS, printCompany } from "@/lib/print";
+import type { PrintConfig, PrintDoc, PrintLine } from "@/lib/print/types";
 
 /* ============================================================
    PURCHASE REQUEST — the draft behind the document editor
@@ -223,6 +225,118 @@ export function validatePrDraft(draft: PurchaseRequestDraft): DraftIssue[] {
   }
 
   return issues;
+}
+
+/* ============================================================
+   THE PRINTED SHEET
+
+   A purchase request is printed for one reason: to be signed and
+   filed as the evidence that the spend was agreed. So the sheet
+   carries the company header, the lines, the estimate and the
+   signature block — and nothing that assumes a customer.
+
+   `billTo` is filled with the REQUESTER, because the print
+   engine's party block is where a document says who it concerns
+   and on this document that is the department asking. The
+   `shipTo` block is switched off in the config rather than
+   filled with the warehouse: the warehouse is already a meta
+   field, and a second address block would read as a delivery
+   address the supplier should use, which it is not.
+   ============================================================ */
+
+export function prPrintDoc(draft: PurchaseRequestDraft, config: PrintConfig): PrintDoc {
+  const t = prTotals(draft);
+
+  const values: Record<string, string> = {
+    docNo: draft.code,
+    docDate: toDisplayDate(draft.requestDate),
+    deliveryDate: toDisplayDate(draft.needBy),
+    warehouse: draft.warehouse,
+    currency: "THB",
+  };
+
+  const meta = config.metaFields
+    .map((field) => ({
+      field,
+      label: META_LABELS[field]?.en ?? field,
+      labelTH: META_LABELS[field]?.th ?? "",
+      value: str(values[field]),
+    }))
+    .filter((r) => r.value);
+
+  const lines: PrintLine[] = draft.items
+    .filter((l) => str(l.code).trim())
+    .map((l, i) => ({
+      no: i + 1,
+      code: str(l.code),
+      description: str(l.name),
+      extraLines: [],
+      warehouse: draft.warehouse,
+      location: "",
+      bin: "",
+      lot: "",
+      serial: "",
+      packageNo: "",
+      qty: num(l.qty),
+      requiredQty: num(l.qty),
+      pickedQty: 0,
+      weight: 0,
+      uom: str(l.unit),
+      unitPrice: num(l.price),
+      discount: 0,
+      netPrice: num(l.price),
+      /* No tax on a request — settled on the purchase order. */
+      vatRate: 0,
+      amount: num(l.qty) * num(l.price),
+    }));
+
+  return {
+    entity: "purchase-request",
+    code: draft.code,
+    status: draft.status,
+    statusTone: "info",
+    date: toDisplayDate(draft.requestDate),
+    company: printCompany(),
+    billTo: {
+      name: draft.dept ? `แผนก${draft.dept}` : "",
+      code: "",
+      address: draft.warehouse ? `รับของที่ ${draft.warehouse}` : "",
+      taxId: "",
+      branch: "",
+      phone: "",
+      contact: draft.requester,
+    },
+    shipTo: {
+      name: "",
+      code: "",
+      address: "",
+      taxId: "",
+      branch: "",
+      phone: "",
+      contact: "",
+    },
+    meta,
+    lines,
+    totals: {
+      subtotal: t.subtotal,
+      lineDiscount: t.lineDiscount,
+      headerDiscount: t.headerDiscount,
+      freight: t.freight,
+      otherCharges: t.otherCharges,
+      netAmount: t.netAmount,
+      vat: 0,
+      withholding: 0,
+      rounding: t.rounding,
+      grandTotal: t.grandTotal,
+      currency: "THB",
+      amountInWords: "",
+    },
+    bank: null,
+    remarks: str(draft.reason)
+      .split("\n")
+      .map((r) => r.replace(/^\s*\d+[.)]\s*/, "").trim())
+      .filter(Boolean),
+  };
 }
 
 /* ---------- Saving ---------- */

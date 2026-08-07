@@ -21,9 +21,14 @@
 
 .a4-root {
   /* Brand tokens, restated locally so the sheet does not depend on the app
-     theme being loaded — a printed page must look the same either way. */
-  --pr-orange: #f26522;
-  --pr-orange-soft: #fff3ec;
+     theme being loaded — a printed page must look the same either way.
+
+     `--pr-accent` was `--pr-orange` until the inbound family arrived. A token
+     named for its colour cannot hold a different one without lying to the
+     next reader, and this file has no way to see the app's `--c-doc-accent`
+     by design (see the note above). */
+  --pr-accent: #f26522;
+  --pr-accent-soft: #fff3ec;
   --pr-ink: #1f2937;
   --pr-ink-2: #4b5563;
   --pr-ink-3: #9ca3af;
@@ -36,6 +41,21 @@
   font-size: 8.2pt;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
+}
+
+/* The same family split the screen has, applied to the paper.
+
+   A purchase request that is teal on screen and orange once printed would
+   undo the point of the split at exactly the moment the document becomes the
+   record — the printed sheet is what gets filed and signed.
+
+   Values match `[data-doc-family="inbound"]` in globals.css. They are copied
+   rather than referenced for the reason stated above: this sheet must render
+   identically whether or not the application theme was ever loaded. */
+.a4-root[data-doc-family="inbound"] {
+  --pr-accent: #0f766e;
+  --pr-accent-soft: #f0fdfa;
+  --pr-head: #134e4a;
 }
 
 /* One physical sheet, at full A4, carrying its own margins as padding.
@@ -132,7 +152,7 @@
 .a4-docno {
   font-size: 13pt;
   font-weight: 700;
-  color: var(--pr-orange);
+  color: var(--pr-accent);
   letter-spacing: 0.01em;
 }
 
@@ -195,7 +215,7 @@
 
 /* Totals */
 .a4-grand {
-  background: var(--pr-orange);
+  background: var(--pr-accent);
   color: #fff;
   font-weight: 700;
 }

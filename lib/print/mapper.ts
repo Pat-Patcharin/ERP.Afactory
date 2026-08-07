@@ -12,6 +12,7 @@ import { SALES_INVOICES, invoiceTotals } from "@/lib/domain/invoice";
 import { SHIPMENTS } from "@/lib/domain/shipment";
 import { SALES_RETURNS } from "@/lib/domain/sales-return";
 import { CREDIT_NOTES } from "@/lib/domain/credit-note";
+import { PURCHASE_REQUESTS } from "@/lib/domain/purchase";
 import {
   billShows,
   displayName,
@@ -311,6 +312,79 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
   const company = printCompany();
 
   switch (source.entity) {
+    /* ---------- Purchase request ----------
+       The only inbound document here. It has no customer, so the party block
+       carries the department that asked and the person who signed it — that
+       is who the sheet concerns. `parties()` is not used at all: it looks up
+       a business partner, and there is none on this side. */
+    case "purchase-request": {
+      const d = PURCHASE_REQUESTS.find((x) => x.code === source.code);
+      if (!d) return null;
+      const subtotal = (d.items ?? []).reduce(
+        (s, it) => s + num(it.qty) * num(it.price),
+        0,
+      );
+      return {
+        entity: source.entity,
+        code: d.code,
+        status: d.status,
+        statusTone: "info",
+        date: d.date,
+        company,
+        billTo: {
+          name: d.dept ? `แผนก${d.dept}` : "",
+          code: "",
+          address: d.warehouse ? `รับของที่ ${d.warehouse}` : "",
+          taxId: "",
+          branch: "",
+          phone: "",
+          contact: d.requester,
+        },
+        shipTo: {
+          name: "",
+          code: "",
+          address: "",
+          taxId: "",
+          branch: "",
+          phone: "",
+          contact: "",
+        },
+        meta: buildMeta(config, {
+          docNo: d.code,
+          docDate: d.date,
+          deliveryDate: d.needBy,
+          warehouse: d.warehouse,
+          currency: "THB",
+        }),
+        lines: (d.items ?? []).map((it, i) => ({
+          no: i + 1,
+          code: it.code,
+          description: it.name,
+          extraLines: [],
+          warehouse: d.warehouse,
+          location: "",
+          bin: "",
+          lot: "",
+          serial: "",
+          packageNo: "",
+          qty: num(it.qty),
+          requiredQty: num(it.qty),
+          pickedQty: 0,
+          weight: 0,
+          uom: it.unit,
+          unitPrice: num(it.price),
+          discount: 0,
+          netPrice: num(it.price),
+          /* No tax on a request — settled on the purchase order. */
+          vatRate: 0,
+          amount: num(it.qty) * num(it.price),
+        })),
+        totals: makeTotals({ grandTotal: subtotal, subtotal }, "THB"),
+        bank: null,
+        remarks: [...config.remarks, ...(d.note ? [d.note] : [])],
+      };
+    }
+
     /* ---------- Quotation ---------- */
     case "quotation": {
       const d = QUOTATIONS.find((x) => x.code === source.code);

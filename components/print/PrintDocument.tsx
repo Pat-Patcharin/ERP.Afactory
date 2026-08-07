@@ -154,7 +154,7 @@ function LetterheadFooter({ job }: { job: PrintJob }) {
         style={{
           width: "14mm",
           height: "1.4mm",
-          background: "var(--pr-orange)",
+          background: "var(--pr-accent)",
           borderRadius: "0.4mm",
         }}
       />
@@ -180,7 +180,7 @@ function LetterheadFooter({ job }: { job: PrintJob }) {
             <div style={{ fontWeight: 700 }}>โทร. {c.phone}</div>
             {c.line && <div className="a4-muted">LINE {c.line}</div>}
             {c.facebook && <div className="a4-muted">Facebook {c.facebook}</div>}
-            <div style={{ color: "var(--pr-orange)", fontWeight: 700 }}>{c.website}</div>
+            <div style={{ color: "var(--pr-accent)", fontWeight: 700 }}>{c.website}</div>
           </div>
 
           {c.tagline && <AllInOneMark label={c.tagline} />}
@@ -216,9 +216,9 @@ function TitleBlock({ job }: { job: PrintJob }) {
         </span>
         <span
           style={{
-            background: "var(--pr-orange-soft)",
-            border: "0.3mm solid var(--pr-orange)",
-            color: "var(--pr-orange)",
+            background: "var(--pr-accent-soft)",
+            border: "0.3mm solid var(--pr-accent)",
+            color: "var(--pr-accent)",
             borderRadius: "1mm",
             padding: "0.6mm 2mm",
             fontSize: "7pt",
@@ -269,7 +269,7 @@ function FullHeader({ job }: { job: PrintJob }) {
         alignItems: "flex-start",
         justifyContent: "space-between",
         paddingBottom: "3mm",
-        borderBottom: "0.5mm solid var(--pr-orange)",
+        borderBottom: "0.5mm solid var(--pr-accent)",
       }}
     >
       <CompanyBlock job={job} />
@@ -290,7 +290,7 @@ function CompactHeader({ job, page }: { job: PrintJob; page: PrintPage }) {
         alignItems: "center",
         justifyContent: "space-between",
         paddingBottom: "2mm",
-        borderBottom: "0.4mm solid var(--pr-orange)",
+        borderBottom: "0.4mm solid var(--pr-accent)",
       }}
     >
       <div style={{ display: "flex", gap: "2.5mm", alignItems: "center", minWidth: 0 }}>
@@ -329,7 +329,7 @@ function PartyPanel({
 }) {
   return (
     <div className="a4-panel" style={{ flex: 1, minWidth: 0 }}>
-      <div className="a4-label" style={{ color: "var(--pr-orange)" }}>
+      <div className="a4-label" style={{ color: "var(--pr-accent)" }}>
         {title} <span className="a4-dim">({titleTH})</span>
       </div>
       <div style={{ fontWeight: 700, marginTop: "1mm", fontSize: "8.6pt" }}>{party.name || "—"}</div>
@@ -462,7 +462,7 @@ function Remarks({ job }: { job: PrintJob }) {
   if (!job.doc.remarks.length) return null;
   return (
     <div className="a4-panel" style={{ flex: 1, minWidth: 0 }}>
-      <div className="a4-label" style={{ color: "var(--pr-orange)" }}>
+      <div className="a4-label" style={{ color: "var(--pr-accent)" }}>
         Remark <span className="a4-dim">(หมายเหตุ)</span>
       </div>
       <ol style={{ margin: "1.5mm 0 0", paddingLeft: "4.5mm" }} className="a4-muted">
@@ -541,7 +541,7 @@ function PaymentInfo({ job }: { job: PrintJob }) {
 
   return (
     <div className="a4-panel" style={{ marginTop: "2.5mm" }}>
-      <div className="a4-label" style={{ color: "var(--pr-orange)", marginBottom: "1.5mm" }}>
+      <div className="a4-label" style={{ color: "var(--pr-accent)", marginBottom: "1.5mm" }}>
         Payment Information <span className="a4-dim">(ข้อมูลการชำระเงิน)</span>
       </div>
       <div style={{ display: "flex", gap: "3mm" }}>
@@ -578,7 +578,7 @@ function Signatures({ job }: { job: PrintJob }) {
 
         return (
           <div key={role} className="a4-panel" style={{ flex: 1, minWidth: 0, paddingTop: "2mm" }}>
-            <div className="a4-label" style={{ color: "var(--pr-orange)", fontSize: "6pt" }}>
+            <div className="a4-label" style={{ color: "var(--pr-accent)", fontSize: "6pt" }}>
               {l?.en ?? role}
             </div>
             <div style={{ fontSize: "6.6pt" }} className="a4-dim">
@@ -694,7 +694,7 @@ export function PrintPageView({ job, page }: { job: PrintJob; page: PrintPage })
             style={{
               marginTop: "2mm",
               padding: "1.5mm 2mm",
-              border: "0.3mm solid var(--pr-orange)",
+              border: "0.3mm solid var(--pr-accent)",
               fontSize: "7pt",
             }}
           >
@@ -778,7 +778,14 @@ export function PrintPageView({ job, page }: { job: PrintJob; page: PrintPage })
 
 export function PrintDocument({ job }: { job: PrintJob }) {
   return (
-    <div className="a4-root" data-testid="print-document" data-pages={job.totalPages}>
+    <div
+      className="a4-root"
+      data-testid="print-document"
+      data-pages={job.totalPages}
+      /* Gives print.css the same family hook the screen has, so a document
+         that is teal on screen prints teal. */
+      data-doc-family={job.config.family}
+    >
       <div className="a4-canvas">
         {job.pages.map((p) => (
           <PrintPageView key={p.page} job={job} page={p} />

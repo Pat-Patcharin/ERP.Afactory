@@ -8,11 +8,13 @@ import {
   applyProductForPurchase,
   blankPrDraft,
   savePurchaseRequestDraft,
+  prPrintDoc,
   validatePrDraft,
 } from "@/lib/domain/purchase-request-draft";
 import { blankLine } from "@/lib/domain/doc-draft";
 import { PRODUCTS, productStock, stockedProducts } from "@/lib/domain/product";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
+import { buildPrintJob, getPrintConfig } from "@/lib/print";
 
 /* ============================================================
    PURCHASE REQUEST — the document editor
@@ -348,5 +350,88 @@ describe("Purchase Request — saving", () => {
 
     const res = savePurchaseRequestDraft(d);
     expect(PURCHASE_REQUESTS.find((p) => p.code === res.code)!.items).toHaveLength(1);
+  });
+});
+
+/* ============================================================
+   THE PRINTED SHEET
+
+   Printed for one reason: to be signed and filed as the evidence
+   that the spend was approved. Everything below follows from
+   that, and from there being no customer on this side.
+   ============================================================ */
+
+describe("Purchase Request — the printed sheet", () => {
+  const config = () => getPrintConfig("purchase-request")!;
+
+  it("exists at all", () => {
+    expect(config()).toBeTruthy();
+    expect(config().titleEN).toBe("PURCHASE REQUEST");
+    expect(config().titleTH).toBe("ใบขอซื้อ");
+  });
+
+  it("offers three copies and no CUSTOMER one", () => {
+    /* There is no customer on this side of the business, so a copy addressed
+       to one would be a copy with nowhere to go. */
+    expect(config().supportedCopyTypes).toEqual(["ORIGINAL", "COMPANY", "REPRINT"]);
+    expect(config().supportedCopyTypes).not.toContain("CUSTOMER");
+  });
+
+  it("keeps the signatures, which are the whole point of printing it", () => {
+    expect(config().showSignatures).toBe(true);
+    expect(config().signatureRoles).toContain("preparedBy");
+    expect(config().signatureRoles).toContain("approvedBy");
+  });
+
+  it("drops the verify marks, as the screen does", () => {
+    expect(config().showQRCode).toBe(false);
+    expect(config().showBarcode).toBe(false);
+  });
+
+  it("shows no tax and no due date — both belong to the purchase order", () => {
+    expect(config().showTax).toBe(false);
+    expect(config().showDueDate).toBe(false);
+    expect(config().showCustomerTaxId).toBe(false);
+  });
+
+  it("carries the inbound family, so the sheet is teal like the screen", () => {
+    /* Without this the document would be teal on screen and orange once
+       printed — at exactly the moment it becomes the filed record. */
+    expect(config().family).toBe("inbound");
+  });
+
+  it("builds a job from the draft, with the figures the document shows", () => {
+    const { product, st } = stocked();
+    const d = blankPrDraft();
+    d.dept = "IT";
+    d.requester = "Nattapong K.";
+    d.warehouse = "WH-BKK";
+    d.needBy = d.requestDate;
+    d.items = [{ ...blankLine(), code: product.code, name: product.name, unit: st.unit, qty: 4, price: 25 }];
+
+    const doc = prPrintDoc(d, config());
+    expect(doc.entity).toBe("purchase-request");
+    expect(doc.lines).toHaveLength(1);
+    expect(doc.lines[0].amount, "four at twenty-five").toBe(100);
+    expect(doc.lines[0].vatRate, "no tax on a request").toBe(0);
+    expect(doc.totals!.vat).toBe(0);
+    /* The requester, not a customer — the party block says who it concerns. */
+    expect(doc.billTo.contact).toBe("Nattapong K.");
+    expect(doc.billTo.name).toContain("IT");
+  });
+
+  it("stamps DRAFT on anything not yet approved", () => {
+    const d = blankPrDraft();
+    d.dept = "IT";
+    d.requester = "Nattapong K.";
+    d.warehouse = "WH-BKK";
+    d.needBy = d.requestDate;
+    d.items = [{ ...blankLine(), code: stocked().product.code, qty: 1, price: 1 }];
+
+    const job = buildPrintJob("purchase-request", d.code, {
+      document: prPrintDoc(d, config()),
+      watermark: "DRAFT",
+    })!;
+    expect(job.watermark).toBe("DRAFT");
   });
 });

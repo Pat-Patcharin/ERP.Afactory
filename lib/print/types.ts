@@ -56,6 +56,9 @@ export type CopyType =
 
 /** Document types the engine prints. Keyed by the registry entity where one exists. */
 export type PrintDocType =
+  /* Buy side. Internal paperwork: no customer, and the sheet exists to be
+     filed as the evidence that a spend was approved. */
+  | "purchase-request"
   | "quotation"
   | "quotation-non-vat"
   | "sales-request"
@@ -81,6 +84,14 @@ export interface PrintConfig {
   entity: string;
   titleTH: string;
   titleEN: string;
+  /**
+   * Which document family the printed sheet belongs to, stamped onto
+   * `.a4-root` so print.css can give it the same accent the screen has.
+   *
+   * Omitted means the sell side, which keeps the brand colour — every sheet
+   * that existed before families did carries no value and is unaffected.
+   */
+  family?: "inbound";
 
   showPrice: boolean;
   showDiscount: boolean;

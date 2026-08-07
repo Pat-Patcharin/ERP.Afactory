@@ -70,6 +70,46 @@ const TAX_REMARKS = [
 ];
 
 export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
+  /* ---------- Buy side ---------- */
+
+  /**
+   * The purchase request, printed to be signed and filed.
+   *
+   * Everything that assumes a customer is off. There is no CUSTOMER copy
+   * because there is no customer on this side of the business — the three
+   * copies are the one that gets signed, the one the department keeps, and a
+   * reprint. No tax and no due date either: what the company will actually be
+   * charged is settled on the purchase order against the supplier's terms.
+   *
+   * The QR and barcode go for the same reason they are off on screen: this
+   * sheet never leaves the company, so a verify mark would verify nothing.
+   * Signatures stay, because they are the entire purpose of printing it.
+   */
+  "purchase-request": {
+    ...BASE,
+    documentType: "purchase-request",
+    entity: "purchase-request",
+    titleTH: "ใบขอซื้อ",
+    titleEN: "PURCHASE REQUEST",
+    family: "inbound",
+    showTax: false,
+    showPayment: false,
+    showDueDate: false,
+    showCustomerTaxId: false,
+    showAmountInWords: false,
+    showShipTo: false,
+    showBarcode: false,
+    showQRCode: false,
+    itemColumns: ["no", "code", "description", "qty", "uom", "unitPrice", "amount"],
+    signatureRoles: ["preparedBy", "checkedBy", "approvedBy"],
+    supportedCopyTypes: ["ORIGINAL", "COMPANY", "REPRINT"],
+    metaFields: ["docNo", "docDate", "deliveryDate", "warehouse", "currency"],
+    remarks: [
+      "ใบขอซื้อนี้เป็นเอกสารภายใน ใช้ประกอบการอนุมัติการจัดซื้อเท่านั้น",
+      "ราคาที่ระบุเป็นราคาประมาณการ ราคาจริงยืนยันในใบสั่งซื้อ",
+    ],
+  },
+
   /* ---------- Sell-side offers ---------- */
   quotation: {
     ...BASE,
