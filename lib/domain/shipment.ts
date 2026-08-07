@@ -5,7 +5,7 @@ import {
   type ShpLine,
   type ShpPackage,
 } from "@/data/shipments";
-import { DELIVERY_ORDERS, SALES_ORDERS } from "./outbound";
+import { DELIVERY_ORDERS, SALES_ORDERS, SALES_REQUESTS } from "./outbound";
 import { SALES_INVOICES } from "./invoice";
 import { pctOf } from "./lines";
 import { DASH, daysUntil } from "@/lib/format";
@@ -214,6 +214,116 @@ export function shippableDeliveryOrders(): DoOption[] {
     warehouse: d.warehouse,
     soRef: d.soRef,
   }));
+}
+
+/* ============================================================
+   TRACKING, READ FROM THE SHIPMENT AND NOWHERE ELSE
+
+   The invoice holds `shipmentRef` — a pointer — and never its
+   own copy of the carrier or the tracking number. Everything
+   below reads through that pointer.
+
+   Storing the number twice was the obvious alternative and is
+   the wrong one, for the reason `effectiveBillType` exists: two
+   copies of one fact drift, and once they disagree there is no
+   way to tell which is true. A stale tracking number is a
+   particularly bad version of it, because it sends the customer
+   to a carrier's website that reports no such parcel.
+
+   This direction — shipment.ts reading invoices — is also the
+   only one available. invoice.ts cannot import this file
+   without creating a cycle, since this one already imports it.
+   ============================================================ */
+
+export interface InvoiceShipping {
+  shipmentCode: string;
+  carrier: string;
+  carrierService: string;
+  trackingNo: string;
+  /** Where the parcel has got to, in the shipment's own words. */
+  deliveryStatus: string;
+  status: string;
+  expectedDelivery: string;
+  /** Blank until it actually arrived — never guessed from the expected date. */
+  actualDelivery: string;
+}
+
+/**
+ * What an invoice can say about how its goods travelled.
+ *
+ * Null when the invoice has no shipment yet, which is a normal state and not
+ * an error: the paperwork can be raised before the lorry leaves. Callers show
+ * nothing at all in that case rather than an empty row of dashes — a blank
+ * "Tracking: —" reads as a missing number rather than as a parcel that has
+ * not been handed to a carrier.
+ */
+export function invoiceShipping(inv: {
+  shipmentRef?: string;
+  code?: string;
+}): InvoiceShipping | null {
+  const ref = inv.shipmentRef;
+  /* Fall back to matching on the shipment's own `invRef` so invoices seeded
+     before `shipmentRef` existed still resolve. The pointer wins when set. */
+  const s = ref
+    ? SHIPMENTS.find((x) => x.code === ref)
+    : SHIPMENTS.find((x) => x.invRef && x.invRef === inv.code);
+  if (!s) return null;
+
+  return {
+    shipmentCode: s.code,
+    carrier: s.carrier,
+    carrierService: s.carrierService,
+    trackingNo: s.trackingNo,
+    deliveryStatus: s.deliveryStatus || s.status,
+    status: s.status,
+    expectedDelivery: s.expectedDelivery,
+    actualDelivery: s.actualDelivery,
+  };
+}
+
+/** One hop of the chain from a tracking number back to the quotation. */
+export interface TraceStep {
+  entity: string;
+  label: string;
+  code: string;
+}
+
+/**
+ * Walk back from a tracking number to the quotation it started as.
+ *
+ * tracking → shipment → delivery order → sales order → sales request →
+ * quotation. Stops wherever the chain genuinely ends: an order raised
+ * directly has no sales request, and that is a shorter trail rather than a
+ * broken one. Every hop follows a reference the documents already carry, so
+ * nothing new has to be stored to make this work.
+ */
+export function traceFromTracking(trackingNo: string): TraceStep[] {
+  const needle = trackingNo.trim().toLowerCase();
+  if (!needle) return [];
+  const s = SHIPMENTS.find((x) => (x.trackingNo ?? "").trim().toLowerCase() === needle);
+  if (!s) return [];
+
+  const steps: TraceStep[] = [{ entity: "shipment", label: "Shipment", code: s.code }];
+
+  const d = DELIVERY_ORDERS.find((x) => x.code === s.doRef);
+  if (d) steps.push({ entity: "delivery-order", label: "Delivery Order", code: d.code });
+
+  const so = SALES_ORDERS.find((x) => x.code === (d?.soRef || s.soRef));
+  if (!so) return steps;
+  steps.push({ entity: "sales-order", label: "Sales Order", code: so.code });
+
+  if (so.srRef) {
+    steps.push({ entity: "sales-request", label: "Sales Request", code: so.srRef });
+    const sr = SALES_REQUESTS.find((x) => x.code === so.srRef);
+    if (sr?.quotationRef)
+      steps.push({ entity: "quotation", label: "Quotation", code: sr.quotationRef });
+    return steps;
+  }
+
+  /* An order converted straight from a quotation still has to be reachable. */
+  if (so.quotationRef)
+    steps.push({ entity: "quotation", label: "Quotation", code: so.quotationRef });
+  return steps;
 }
 
 /** Header defaults a Delivery Order hands to a new shipment. */

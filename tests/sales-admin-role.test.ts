@@ -51,10 +51,23 @@ describe("SALES_ADMIN — what the desk may do", () => {
     }
   });
 
-  it("runs the warehouse and billing documents through to the end", () => {
+  it("runs the billing documents through to the end", () => {
     asRole("SALES_ADMIN");
-    for (const m of ["picking", "packing", "delivery-order", "sales-invoice", "credit-note"]) {
+    for (const m of ["delivery-order", "sales-invoice", "credit-note"]) {
       expect(can(m, "create"), m).toBe(true);
+    }
+  });
+
+  it("watches the warehouse jobs but cannot work them", () => {
+    /* Picking and packing happen on the floor. This desk has to see them to
+       chase the order and to issue the paperwork afterwards, and must not be
+       able to close a pick or confirm what shipped on the warehouse's
+       behalf — that figure is what the customer gets billed from. */
+    asRole("SALES_ADMIN");
+    for (const m of ["picking", "packing"]) {
+      expect(can(m, "view"), `${m} view`).toBe(true);
+      expect(can(m, "edit"), `${m} edit`).toBe(false);
+      expect(can(m, "create"), `${m} create`).toBe(false);
     }
   });
 

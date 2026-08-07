@@ -14,6 +14,7 @@ import {
   type InvRow,
 } from "@/lib/domain/invoice";
 import { INV_STATUS } from "@/data/sales-invoices";
+import { invoiceShipping } from "@/lib/domain/shipment";
 import { INV_TONE, PAY_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money, money0 } from "@/lib/format";
 import {
@@ -457,6 +458,10 @@ export const INV_DETAIL: DetailSchema<InvRow> = {
       blocks: (inv) => {
         const t = invoiceTotals(inv);
         const warnings = billingWarnings(inv);
+        /* Read through `shipmentRef`; this invoice stores none of it. Null
+           when the goods have not been handed to a carrier yet, and the whole
+           panel is left off rather than shown as a column of dashes. */
+        const ship = invoiceShipping(inv);
 
         return [
           inv.status === "Void" && {
@@ -514,6 +519,30 @@ export const INV_DETAIL: DetailSchema<InvRow> = {
                   { label: "Sales Channel", value: inv.channel },
                   { label: "Sales Representative", value: inv.salesRep },
                   { label: "Created By", value: inv.createdBy, muted: true },
+                ],
+              },
+              ship && {
+                type: "fields",
+                title: "การจัดส่ง",
+                items: [
+                  { label: "รอบขนส่ง", value: <span className="tnum">{ship.shipmentCode}</span> },
+                  { label: "ผู้ขนส่ง", value: ship.carrier || DASH },
+                  { label: "บริการ", value: ship.carrierService || DASH },
+                  {
+                    label: "เลขพัสดุ",
+                    value: ship.trackingNo ? (
+                      <span className="tnum">{ship.trackingNo}</span>
+                    ) : (
+                      "ยังไม่ได้ใส่เลขพัสดุ"
+                    ),
+                    muted: !ship.trackingNo,
+                  },
+                  { label: "สถานะส่ง", value: ship.deliveryStatus || DASH },
+                  {
+                    label: "วันที่ส่งจริง",
+                    value: ship.actualDelivery || "ยังไม่ถึงปลายทาง",
+                    muted: !ship.actualDelivery,
+                  },
                 ],
               },
               {

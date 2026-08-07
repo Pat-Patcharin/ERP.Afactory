@@ -29,6 +29,7 @@ import type { ActionCtx } from "@/lib/types";
 
 const REP = "EMP004";
 const SALES_ADMIN = "EMP013";
+const WAREHOUSE = "EMP008";
 
 const SNAP = {
   so: JSON.stringify(RAW_SO),
@@ -276,11 +277,26 @@ describe("pickComplete — a short pick moves the order at once", () => {
     return { so, task };
   };
 
+  it("is closed by the warehouse, not by the desk that bills for it", () => {
+    /* Since N8 picking is the floor's job. The sales admin sees the task to
+       chase it and is refused at the button that says what came off the
+       shelf — the figure the customer is eventually billed from. */
+    const { so, task } = shortPick();
+    const { ctx, toasts } = stub();
+
+    setCurrentUser(SALES_ADMIN);
+    pickComplete(task, ctx);
+
+    expect(task.status, "nothing closed").not.toBe("Completed");
+    expect(so.status, "and the order did not move").not.toBe("Partially Delivered");
+    expect(toasts.at(-1)!.title).toBe("สิทธิ์ไม่พอ");
+  });
+
   it("marks the order partial the moment the sheet is closed", () => {
     const { so, task } = shortPick();
     const { ctx } = stub();
 
-    setCurrentUser(SALES_ADMIN);
+    setCurrentUser(WAREHOUSE);
     pickComplete(task, ctx);
 
     expect(task.status).toBe("Completed");
@@ -294,7 +310,7 @@ describe("pickComplete — a short pick moves the order at once", () => {
     const { so, task } = shortPick();
     const { ctx } = stub();
 
-    setCurrentUser(SALES_ADMIN);
+    setCurrentUser(WAREHOUSE);
     pickComplete(task, ctx);
 
     setCurrentUser(REP);
@@ -310,7 +326,7 @@ describe("pickComplete — a short pick moves the order at once", () => {
     const { ctx } = stub();
     const before = NOTIFY_ITEMS.length;
 
-    setCurrentUser(SALES_ADMIN);
+    setCurrentUser(WAREHOUSE);
     pickComplete(task, ctx);
 
     expect(so.status, "nothing is partial about it").toBe("Picking");
@@ -322,7 +338,7 @@ describe("pickComplete — a short pick moves the order at once", () => {
     so.status = "Cancelled";
     const { ctx } = stub();
 
-    setCurrentUser(SALES_ADMIN);
+    setCurrentUser(WAREHOUSE);
     pickComplete(task, ctx);
 
     expect(so.status).toBe("Cancelled");

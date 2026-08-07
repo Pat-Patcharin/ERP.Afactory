@@ -32,6 +32,7 @@ import {
 } from "@/lib/domain/sales-request-draft";
 import {
   packComplete,
+  packConfirmShipQty,
   packCreateDelivery,
   packStart,
   pickComplete,
@@ -195,7 +196,7 @@ function takeToAccepted(qt: ReturnType<typeof raiseQuotation>, ctx: never) {
 describe("Journey A — quotation through a sales request and out the door", () => {
   it("carries the customer, the price and the wording from quote to invoice", () => {
     const { bp } = vatCustomer();
-    const { ctx } = journeyCtx();
+    const { ctx, getModal } = journeyCtx();
 
     /* ---- Quotation ---- */
     asRole("SALES_REP");
@@ -284,7 +285,16 @@ describe("Journey A — quotation through a sales request and out the door", () 
     packComplete(pack, ctx);
     expect(pack.status).toBe("Completed");
 
-    /* ---- Delivery ---- */
+    /* The warehouse says what can actually go. Everything was picked in full
+       here, so the defaults carry through — but the step is not optional and
+       the delivery note below is refused without it. */
+    packConfirmShipQty(pack, ctx);
+    getModal().onConfirm!();
+    decorateOutbound();
+    expect(pack.isConfirmed, "the warehouse has answered every line").toBe(true);
+
+    /* ---- Delivery — back at the sales desk ---- */
+    asRole("SALES_ADMIN");
     packCreateDelivery(pack, ctx);
     decorateOutbound();
     const dobj = DELIVERY_ORDERS.find((d) => d.soRef === so.code)!;

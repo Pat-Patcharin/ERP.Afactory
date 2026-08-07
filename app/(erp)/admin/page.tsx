@@ -275,7 +275,10 @@ export default function AdministrationWorkspacePage() {
           </WsTable>
         </WsTableCard>
 
-        <WsTableCard title="Notifications" viewAll="Notification Settings">
+        {/* "Planned", not "On". These flags are a draft configuration that the
+            send path does not read — a green On badge here claimed otherwise.
+            See the note at the top of app/(erp)/admin/notifications/page.tsx. */}
+        <WsTableCard title="Notifications (ร่าง — ยังไม่มีผล)" viewAll="Notification Settings">
           <WsTable
             head={
               <>
@@ -293,10 +296,10 @@ export default function AdministrationWorkspacePage() {
                   {n.group}
                 </WsTd>
                 <WsTd align="center">
-                  <Badge tone={n.inApp ? "success" : "neutral"}>{n.inApp ? "On" : "Off"}</Badge>
+                  <Badge tone="neutral">{n.inApp ? "ตั้งไว้" : "ปิด"}</Badge>
                 </WsTd>
                 <WsTd align="center">
-                  <Badge tone={n.email ? "success" : "neutral"}>{n.email ? "On" : "Off"}</Badge>
+                  <Badge tone="neutral">{n.email ? "ตั้งไว้" : "ปิด"}</Badge>
                 </WsTd>
               </WsRow>
             ))}

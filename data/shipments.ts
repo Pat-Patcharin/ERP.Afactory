@@ -397,8 +397,22 @@ const CREATED = (when: string, u = "Warehouse Staff") =>
 export const SHIPMENTS: Shipment[] = [
   {
     code: "SHP-2026-000031",
-    doRef: "DO-2026-000014",
-    soRef: "SO-2026-000031",
+    /**
+     * Deliberately wired onto the real sales chain, unlike its neighbours:
+     *
+     *   AF260801001 → SHP-2026-000031 → DO2507-0001 → SO2506-0001
+     *                → SR2506-0001 → QT2506-0001
+     *
+     * The rest of this seed points at `DO-2026-0000xx` / `SO-2026-0000xx`,
+     * which no delivery order or sales order in `data/` actually carries —
+     * those two families were authored separately and never joined up. Every
+     * other row therefore dead-ends at the shipment when you trace back from
+     * a tracking number, which makes the trace look broken when it is the
+     * data that is. One row is wired through so the walk can be demonstrated
+     * end to end; joining the rest is docs/BACKLOG.md item N-4.
+     */
+    doRef: "DO2507-0001",
+    soRef: "SO2506-0001",
     invRef: "INV-2026-000025",
     customer: "KCMH Hospital",
     customerCode: "CUST-00001",

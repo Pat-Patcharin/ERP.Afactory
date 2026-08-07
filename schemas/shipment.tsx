@@ -15,6 +15,7 @@ import { DLV_TONE, PRIORITY_TONE, SHP_TONE, tone } from "@/lib/badges";
 import { DASH, fmt } from "@/lib/format";
 import {
   shpAddTracking,
+  shpSetTrackingNo,
   shpBulk,
   shpCancel,
   shpConfirmDelivery,
@@ -347,6 +348,12 @@ export const SHP_LIST: ListSchema<ShpRow> = {
     if (["Draft", "Rescheduled"].includes(s.status))
       acts.push({ label: "Mark Ready", icon: "checkCircle", run: (r) => shpMarkReady(r, ctx) });
     if (s.canDispatch) acts.push({ label: "Dispatch", icon: "send", run: (r) => shpDispatch(r, ctx) });
+    if (!["Draft", "Cancelled"].includes(s.status))
+      acts.push({
+        label: s.trackingNo ? "แก้เลขพัสดุ" : "ใส่เลขพัสดุ",
+        icon: "barcode",
+        run: (r) => shpSetTrackingNo(r, ctx),
+      });
     if (!["Draft", "Cancelled"].includes(s.status))
       acts.push({ label: "Update Tracking", icon: "refresh", run: (r) => shpAddTracking(r, ctx) });
     if (s.canDeliver)
@@ -1155,6 +1162,12 @@ export const SHP_DETAIL: DetailSchema<ShpRow> = {
     if (["Draft", "Rescheduled"].includes(s.status))
       acts.push({ label: "Mark Ready", icon: "checkCircle", run: () => shpMarkReady(s, ctx) });
     if (s.canDispatch) acts.push({ label: "Dispatch", icon: "send", run: () => shpDispatch(s, ctx) });
+    if (!["Draft", "Cancelled"].includes(s.status))
+      acts.push({
+        label: s.trackingNo ? "แก้เลขพัสดุ" : "ใส่เลขพัสดุ",
+        icon: "barcode",
+        run: () => shpSetTrackingNo(s, ctx),
+      });
     if (!["Draft", "Cancelled"].includes(s.status))
       acts.push({ label: "Update Tracking", icon: "refresh", run: () => shpAddTracking(s, ctx) });
     if (s.canDeliver)

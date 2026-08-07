@@ -61,6 +61,7 @@ import type { ReactNode } from "react";
 const REP = "EMP004";
 const ADMIN = "EMP013";
 const MANAGER = "EMP003";
+const WAREHOUSE = "EMP008";
 
 const SNAP = {
   qt: JSON.stringify(RAW_QT),
@@ -227,10 +228,18 @@ describe("Journey — quotation, request, order, all three chairs", () => {
     expect(so.status).toBe("Confirmed");
     expect(so.items[0].qty, "a back order changes nothing").toBe(available + 10);
 
-    /* ---------- The warehouse picks what there is ---------- */
+    /* ---------- The warehouse picks what there is ----------
+       And it is the warehouse that does it: since N8 the sales desk holds
+       picking and packing read-only, so closing the sheet from the admin's
+       chair is refused. */
     soCreatePick(so, ctx);
     decorateOutbound();
     const pick = PICKING_TASKS.find((p) => p.soRef === so.code)!;
+
+    pickComplete(pick, ctx);
+    expect(pick.status, "the admin may watch the pick, not close it").not.toBe("Completed");
+
+    sitAs(WAREHOUSE);
     pickStart(pick, ctx);
     for (const l of pick.items) l.picked = available;
     decorateOutbound();

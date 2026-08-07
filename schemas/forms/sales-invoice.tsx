@@ -24,6 +24,7 @@ import {
   getBillingProfile,
   headerFromSource,
   invoiceTotals,
+  isOverBilled,
   lineAmount,
   netUnitPrice,
   nextInvoiceCode,
@@ -1058,6 +1059,32 @@ export const INV_FORM: FormSchema<InvRow> = {
         priceOverride: Boolean(r.priceOverride),
         overrideReason: String(r.overrideReason ?? ""),
       }));
+
+    /* ----------------------------------------------------------
+       You may not bill for more than was delivered.
+
+       `isOverBilled()` and `remainingBillable()` have described
+       this rule since the invoice module was written, and until
+       now nothing called either of them: the form seeded a
+       sensible invoiceQty and nobody checked what was saved. A
+       default is a suggestion — this is the guard.
+
+       It matters most on the delivery-order path, where the
+       basis is what the warehouse confirmed leaving the
+       building. Billing above it is billing for goods the
+       customer does not have.
+       ---------------------------------------------------------- */
+    const sourceType = String(s.sourceType ?? "Manual");
+    const overBilled = items.filter((it) => isOverBilled(it, sourceType));
+    if (overBilled.length) {
+      const first = overBilled[0];
+      ctx.toast(
+        "วางบิลเกินจำนวนที่ส่งได้",
+        `${first.code} — วางบิล ${num(first.invoiceQty)} เกินจำนวนที่ยังวางบิลได้ ${remainingBillable(first, sourceType)} ${first.unit}`,
+        "danger",
+      );
+      return;
+    }
 
     const patch = {
       sourceType: String(s.sourceType ?? "Manual"),

@@ -15,6 +15,7 @@ import {
   SHP_VEHICLE_TYPES,
 } from "@/data/shipments";
 import { INV_BRANCHES } from "@/data/sales-invoices";
+import { SALES_INVOICES } from "@/lib/domain/invoice";
 import { PRODUCTS } from "@/lib/domain/product";
 import {
   SHIPMENTS,
@@ -1048,6 +1049,16 @@ export const SHP_FORM: FormSchema<ShpRow> = {
           },
         ],
       } as unknown as ShpRow);
+    }
+
+    /* Point the invoice at this shipment, so the tracking number has one home
+       and one reader. The pointer goes on the invoice rather than the number
+       itself — see the field note on `SalesInvoice.shipmentRef`. Written here
+       because this is where the two documents first know about each other. */
+    const invRef = String(patch.invRef ?? "").trim();
+    if (invRef) {
+      const inv = SALES_INVOICES.find((i) => i.code === invRef);
+      if (inv) inv.shipmentRef = code;
     }
 
     decorateShipments();

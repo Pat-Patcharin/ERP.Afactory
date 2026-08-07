@@ -2,7 +2,9 @@
 
 import { actingUserName } from "./domain/admin";
 import { useState, type ReactNode } from "react";
-import { fmt, stamp, toDisplayDate, today, toInputDate } from "./format";
+import { notify } from "./domain/notify";
+import { SALES_ORDERS, SALES_REQUESTS } from "./domain/outbound";
+import { DASH, fmt, stamp, toDisplayDate, today, toInputDate } from "./format";
 import { cn } from "./utils";
 import { Icon } from "./icons";
 import type { ActionCtx } from "./types";
@@ -59,6 +61,32 @@ function commit(
   decorateShipments();
   ctx.refresh();
   ctx.toast(title, message, tone);
+}
+
+/**
+ * Whoever raised the paperwork this parcel came from.
+ *
+ * Walks shipment → sales order → sales request the same way the outbound
+ * workflows do, because that is where the person's name actually is: a
+ * shipment's `salesRep` is a display string off the order, not the account
+ * that keyed the document. Falls back through the chain rather than giving
+ * up, and sends nothing at all when no name can be found — an item addressed
+ * to nobody is worse than none.
+ */
+function notifyShipmentOwner(s: ShpRow, n: { title: string; body: string }) {
+  const so = SALES_ORDERS.find((x) => x.code === s.soRef);
+  const sr = so?.srRef ? SALES_REQUESTS.find((r) => r.code === so.srRef) : null;
+  const owner = sr?.createdBy || so?.createdBy || "";
+  if (!owner) return;
+
+  notify({
+    kind: "converted",
+    docType: "shipment",
+    docCode: s.code,
+    title: n.title,
+    body: n.body,
+    toUser: owner,
+  });
 }
 
 /* ============================================================
@@ -289,6 +317,120 @@ export function shpDispatch(s: ShpRow, ctx: ActionCtx) {
       commit(ctx, "Dispatch แล้ว", `${s.code} — ล็อกจำนวนสินค้าเรียบร้อย`);
     },
   });
+}
+
+/* ============================================================
+   THE CARRIER'S TRACKING NUMBER — ENTERED IN ONE PLACE
+
+   Here, on the shipment, because this is where the parcel is.
+   The invoice shows the number by following its `shipmentRef`;
+   it does not keep a copy. See the note in domain/shipment.ts
+   for why a second copy is worse than none.
+
+   Entering it is also the moment the salesperson can finally
+   answer "where is my customer's order", so the send is wired
+   to this transition rather than to a button somebody may or
+   may not press afterwards.
+   ============================================================ */
+
+export function shpSetTrackingNo(s: ShpRow, ctx: ActionCtx) {
+  if (["Draft", "Cancelled"].includes(s.status)) {
+    ctx.toast(
+      "ใส่เลข tracking ไม่ได้",
+      `${s.code} อยู่ในสถานะ ${s.status} — ต้อง Dispatch ก่อนจึงจะมีเลขพัสดุ`,
+      "warning",
+    );
+    return;
+  }
+
+  let v = { trackingNo: s.trackingNo, carrier: s.carrier, service: s.carrierService };
+
+  ctx.formModal({
+    title: s.trackingNo ? "แก้เลขพัสดุ" : "ใส่เลขพัสดุ",
+    confirmText: "บันทึกเลขพัสดุ",
+    body: () => <TrackingNoBody s={s} onChange={(next) => (v = next)} />,
+    onConfirm: () => {
+      const trackingNo = v.trackingNo.trim();
+      if (!trackingNo) {
+        ctx.toast("ยังไม่ได้กรอก", "ต้องระบุเลขพัสดุจากผู้ขนส่ง", "warning");
+        return false;
+      }
+      /* One number belongs to one parcel. Reusing it across two shipments
+         makes the trace back from it ambiguous, which is the one thing this
+         number exists to prevent. */
+      const clash = SHIPMENTS.find(
+        (x) => x.code !== s.code && (x.trackingNo ?? "").trim() === trackingNo,
+      );
+      if (clash) {
+        ctx.toast("เลขพัสดุซ้ำ", `${trackingNo} ถูกใช้กับ ${clash.code} แล้ว`, "danger");
+        return false;
+      }
+
+      const from = s.trackingNo;
+      s.trackingNo = trackingNo;
+      if (v.carrier.trim()) s.carrier = v.carrier.trim();
+      if (v.service.trim()) s.carrierService = v.service.trim();
+      s.updated = stamp();
+      s.updatedBy = USER();
+      log(s, from ? "Tracking number updated" : "Tracking number added", `${s.carrier} — ${trackingNo}`);
+      audit(s, from ? "Tracking updated" : "Tracking added", "trackingNo", from || DASH, trackingNo, "info");
+
+      /* Back to whoever raised the paperwork, by name — the person a customer
+         rings. `notifyOwner` walks the chain the same way the sales order
+         notifications do. */
+      notifyShipmentOwner(s, {
+        title: `${s.code} ของออกแล้ว`,
+        body: `${s.carrier}${s.carrierService ? ` (${s.carrierService})` : ""} — เลขพัสดุ ${trackingNo}${
+          s.expectedDelivery ? ` · คาดถึง ${s.expectedDelivery}` : ""
+        }`,
+      });
+
+      commit(ctx, "บันทึกเลขพัสดุแล้ว", `${s.code} — ${trackingNo}`);
+    },
+  });
+}
+
+function TrackingNoBody({
+  s,
+  onChange,
+}: {
+  s: ShpRow;
+  onChange: (v: { trackingNo: string; carrier: string; service: string }) => void;
+}) {
+  const [v, setV] = useState({
+    trackingNo: s.trackingNo,
+    carrier: s.carrier,
+    service: s.carrierService,
+  });
+  const put = (patch: Partial<typeof v>) => {
+    const next = { ...v, ...patch };
+    setV(next);
+    onChange(next);
+  };
+
+  const field = (label: string, value: string, on: (x: string) => void, ph: string) => (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-cap font-medium text-ink-2">{label}</span>
+      <input
+        aria-label={label}
+        value={value}
+        placeholder={ph}
+        onChange={(e) => on(e.target.value)}
+        className="rounded-btn border border-line px-3 py-2 text-[13px]"
+      />
+    </label>
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-cap text-ink-2">
+        เลขพัสดุเก็บที่รอบขนส่งที่เดียว — ใบกำกับจะอ่านจากที่นี่ไปแสดง ไม่ได้เก็บซ้ำ
+      </p>
+      {field("ผู้ขนส่ง", v.carrier, (x) => put({ carrier: x }), "เช่น Kerry Express")}
+      {field("บริการ", v.service, (x) => put({ service: x }), "เช่น Next Day")}
+      {field("เลขพัสดุ", v.trackingNo, (x) => put({ trackingNo: x }), "เช่น KEX1234567890")}
+    </div>
+  );
 }
 
 /* ---------- Tracking update ---------- */

@@ -513,6 +513,12 @@ export interface PackRow extends PackingTask {
   pct: number;
   boxCount: number;
   totalWeight: number;
+  /** Total the warehouse says can ship. Zero until it has been confirmed. */
+  confirmedQty: number;
+  /** True once every line carries a confirmed figure. */
+  isConfirmed: boolean;
+  /** Confirmed below what the order asked for — the rest becomes back order. */
+  shipsShort: boolean;
 }
 
 export const PACKING_TASKS = RAW_PACK as PackRow[];
@@ -524,6 +530,21 @@ export const packPackedQty = (t: { items?: PackingTask["items"] }) =>
 export const packWeight = (t: { packages?: PackingTask["packages"] }) =>
   Math.round((t.packages ?? []).reduce((s, b) => s + num(b.weight), 0) * 100) / 100;
 
+/**
+ * Confirmed only when EVERY line has been answered.
+ *
+ * `undefined` and `0` are different answers — see the field comment on
+ * `PackLine.confirmedQty` — so this tests for the property being present
+ * rather than for a truthy number. A task where one line was confirmed as
+ * "none of it ships" is confirmed; a task where one line was never looked at
+ * is not, and must not produce a delivery note.
+ */
+export const packIsConfirmed = (t: { items?: PackingTask["items"] }) =>
+  (t.items ?? []).length > 0 && (t.items ?? []).every((it) => it.confirmedQty !== undefined);
+
+export const packConfirmedQty = (t: { items?: PackingTask["items"] }) =>
+  (t.items ?? []).reduce((s, it) => s + num(it.confirmedQty), 0);
+
 export function decoratePacks() {
   for (const t of PACKING_TASKS) {
     t.name = t.code;
@@ -534,7 +555,103 @@ export function decoratePacks() {
     t.pct = pctOf(t.packedQty, t.totalQty);
     t.boxCount = t.packages?.length ?? 0;
     t.totalWeight = packWeight(t);
+    t.isConfirmed = packIsConfirmed(t);
+    t.confirmedQty = packConfirmedQty(t);
+    t.shipsShort = t.isConfirmed && confirmLines(t).some((l) => l.confirmed < l.ordered);
   }
+}
+
+/* ============================================================
+   WHAT THE WAREHOUSE IS BEING ASKED TO CONFIRM
+
+   Three numbers per line, from three different documents, and
+   keeping them straight is the whole point of the screen:
+
+     ordered   what the customer asked for      — sales order
+     picked    what came off the shelf          — pack line `qty`
+     confirmed what will actually go today      — the answer
+
+   `ordered` is matched against the sales order by product code
+   rather than carried through the pick and pack tasks, for the
+   same reason `packCreateDelivery` does it: warehouse lines get
+   filtered, split across boxes and renumbered, so a line that
+   travelled through them cannot be trusted to still line up
+   with the order line it came from.
+   ============================================================ */
+
+export interface ConfirmLine {
+  code: string;
+  name: string;
+  unit: string;
+  /** From the sales order. Falls back to what picking handed over. */
+  ordered: number;
+  /** What picking handed over — the ceiling for `confirmed`. */
+  picked: number;
+  confirmed: number;
+  /** Whether anybody has answered this line yet. */
+  answered: boolean;
+  shortReason: string;
+}
+
+export function confirmLines(t: {
+  soRef?: string;
+  items?: PackingTask["items"];
+}): ConfirmLine[] {
+  const so = SALES_ORDERS.find((s) => s.code === t.soRef);
+  return (t.items ?? []).map((it) => {
+    const src = (so?.items ?? []).find((l) => l.code === it.code);
+    const picked = num(it.qty);
+    return {
+      code: it.code,
+      name: it.name,
+      unit: it.unit,
+      ordered: src ? num(src.qty) : picked,
+      picked,
+      confirmed: it.confirmedQty === undefined ? picked : num(it.confirmedQty),
+      answered: it.confirmedQty !== undefined,
+      shortReason: it.shortReason ?? "",
+    };
+  });
+}
+
+/**
+ * Every reason this set of answers may not be written.
+ *
+ * Lives here rather than in the modal so the workflow can call it on the way
+ * to the write — a check that only runs while a form is open is a check that
+ * a stale page, a keyboard path or the API this becomes later walks straight
+ * past. The modal calls the same function to show the message early.
+ */
+export function checkConfirmLines(
+  lines: readonly ConfirmLine[],
+  answers: Readonly<Record<string, { qty: number; reason: string }>>,
+): string[] {
+  const problems: string[] = [];
+  for (const l of lines) {
+    const a = answers[l.code];
+    if (!a) {
+      problems.push(`${l.code} — ยังไม่ได้ระบุจำนวนที่ยืนยันส่ง`);
+      continue;
+    }
+    if (!Number.isFinite(a.qty) || a.qty < 0) {
+      problems.push(`${l.code} — จำนวนที่ยืนยันต้องเป็นตัวเลขไม่ติดลบ`);
+      continue;
+    }
+    /* The ceiling is what picking handed over, not what was ordered: the
+       warehouse cannot promise to ship stock it does not hold. */
+    if (a.qty > l.picked) {
+      problems.push(
+        `${l.code} — ยืนยัน ${a.qty} เกินจำนวนที่หยิบได้ ${l.picked} ${l.unit}`,
+      );
+      continue;
+    }
+    /* Short of the order is allowed, but never silently: somebody has to say
+       why, because this is the number the customer is billed from. */
+    if (a.qty < l.ordered && !a.reason.trim()) {
+      problems.push(`${l.code} — ส่งไม่ครบตามที่สั่ง ต้องระบุเหตุผล`);
+    }
+  }
+  return problems;
 }
 
 decoratePacks();

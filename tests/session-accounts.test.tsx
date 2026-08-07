@@ -37,6 +37,7 @@ const REP = "EMP004";
 const ADMIN = "EMP001";
 const SALES_ADMIN = "EMP013";
 const SALES_MANAGER = "EMP003";
+const WAREHOUSE = "EMP008";
 
 const SEED = JSON.parse(JSON.stringify(SALES_REQUESTS)) as SrRow[];
 
@@ -78,19 +79,21 @@ function approved(): SrRow {
 const labels = (acts: { label?: string }[]) => acts.map((a) => a.label ?? "");
 
 describe("Two accounts — who they are", () => {
-  it("offers the four chairs one order passes through, in that order", () => {
+  it("offers the five chairs one order passes through, in that order", () => {
     /* This used to read "exactly the sales rep and the administrator", from
        when every outbound approval needed a manager. The sales admin desk
-       exists now, so the demo carries the three sales chairs plus the one
-       that can reach Administration. */
+       exists now, and the warehouse joined it once confirming what actually
+       ships stopped being something the admin could do — so the demo carries
+       the four working chairs plus the one that reaches Administration. */
     const codes = demoAccounts().map((a) => a.code);
-    expect(codes).toEqual([REP, SALES_ADMIN, SALES_MANAGER, ADMIN]);
+    expect(codes).toEqual([REP, SALES_ADMIN, SALES_MANAGER, WAREHOUSE, ADMIN]);
 
     const roleOf = (i: number) => getRole(demoAccounts()[i].user.roleCode)!;
     expect(roleOf(0).code).toBe("SALES_REP");
     expect(roleOf(1).code).toBe("SALES_ADMIN");
     expect(roleOf(2).code).toBe("SALES_MANAGER");
-    expect(roleOf(3).all).toBe(true);
+    expect(roleOf(3).code).toBe("WAREHOUSE_STAFF");
+    expect(roleOf(4).all).toBe(true);
 
     /* Every one of them must be usable — a demo chair nobody can sit in is
        worse than not offering it. */

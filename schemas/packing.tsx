@@ -6,6 +6,7 @@ import { DASH, fmt } from "@/lib/format";
 import {
   packCancel,
   packComplete,
+  packConfirmShipQty,
   packCreateDelivery,
   packStart,
 } from "@/lib/workflows-outbound";
@@ -139,7 +140,16 @@ export const PACK_LIST: ListSchema<PackRow> = {
     if (["Waiting", "In Progress"].includes(task.status))
       acts.push({ label: "Complete Packing", icon: "checkCircle", run: (r) => packComplete(r, ctx) });
 
+    /* Offered whether or not it has been answered, so the warehouse can
+       correct a figure right up until the delivery note exists. */
     if (task.status === "Completed" && !task.doRef)
+      acts.push({
+        label: task.isConfirmed ? "แก้จำนวนที่ยืนยันส่ง" : "ยืนยันจำนวนที่ส่งได้",
+        icon: "checkCircle",
+        run: (r) => packConfirmShipQty(r, ctx),
+      });
+
+    if (task.status === "Completed" && !task.doRef && task.isConfirmed)
       acts.push({ label: "Create Delivery Order", icon: "delivery", run: (r) => packCreateDelivery(r, ctx) });
 
     if (task.doRef)
@@ -377,6 +387,12 @@ export const PACK_DETAIL: DetailSchema<PackRow> = {
     if (["Waiting", "In Progress"].includes(t.status))
       acts.push({ label: "Complete Packing", icon: "checkCircle", run: () => packComplete(t, ctx) });
     if (t.status === "Completed" && !t.doRef)
+      acts.push({
+        label: t.isConfirmed ? "แก้จำนวนที่ยืนยันส่ง" : "ยืนยันจำนวนที่ส่งได้",
+        icon: "checkCircle",
+        run: () => packConfirmShipQty(t, ctx),
+      });
+    if (t.status === "Completed" && !t.doRef && t.isConfirmed)
       acts.push({ label: "Create Delivery Order", icon: "delivery", run: () => packCreateDelivery(t, ctx) });
     acts.push({
       label: "Print Packing Slip",

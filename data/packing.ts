@@ -16,6 +16,21 @@ export interface PackLine {
   /** Quantity handed over by picking. */
   qty: number;
   packedQty: number;
+  /**
+   * What the warehouse says can actually go on the lorry.
+   *
+   * Undefined until somebody at the warehouse has confirmed it — which is not
+   * the same as zero, and the difference matters: zero is a confirmed refusal
+   * to ship this line, undefined is nobody having looked yet. The delivery
+   * order refuses to be created while any line is still undefined.
+   *
+   * Never above `qty`. Picking hands over what it found; the warehouse cannot
+   * confirm shipping more than it holds. Enforced in `checkConfirmLines()`,
+   * which the workflow calls before writing, not in the form.
+   */
+  confirmedQty?: number;
+  /** Why this line ships less than the order asked for. Required when short. */
+  shortReason?: string;
   /** Which box on this task the line went into. */
   box: string;
   note: string;
@@ -50,6 +65,17 @@ export interface PackingTask {
   remark: string;
   items: PackLine[];
   packages: PackBox[];
+  /**
+   * When the warehouse confirmed the shippable quantities, and who did it.
+   *
+   * Blank means it has not happened. The delivery order is refused until it
+   * has, so that the paperwork the customer is billed from is built out of
+   * what the warehouse said it could ship rather than what the order asked
+   * for. Two fields rather than a boolean because "who said so" is the part
+   * anybody investigating a short delivery actually wants.
+   */
+  confirmedAt?: string;
+  confirmedBy?: string;
   doRef: string;
   history: { t: string; d: string; u: string; when: string; kind: string }[];
   created: string;

@@ -89,12 +89,13 @@ export interface DemoAccount {
  * The accounts the sales flow is demonstrated with, in the order the work
  * actually moves through them.
  *
- * The seed carries thirteen users; these four are one story. The rep raises
+ * The seed carries thirteen users; these five are one story. The rep raises
  * the paperwork and cannot approve it. The sales admin signs everything
  * routine and moves it down the line — but not a price below the floor. The
- * sales manager signs that. The super admin is here because the demo needs a
- * chair that can reach the Administration module, not because the sales flow
- * needs one.
+ * sales manager signs that. The warehouse says what can actually be shipped,
+ * which the sales admin cannot say on their behalf. The super admin is here
+ * because the demo needs a chair that can reach the Administration module,
+ * not because the sales flow needs one.
  *
  * DEMO ONLY. When real authentication lands, this list and the account
  * switcher in the topbar both go: an account is what you logged in as, not
@@ -108,13 +109,18 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
   },
   {
     code: "EMP013",
-    purpose: "อนุมัติเอกสารขายราคาปกติ ยืนยันคู่ค้า เดินเอกสารจนถึงวางบิล",
+    purpose: "อนุมัติเอกสารขายราคาปกติ ยืนยันคู่ค้า ออกใบส่งของและวางบิล",
     initials: "NP",
   },
   {
     code: "EMP003",
     purpose: "อนุมัติราคาที่ต่ำกว่าราคาขั้นต่ำ — ด่านที่แอดมินผ่านไม่ได้",
     initials: "SJ",
+  },
+  {
+    code: "EMP008",
+    purpose: "หยิบของ แพ็ค และยืนยันจำนวนที่ส่งได้จริง — แอดมินยืนยันแทนไม่ได้",
+    initials: "WT",
   },
   {
     code: "EMP001",

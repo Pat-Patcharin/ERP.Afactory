@@ -14,6 +14,7 @@ import {
   saveSalesRequestDraft,
 } from "./domain/sales-request-draft";
 import { fmt, money0, stamp } from "./format";
+import { cn } from "./utils";
 import type { ActionCtx } from "./types";
 import {
   DELIVERY_ORDERS,
@@ -24,8 +25,11 @@ import {
   SALES_REQUESTS,
   availabilityFor,
   blockedForDraftPartner,
+  checkConfirmLines,
+  confirmLines,
   creditCheck,
   decorateOutbound,
+  decoratePacks,
   getPack,
   getPick,
   getSO,
@@ -33,9 +37,11 @@ import {
   nextPackCode,
   nextPickCode,
   nextSOCode,
+  packIsConfirmed,
   pickLineAvailability,
   soCloseBlocked,
   soLinkedDocs,
+  type ConfirmLine,
   type DoRow,
   type PackRow,
   type PickRow,
@@ -1780,6 +1786,12 @@ export function pickFillAvailable(task: PickRow, ctx: ActionCtx) {
  * which is what lets the order show real progress rather than a guess.
  */
 export function pickComplete(task: PickRow, ctx: ActionCtx) {
+  /* Warehouse work, warehouse permission. Without this the VIEW_ONLY grant
+     Sales Admin now carries on picking would be decoration: the menu item
+     would be hidden and the function would still run for anyone who reached
+     it. Whoever puts their hands on the goods says what came off the shelf. */
+  if (denied(ctx, "picking", "edit", "ปิดงานหยิบสินค้าไม่ได้")) return;
+
   const short = task.orderedQty - task.pickedQty;
 
   ctx.confirm({
@@ -1957,6 +1969,7 @@ export function packStart(task: PackRow, ctx: ActionCtx) {
 }
 
 export function packComplete(task: PackRow, ctx: ActionCtx) {
+  if (denied(ctx, "packing", "edit", "ปิดงานแพ็คไม่ได้")) return;
   if (!task.packages?.length) {
     ctx.toast("ยังไม่มีกล่อง", "เพิ่มกล่องอย่างน้อย 1 ใบก่อนปิดงานแพ็ค", "warning");
     return;
@@ -1976,17 +1989,293 @@ export function packComplete(task: PackRow, ctx: ActionCtx) {
   });
 }
 
-/** Completed pack → the delivery order that actually ships. */
+/* ============================================================
+   THE WAREHOUSE SAYS WHAT CAN ACTUALLY GO
+
+   The last thing that happens on the warehouse floor, and the
+   first number the customer-facing paperwork is allowed to be
+   built from.
+
+   Before this step the chain carried the order's intention all
+   the way to the invoice: pack line → delivery note → tax
+   invoice, each defaulting to the one before. That bills for
+   goods nobody has confirmed leaving the building.
+
+   Three properties hold this together, and all three are here
+   rather than in the modal:
+
+   1. Only the warehouse may answer. `edit` on `packing`, which
+      Sales Admin no longer holds — see the role note in
+      data/admin.ts. The desk that issues the invoice is not the
+      desk that says what shipped.
+   2. Nobody may confirm more than picking handed over.
+   3. Shipping short of the order needs a reason in writing.
+
+   Rules 2 and 3 live in `checkConfirmLines()` and are checked
+   again here on the way to the write, so a stale page cannot
+   walk past a form that was showing the message.
+   ============================================================ */
+
+function ConfirmShipForm({
+  lines,
+  onChange,
+}: {
+  lines: ConfirmLine[];
+  onChange: (v: Record<string, { qty: number; reason: string }>) => void;
+}) {
+  const [state, setState] = useState<Record<string, { qty: number; reason: string }>>(() =>
+    Object.fromEntries(lines.map((l) => [l.code, { qty: l.confirmed, reason: l.shortReason }])),
+  );
+
+  const set = (code: string, patch: Partial<{ qty: number; reason: string }>) => {
+    const next = { ...state, [code]: { ...state[code], ...patch } };
+    setState(next);
+    onChange(next);
+  };
+
+  const problems = checkConfirmLines(lines, state);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-cap text-ink-2">
+        ยืนยันจำนวนที่ส่งได้จริงทีละบรรทัด — ตัวเลขนี้คือตัวที่ใบส่งของและใบกำกับจะใช้
+        ส่วนที่ขาดจะกลายเป็นของค้างส่งบนใบสั่งขาย
+      </p>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr>
+              {["สินค้า", "สั่ง", "หยิบได้", "ยืนยันส่ง"].map((h, i) => (
+                <th
+                  key={h}
+                  className={cn(
+                    "whitespace-nowrap border-b border-line px-2 py-1.5 text-cap font-semibold text-ink-2",
+                    i === 0 ? "text-left" : "text-right",
+                  )}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l) => {
+              const v = state[l.code];
+              const over = v.qty > l.picked;
+              return (
+                <tr key={l.code}>
+                  <td className="border-b border-line px-2 py-1.5">
+                    <span className="flex flex-col">
+                      <span className="font-medium">{l.code}</span>
+                      <span className="text-cap text-ink-3">{l.name}</span>
+                    </span>
+                  </td>
+                  <td className="tnum border-b border-line px-2 py-1.5 text-right text-ink-2">
+                    {fmt(l.ordered)}
+                  </td>
+                  <td className="tnum border-b border-line px-2 py-1.5 text-right text-ink-2">
+                    {fmt(l.picked)}
+                  </td>
+                  <td className="border-b border-line px-2 py-1.5 text-right">
+                    <input
+                      type="number"
+                      min={0}
+                      max={l.picked}
+                      aria-label={`ยืนยันส่ง ${l.code}`}
+                      value={String(v.qty)}
+                      onChange={(e) => set(l.code, { qty: Number(e.target.value) })}
+                      className={cn(
+                        "tnum w-[92px] rounded-btn border px-2 py-1 text-right",
+                        over ? "border-danger text-danger-text" : "border-line",
+                      )}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {lines
+        .filter((l) => state[l.code].qty < l.ordered)
+        .map((l) => (
+          <TextField
+            key={l.code}
+            label={`เหตุผลที่ ${l.code} ส่งไม่ครบ (สั่ง ${fmt(l.ordered)} · ยืนยัน ${fmt(state[l.code].qty)})`}
+            placeholder="เช่น ของชำรุด 2 ชิ้นตอนแพ็ค — แจ้งลูกค้าแล้ว"
+            onChange={(val) => set(l.code, { reason: val })}
+          />
+        ))}
+
+      {problems.length > 0 && (
+        <div
+          data-testid="confirm-ship-problems"
+          className="rounded-btn border border-[#FDE68A] bg-warning-soft p-3"
+        >
+          <ul className="flex flex-col gap-0.5 text-[13px] text-warning-text">
+            {problems.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The warehouse confirms what can actually ship. */
+export function packConfirmShipQty(task: PackRow, ctx: ActionCtx) {
+  if (denied(ctx, "packing", "edit", "ยืนยันจำนวนที่ส่งได้ไม่ได้")) return;
+
+  if (task.status !== "Completed") {
+    ctx.toast(
+      "ยังยืนยันไม่ได้",
+      `${task.code} อยู่ในสถานะ ${task.status} — ปิดงานแพ็คให้เสร็จก่อน`,
+      "warning",
+    );
+    return;
+  }
+  if (task.doRef) {
+    ctx.toast(
+      "ออกใบส่งของไปแล้ว",
+      `${task.code} → ${task.doRef} — แก้จำนวนที่ยืนยันหลังออกเอกสารไม่ได้`,
+      "warning",
+    );
+    return;
+  }
+
+  const lines = confirmLines(task);
+  let answers: Record<string, { qty: number; reason: string }> = Object.fromEntries(
+    lines.map((l) => [l.code, { qty: l.confirmed, reason: l.shortReason }]),
+  );
+
+  ctx.formModal({
+    title: "ยืนยันจำนวนที่ส่งได้",
+    body: () => <ConfirmShipForm lines={lines} onChange={(v) => (answers = v)} />,
+    confirmText: "ยืนยันจำนวน",
+    onConfirm: () => {
+      /* Checked again on the way to the write, not only while the form was
+         open. See the note above this section. */
+      const problems = checkConfirmLines(lines, answers);
+      if (problems.length) {
+        ctx.toast("ยืนยันไม่ได้", problems[0], "danger");
+        return false;
+      }
+
+      const now = stamp();
+      for (const it of task.items ?? []) {
+        const a = answers[it.code];
+        if (!a) continue;
+        it.confirmedQty = a.qty;
+        it.shortReason = a.qty < (lines.find((l) => l.code === it.code)?.ordered ?? 0)
+          ? a.reason.trim()
+          : "";
+      }
+      task.confirmedAt = now;
+      task.confirmedBy = USER();
+      task.updated = now;
+
+      decoratePacks();
+      const short = lines.filter((l) => answers[l.code].qty < l.ordered);
+      const total = lines.reduce((s, l) => s + answers[l.code].qty, 0);
+
+      log(
+        task,
+        "Ship quantity confirmed",
+        short.length
+          ? `ยืนยันส่งได้ ${fmt(total)} หน่วย — ไม่ครบ ${short.length} รายการ`
+          : `ยืนยันส่งได้ครบ ${fmt(total)} หน่วย`,
+        short.length ? "warn" : "primary",
+      );
+
+      /* Whoever may raise the delivery note is who needs to know, read from
+         the matrix at this moment rather than named here — the same property
+         every other send in this file has. */
+      notify({
+        kind: short.length ? "escalated" : "converted",
+        docType: "packing",
+        docCode: task.code,
+        title: short.length
+          ? `${task.code} คลังยืนยันส่งได้บางส่วน`
+          : `${task.code} คลังยืนยันส่งได้ครบ`,
+        body: short.length
+          ? `ส่งได้ ${fmt(total)} หน่วย — ไม่ครบ ${short.length} รายการ (${short
+              .map((l) => `${l.code} ${fmt(answers[l.code].qty)}/${fmt(l.ordered)}`)
+              .join(" · ")}) — ออกใบส่งของตามจำนวนที่ยืนยันได้เลย`
+          : `ส่งได้ครบ ${fmt(total)} หน่วย จาก ${task.soRef} — ออกใบส่งของได้เลย`,
+        toRoles: rolesWhoMay("delivery-order", "create"),
+      });
+
+      commit(
+        ctx,
+        "ยืนยันจำนวนที่ส่งได้แล้ว",
+        short.length ? `${task.code} — ส่งได้บางส่วน` : `${task.code} — ส่งได้ครบ`,
+        short.length ? "warning" : "success",
+      );
+    },
+  });
+}
+
+/**
+ * Completed pack → the delivery order that actually ships.
+ *
+ * Guarded on `delivery-order` rather than on `packing`, because this is the
+ * other half of the split: the warehouse says what can go, the sales desk
+ * turns that into paperwork. Warehouse Staff hold no delivery-order rights
+ * and are refused here, exactly as Sales Admin is refused at the confirm.
+ */
 export function packCreateDelivery(task: PackRow, ctx: ActionCtx) {
+  if (denied(ctx, "delivery-order", "create", "ออกใบส่งของไม่ได้")) return;
+
   if (task.doRef) {
     ctx.toast("มีใบส่งของอยู่แล้ว", `${task.code} → ${task.doRef}`, "warning");
     ctx.goto(`/m/delivery-order/${encodeURIComponent(task.doRef)}`);
     return;
   }
 
+  /* The guard that makes the confirm step real. Without it the confirm is a
+     screen somebody may or may not have visited, and the delivery note falls
+     back to the order's intention exactly as before. */
+  if (!packIsConfirmed(task)) {
+    ctx.toast(
+      "ยังออกใบส่งของไม่ได้",
+      `${task.code} — คลังยังไม่ได้ยืนยันจำนวนที่ส่งได้`,
+      "warning",
+    );
+    return;
+  }
+
+  const confirmed = confirmLines(task).filter((l) => l.confirmed > 0);
+  if (!confirmed.length) {
+    ctx.toast(
+      "ไม่มีของให้ส่ง",
+      `${task.code} — คลังยืนยันว่าส่งไม่ได้เลยสักรายการ`,
+      "warning",
+    );
+    return;
+  }
+
+  const confirmedTotal = confirmed.reduce((s, l) => s + l.confirmed, 0);
+  const shortLines = confirmLines(task).filter((l) => l.confirmed < l.ordered);
+
   ctx.confirm({
     title: "Create delivery order?",
-    message: `ออกใบส่งของจาก ${task.code} — ${task.boxCount} กล่อง ${fmt(task.packedQty)} หน่วย`,
+    message: (
+      <>
+        ออกใบส่งของจาก {task.code} — {task.boxCount} กล่อง{" "}
+        <strong>{fmt(confirmedTotal)}</strong> หน่วย ตามจำนวนที่คลังยืนยัน
+        {shortLines.length > 0 && (
+          <>
+            <br />
+            <span className="font-semibold text-warning-text">
+              ไม่ครบ {shortLines.length} รายการ — ส่วนที่ขาดจะค้างอยู่บนใบสั่งขาย
+            </span>
+          </>
+        )}
+      </>
+    ),
     confirmText: "Create Delivery Order",
     tone: "primary",
     onConfirm: () => {
@@ -2032,17 +2321,24 @@ export function packCreateDelivery(task: PackRow, ctx: ActionCtx) {
          * picked short and dropped, not at all. Matching on product code
          * against the order is both shorter and correct.
          */
-        items: (task.items ?? []).map((it, i) => {
-          const src = (so?.items ?? []).find((s) => s.code === it.code);
+        /* Quantities come from what the warehouse confirmed — never from
+           `packedQty` or the order line. Billing follows this document, so a
+           figure nobody on the floor stood behind must not be able to reach
+           it. Lines confirmed at zero are left off entirely: a delivery note
+           listing something that is not on the lorry is wrong on paper, and
+           the shortfall is already recorded as outstanding on the order. */
+        items: confirmed.map((l, i) => {
+          const it = (task.items ?? []).find((p) => p.code === l.code);
+          const src = (so?.items ?? []).find((s) => s.code === l.code);
           return {
             line: i + 1,
-            code: it.code,
-            name: it.name,
-            unit: it.unit,
-            qty: Number(it.packedQty) || Number(it.qty),
+            code: l.code,
+            name: l.name,
+            unit: l.unit,
+            qty: l.confirmed,
             delivered: 0,
-            box: it.box,
-            note: src?.note ?? it.note ?? "",
+            box: it?.box ?? "",
+            note: src?.note ?? it?.note ?? "",
             customName: src?.customName ?? "",
             showOnBill: src?.showOnBill !== false,
           };
@@ -2064,6 +2360,28 @@ export function packCreateDelivery(task: PackRow, ctx: ActionCtx) {
 
       task.doRef = code;
       task.updated = now;
+
+      /* What the warehouse could not confirm stays owed on the order.
+         `outstandingQty` is derived from ordered − delivered and is already
+         right; what has to move is the STATUS, so the order does not sit in
+         Picking looking finished while part of it is still owed. */
+      if (so && shortLines.length && !["Cancelled", "Completed"].includes(so.status)) {
+        so.status = "Partially Delivered";
+        so.updated = now;
+        log(
+          so,
+          "Back order raised",
+          `${code} ส่งได้ ${fmt(confirmedTotal)} หน่วย — ค้างส่ง ${shortLines
+            .map((l) => `${l.code} ${fmt(l.ordered - l.confirmed)}`)
+            .join(" · ")}`,
+          "warn",
+        );
+        notifyOwner(so, {
+          kind: "escalated",
+          title: `${so.code} ส่งได้ไม่ครบ`,
+          body: `${code} ส่ง ${fmt(confirmedTotal)} หน่วย — ยังค้าง ${shortLines.length} รายการ`,
+        });
+      }
 
       commit(ctx, "ออกใบส่งของแล้ว", `${task.code} → ${code}`);
       ctx.goto(`/m/delivery-order/${encodeURIComponent(code)}`);

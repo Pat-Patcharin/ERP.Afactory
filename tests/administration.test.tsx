@@ -743,21 +743,43 @@ describe("Administration — company and notification settings", () => {
     }
   });
 
-  it("toggles an in-app notification and writes an audit entry", async () => {
+  /* ----------------------------------------------------------
+     The page used to carry a live In-App switch. It flipped
+     `NOTIFICATIONS[].inApp` and wrote an audit entry saying the
+     administrator had switched the notification off — while
+     `lib/domain/notify.ts`, the only thing that sends, never
+     read that flag. The notification kept arriving.
+
+     These two tests are the guard. They fail if any control that
+     mutates the settings comes back before the settings are
+     actually consulted at send time.
+     ---------------------------------------------------------- */
+
+  it("offers no control that would claim to change a notification", async () => {
     const user = userEvent.setup();
-    const target = NOTIFICATIONS.find((n) => n.code === "NT-LOWSTOCK")!;
-    const before = target.inApp;
+    const before = NOTIFICATIONS.map((n) => `${n.code}:${n.inApp}:${n.email}:${n.status}`);
     const logBefore = AUDIT_LOG.length;
 
     render(<NotificationSettingsPage />);
-    await user.click(screen.getByLabelText(`In-App ${target.label}`));
+    const table = screen.getByTestId("notification-table");
 
-    expect(target.inApp).toBe(!before);
-    expect(AUDIT_LOG.length).toBe(logBefore + 1);
-    expect(AUDIT_LOG[0].module).toBe("admin-notification");
+    /* Nothing switch-like inside the table — the shape the old bug took. */
+    expect(within(table).queryAllByRole("checkbox")).toHaveLength(0);
+    expect(within(table).queryAllByRole("switch")).toHaveLength(0);
 
-    target.inApp = before;
-    AUDIT_LOG.shift();
+    /* And nothing else in the table is clickable into a mutation. */
+    for (const el of within(table).queryAllByRole("button")) await user.click(el);
+
+    expect(
+      NOTIFICATIONS.map((n) => `${n.code}:${n.inApp}:${n.email}:${n.status}`),
+      "settings must be untouched — the send path does not read them yet",
+    ).toEqual(before);
+    expect(AUDIT_LOG.length, "and nothing may be recorded as though it did").toBe(logBefore);
+  });
+
+  it("says plainly that the page is not connected to the sender", () => {
+    render(<NotificationSettingsPage />);
+    expect(screen.getByTestId("notification-not-wired")).toBeInTheDocument();
   });
 
   it("filters notifications down to one role", async () => {

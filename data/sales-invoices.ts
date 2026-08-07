@@ -99,6 +99,20 @@ export interface SalesInvoice {
   nextFollowUp: string;
   collectionNote: string;
 
+  /**
+   * The shipment this invoice's goods travelled on — a pointer, never a copy.
+   *
+   * The carrier, the tracking number, the delivery status and the date it
+   * actually arrived all live on the shipment and are read from there through
+   * `invoiceShipping()`. Deliberately NOT stored again here.
+   *
+   * Same reasoning as `effectiveBillType`: two copies of one fact drift, and
+   * the day they disagree nobody can tell which is the truth. A tracking
+   * number is worse than most, because the wrong one sends a customer to a
+   * carrier's site that says the parcel does not exist.
+   */
+  shipmentRef?: string;
+
   cancelReason: string;
   voidReason: string;
   voidBy: string;

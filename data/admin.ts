@@ -285,9 +285,18 @@ export const ROLES: RoleDef[] = [
     system: false,
     perms: {
       dashboard: ["view"],
-      /* The whole sell side, including picking, packing, delivery,
-         invoicing and credit notes — those are this desk's daily work. */
+      /* The whole sell side — delivery, invoicing and credit notes are this
+         desk's daily work. */
       ...grant(ALL, ["Outbound"]),
+      /* ...except the two jobs that happen on the warehouse floor.
+         Whoever puts their hands on the goods is the only one who can say
+         what is really there, so picking and packing are the warehouse's to
+         complete and to confirm. This desk watches them to chase the work,
+         and issues the paperwork afterwards from the figure the warehouse
+         confirmed — it does not get to confirm that figure on their behalf.
+         Read-only here is what makes the confirm step mean anything. */
+      picking: VIEW_ONLY,
+      packing: VIEW_ONLY,
       /* Confirming a partner the rep raised is part of taking the order;
          deleting one is not. */
       "business-partner": ["view", "create", "edit", "approve", "export", "print"],
