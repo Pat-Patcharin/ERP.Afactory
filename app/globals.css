@@ -122,15 +122,26 @@
    editing a component.
    ============================================================ */
 [data-doc-family="inbound"] {
-  /* Values land in P2b, once the tone is chosen. Until then this
-     block deliberately restates the defaults: the mechanism ships
-     first and is proven not to change anything, exactly as the
-     shared editor did in P1a. */
-  --c-doc-accent: var(--c-primary);
-  --c-doc-accent-hover: var(--c-primary-hover);
-  --c-doc-accent-soft: var(--c-primary-soft);
-  --c-doc-accent-border: var(--c-primary-border);
-  --c-doc-head: #2f3542;
+  /* Teal, chosen against a deep navy that also cleared contrast.
+     Navy sat 171° from the brand orange and read as a different
+     PRODUCT; teal sits 150° away and reads as a different JOB,
+     which is the whole point — the buyer should know at a glance
+     that this is not a sales document, without feeling they have
+     changed system.
+
+     Contrast against white, measured not estimated:
+       accent  #0f766e  5.47:1   passes AA
+       head    #134e4a  9.48:1   white on the table band
+       soft    #f0fdfa  4.64:1   muted ink on it, passes AA
+     The brand orange it replaces scores 2.80:1 and passes
+     neither AA nor the 3:1 large-text floor — see BACKLOG N-6. */
+  --c-doc-accent: #0f766e;
+  --c-doc-accent-hover: #115e59;
+  --c-doc-accent-soft: #f0fdfa;
+  --c-doc-accent-border: #99f6e4;
+  /* A deep shade of the same hue rather than the shared slate: a
+     half-recoloured sheet sends a half signal. */
+  --c-doc-head: #134e4a;
   --c-doc-head-text: #ffffff;
 }
 
