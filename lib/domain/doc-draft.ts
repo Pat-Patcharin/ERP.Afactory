@@ -610,6 +610,44 @@ export function applyShipToOn<T extends PartyFields>(draft: T, label: string): T
   };
 }
 
+/* ============================================================
+   THE PATCHES A SELL-SIDE DOCUMENT HANDLES FOR ITSELF
+
+   Three fields on a quotation or a sales request do more than
+   store what was typed: choosing a customer loads the partner,
+   choosing an address rewrites the ship-to block, and changing
+   the bill type retaxes every line.
+
+   This lived inside the shared document editor until P1b, which
+   forced that editor to know `customerPick`, `shipAddressPick`
+   and `billType` — fields a purchase request does not have and
+   never will. The editor was deciding on the document's behalf,
+   so the document's shape leaked into it.
+
+   It sits in this file rather than beside the editor because it
+   is sell-side business logic, not editor logic. The two callers
+   share it because it is one rule, not because the code looked
+   alike.
+
+   Returns null when the patch is an ordinary field write, which
+   is the caller's signal to fall through to a plain merge.
+   ============================================================ */
+
+export function sellSidePatch<T extends PartyFields & TermFields & { items: DraftLine[] }>(
+  draft: T,
+  patch: Partial<T>,
+): T | null {
+  const read = (key: string) => String((patch as Record<string, unknown>)[key] ?? "");
+
+  /* Order matters and matches what the editor did before: the customer is
+     tried first because it rewrites the most, the bill type last because it
+     only touches tax. */
+  if ("customerPick" in patch) return applyCustomerTo(draft, read("customerPick"));
+  if ("shipAddressPick" in patch) return applyShipToOn(draft, read("shipAddressPick"));
+  if ("billType" in patch) return applyBillType(draft, read("billType"));
+  return null;
+}
+
 /**
  * Match the partner's sales rep to a real one.
  *

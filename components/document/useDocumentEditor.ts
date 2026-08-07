@@ -3,18 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { actingUserName, can } from "@/lib/domain/admin";
 import {
-  applyBillType,
-  applyCustomerTo,
-  applyProductForCustomer,
-  applyShipToOn,
   blankLine,
   blockingIssues,
   type DocInsight,
   type DocTotals,
   type DraftIssue,
   type DraftLine,
-  type PartyFields,
-  type TermFields,
 } from "@/lib/domain/doc-draft";
 import { clearDraft, draftKey, readDraft, writeDraft } from "@/lib/form";
 import { timeAgo } from "@/lib/format";
@@ -64,12 +58,21 @@ export interface DocumentSaveResult {
 /**
  * The minimum a draft must carry for this hook to run it.
  *
- * The party and terms blocks come in whole rather than field by field,
- * because the shared handlers this hook calls — `applyCustomerTo`,
- * `applyShipToOn`, `applyBillType` — are written against exactly those and
- * restating a subset here would let the two drift.
+ * Four fields, and each is here because this file genuinely touches it:
+ * `code` and `status` for the header and for duplicating, `items` for every
+ * line operation, `mode` for the switch a first save performs.
+ *
+ * It used to extend `PartyFields` and `TermFields` as well, which meant the
+ * shared editor knew about customers, ship-to addresses and VAT — none of
+ * which a purchase request has. That was not a typing problem: the editor was
+ * intercepting those patches itself, so it had to know them. The interception
+ * moved to `sellSidePatch()` in doc-draft.ts, and the knowledge went with it.
+ *
+ * If a document ever needs a fifth field here, check first whether the shell
+ * is deciding something the document should decide. Adding an optional is
+ * almost always the wrong repair.
  */
-export interface EditableDraft extends PartyFields, TermFields {
+export interface EditableDraft {
   code: string;
   status: string;
   items: DraftLine[];
@@ -97,14 +100,27 @@ export interface DocumentEditorConfig<TDraft extends EditableDraft, TRecord> {
     opts: { finalise: boolean; user: string },
   ) => DocumentSaveResult;
   /**
-   * Patches this document handles itself, tried before the shared ones.
+   * Patches this document handles itself.
    *
-   * Return the next draft to claim the patch, or null to let the shared
-   * handling take it. This is how a sales request loads a quotation's lines
-   * when its `quotationRef` changes without the quotation editor — which has
-   * no such field — carrying the branch.
+   * Return the next draft to claim the patch, or null to fall through to a
+   * plain field merge. Everything that is more than "store what was typed"
+   * belongs here: loading a customer, adopting a quotation's lines, retaxing
+   * on a bill-type change. The hook does not know which those are, which is
+   * what lets a purchase request use it without owning a single sell-side
+   * field.
    */
   onPatch?: (draft: TDraft, patch: Partial<TDraft>) => TDraft | null;
+
+  /**
+   * How a product chosen in the grid fills its line.
+   *
+   * Required rather than defaulted, because the answer is a business rule and
+   * every document has a different one: a quotation opens the line at this
+   * customer's tier price, a purchase request would open it at what the
+   * supplier last charged. A neutral default here would quietly price
+   * documents at the catalogue and look like it was working.
+   */
+  applyProduct: (line: DraftLine, code: string, draft: TDraft) => DraftLine;
 }
 
 export interface DocumentEditorApi<TDraft extends EditableDraft> {
@@ -175,7 +191,7 @@ export interface SaveReporter {
 export function useDocumentEditor<TDraft extends EditableDraft, TRecord>(
   config: DocumentEditorConfig<TDraft, TRecord>,
 ): DocumentEditorApi<TDraft> {
-  const { entity, record, blank, fromRecord, onPatch } = config;
+  const { entity, record, blank, fromRecord, onPatch, applyProduct } = config;
   const mode = record ? "edit" : "create";
   const storeKey = draftKey(entity, (record as { code?: string } | undefined)?.code);
 
@@ -197,19 +213,11 @@ export function useDocumentEditor<TDraft extends EditableDraft, TRecord>(
     (patch: Partial<TDraft>) => {
       dirty.current = true;
       setDraft((d) => {
-        /* The document's own patches first — it knows about fields this hook
-           has never heard of. */
+        /* Whatever the document handles for itself — loading a customer,
+           adopting a quotation, retaxing on a bill-type change. This hook
+           does not know or care which those are. */
         const own = onPatch?.(d, patch);
         if (own) return own;
-        /* The customer drives half the document; picking one loads the partner
-           rather than only writing the field. */
-        if ("customerPick" in patch)
-          return applyCustomerTo(d, String((patch as Record<string, unknown>).customerPick ?? ""));
-        if ("shipAddressPick" in patch)
-          return applyShipToOn(d, String((patch as Record<string, unknown>).shipAddressPick ?? ""));
-        /* Changing the bill type retaxes every line — see applyBillType. */
-        if ("billType" in patch)
-          return applyBillType(d, String((patch as Record<string, unknown>).billType ?? ""));
         return { ...d, ...patch };
       });
     },
@@ -244,39 +252,41 @@ export function useDocumentEditor<TDraft extends EditableDraft, TRecord>(
     }));
   }, []);
 
-  /* The line opens at this customer's own price, not the catalogue's — the
-     tier is known the moment the product is picked, so asking at the wrong
-     one and correcting it later would only make the grid argue with itself. */
-  const pickProduct = useCallback((id: string, code: string) => {
-    dirty.current = true;
-    setDraft((d) => ({
-      ...d,
-      items: d.items.map((l) =>
-        l.id === id ? applyProductForCustomer(l, code, d.customerPick) : l,
-      ),
-    }));
-  }, []);
+  /* The line opens at whatever price this document says it should — see the
+     `applyProduct` note on the config. It is settled the moment the product
+     is picked, because filling it at the wrong figure and correcting it later
+     would only make the grid argue with itself. */
+  const pickProduct = useCallback(
+    (id: string, code: string) => {
+      dirty.current = true;
+      setDraft((d) => ({
+        ...d,
+        items: d.items.map((l) => (l.id === id ? applyProduct(l, code, d) : l)),
+      }));
+    },
+    [applyProduct],
+  );
 
   const addLine = useCallback(() => {
     dirty.current = true;
     setDraft((d) => ({ ...d, items: [...d.items, blankLine()] }));
   }, []);
 
-  const addLines = useCallback((codes: string[]) => {
-    if (!codes.length) return;
-    dirty.current = true;
-    setDraft((d) => {
-      /* An untouched blank row at the end is filler, not data — replace it. */
-      const kept = d.items.filter((l) => l.code);
-      return {
-        ...d,
-        items: [
-          ...kept,
-          ...codes.map((c) => applyProductForCustomer(blankLine(), c, d.customerPick)),
-        ],
-      };
-    });
-  }, []);
+  const addLines = useCallback(
+    (codes: string[]) => {
+      if (!codes.length) return;
+      dirty.current = true;
+      setDraft((d) => {
+        /* An untouched blank row at the end is filler, not data — replace it. */
+        const kept = d.items.filter((l) => l.code);
+        return {
+          ...d,
+          items: [...kept, ...codes.map((c) => applyProduct(blankLine(), c, d))],
+        };
+      });
+    },
+    [applyProduct],
+  );
 
   const removeLine = useCallback((id: string) => {
     dirty.current = true;

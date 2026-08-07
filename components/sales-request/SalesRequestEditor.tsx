@@ -13,7 +13,12 @@ import {
   validateSrDraft,
   type SalesRequestDraft,
 } from "@/lib/domain/sales-request-draft";
-import { planBillTypeChange } from "@/lib/domain/doc-draft";
+import {
+  applyProductForCustomer,
+  planBillTypeChange,
+  sellSidePatch,
+} from "@/lib/domain/doc-draft";
+import type { DraftLine } from "@/lib/domain/doc-draft";
 import type { SalesRequest } from "@/data/sales-requests";
 import { buildPrintJob, getPrintConfig } from "@/lib/print";
 import { toDisplayDate } from "@/lib/format";
@@ -95,6 +100,17 @@ const SR_ITEM_LAYOUT: ItemTableLayout = {
   stock: true,
 };
 
+/**
+ * A picked product opens the line at this customer's own price.
+ *
+ * Module scope, not an inline arrow in the config: the hook lists it as a
+ * dependency of `pickProduct` and `addLines`, so a fresh identity every render
+ * would rebuild both and re-render the item grid for nothing. They were stable
+ * before the config existed and stay stable now.
+ */
+const applyLineProduct = (line: DraftLine, code: string, draft: SalesRequestDraft) =>
+  applyProductForCustomer(line, code, draft.customerPick);
+
 /** An internal request closes with the approver, never the customer. */
 const SR_SIGNATURES = [
   { en: "Prepared By", th: "ผู้จัดทำ" },
@@ -114,10 +130,16 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
     totals: srTotals,
     insight: srInsight,
     validate: validateSrDraft,
-    /* The whole reason a quotation exists: the customer agreed a price, so
-       the request carries those exact lines rather than being retyped. */
+    /* Tried in this order deliberately. Adopting a quotation is this
+       document's own move — the whole reason a quotation exists is that the
+       customer agreed a price, so the request carries those exact lines
+       rather than being retyped. Everything after it is the sell-side
+       handling both this and the quotation share. */
     onPatch: (d, patch) =>
-      "quotationRef" in patch ? applyQuotation(d, String(patch.quotationRef ?? "")) : null,
+      "quotationRef" in patch
+        ? applyQuotation(d, String(patch.quotationRef ?? ""))
+        : sellSidePatch(d, patch),
+    applyProduct: applyLineProduct,
     save: (d, { finalise, user }) => saveSalesRequestDraft(d, { submit: finalise, user }),
   });
 

@@ -157,3 +157,54 @@ describe("Document accent — contrast", () => {
     expect(contrast("#6b7280", "#f0fdfa")).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+/* ============================================================
+   THE SHELL MUST NOT LEARN THE SELL SIDE
+
+   `EditableDraft` is the whole contract between the shared
+   document editor and the documents that use it. It carries four
+   fields, and every one is something this editor genuinely
+   touches.
+
+   It used to extend `PartyFields` and `TermFields`, which meant
+   the editor knew about customers, ship-to addresses and VAT —
+   none of which a purchase request has. The cause was not the
+   type: the editor was intercepting those patches itself, so it
+   had to know them. Moving the interception to `sellSidePatch()`
+   is what let the type shrink.
+
+   This test is the tripwire on the repair. Widening the contract
+   again is how a shared component quietly becomes a sell-side
+   component with a general-sounding name.
+   ============================================================ */
+
+describe("Shared document editor — the contract stays narrow", () => {
+  const hook = read("components/document/useDocumentEditor.ts");
+
+  it("asks a draft for four fields and no more", () => {
+    const block = hook.slice(
+      hook.indexOf("export interface EditableDraft"),
+      hook.indexOf("}", hook.indexOf("export interface EditableDraft")),
+    );
+    const fields = [...block.matchAll(/^\s{2}(\w+)\??:/gm)].map((m) => m[1]);
+    expect(fields.sort()).toEqual(["code", "items", "mode", "status"]);
+    expect(block, "it must not inherit the sell-side blocks").not.toMatch(/extends/);
+  });
+
+  it("names no sell-side field anywhere in the shared editor", () => {
+    /* The fields that walked back in last time. A purchase request has none
+       of them, so their presence here means the shell is deciding something
+       a document should decide. */
+    for (const field of ["customerPick", "shipAddressPick", "billType", "taxId"]) {
+      expect(hook, `the shared editor must not know '${field}'`).not.toContain(field);
+    }
+  });
+
+  it("leaves the sell-side patch handling in the sell-side module", () => {
+    const doc = read("lib/domain/doc-draft.ts");
+    expect(doc).toContain("export function sellSidePatch");
+    for (const field of ["customerPick", "shipAddressPick", "billType"]) {
+      expect(doc, `${field} belongs here, not in the editor`).toContain(field);
+    }
+  });
+});

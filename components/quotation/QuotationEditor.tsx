@@ -11,7 +11,12 @@ import {
   validateDraft,
   type QuotationDraft,
 } from "@/lib/domain/quotation-draft";
-import { planBillTypeChange } from "@/lib/domain/doc-draft";
+import {
+  applyProductForCustomer,
+  planBillTypeChange,
+  sellSidePatch,
+} from "@/lib/domain/doc-draft";
+import type { DraftLine } from "@/lib/domain/doc-draft";
 import type { Quotation } from "@/data/quotations";
 import { buildPrintJob, getPrintConfig } from "@/lib/print";
 import { toDisplayDate } from "@/lib/format";
@@ -89,6 +94,17 @@ const QT_ITEM_LAYOUT: ItemTableLayout = {
   standardPrice: true,
 };
 
+/**
+ * A picked product opens the line at this customer's own price.
+ *
+ * Module scope, not an inline arrow in the config: the hook lists it as a
+ * dependency of `pickProduct` and `addLines`, so a fresh identity every render
+ * would rebuild both and re-render the item grid for nothing. They were stable
+ * before the config existed and stay stable now.
+ */
+const applyLineProduct = (line: DraftLine, code: string, draft: QuotationDraft) =>
+  applyProductForCustomer(line, code, draft.customerPick);
+
 /** A quotation closes with the customer accepting it. */
 const QT_SIGNATURES = [
   { en: "Prepared By", th: "ผู้จัดทำ" },
@@ -108,6 +124,9 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
     totals: draftTotals,
     insight: draftInsight,
     validate: validateDraft,
+    /* A quotation has no patch of its own beyond the sell-side three. */
+    onPatch: sellSidePatch,
+    applyProduct: applyLineProduct,
     save: (d, { finalise, user }) => saveQuotationDraft(d, { issue: finalise, user }),
   });
 
