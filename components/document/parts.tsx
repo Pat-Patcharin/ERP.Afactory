@@ -382,6 +382,46 @@ export function MetaPanel({
 }
 
 /** Controls a document builds its metadata rows from. */
+/**
+ * The two controls every document's metadata panel is built from, bound to
+ * one draft and one setter.
+ *
+ * Each editor was declaring the same pair of closures before its own row
+ * list; they are here so a third document does not declare them a third time.
+ * Field names stay `keyof TDraft`, so a typo is still a compile error rather
+ * than a silently empty box.
+ */
+export function metaControls<TDraft>(
+  draft: TDraft,
+  set: (patch: Partial<TDraft>) => void,
+) {
+  const txt = (field: keyof TDraft & string, label: string, type = "text") => (
+    <MetaText
+      label={label}
+      type={type}
+      value={String(draft[field] ?? "")}
+      onChange={(v) => set({ [field]: v } as Partial<TDraft>)}
+    />
+  );
+
+  const sel = (
+    field: keyof TDraft & string,
+    label: string,
+    options: readonly string[],
+    placeholder?: string,
+  ) => (
+    <MetaSelect
+      label={label}
+      value={String(draft[field] ?? "")}
+      options={options}
+      placeholder={placeholder}
+      onChange={(v) => set({ [field]: v } as Partial<TDraft>)}
+    />
+  );
+
+  return { txt, sel };
+}
+
 export function MetaText({
   label,
   value,
