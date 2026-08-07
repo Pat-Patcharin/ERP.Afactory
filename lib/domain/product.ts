@@ -148,12 +148,28 @@ function detailFor(p: Product): ProductDetail {
 /**
  * Attach the detail payload and derived stock figures to every product.
  *
- *   Available = On Hand − Reserved
- *   Projected = On Hand − Back Order + On Order   (kept distinct on purpose)
+ *   Available  = On Hand − Reserved
+ *   Projected  = On Hand − Reserved − Back Order + On Order
+ *              = Available − Back Order + On Order
  *
- * These two definitions are the authority for the whole module. `productStock()`
- * now follows them; until P0b it substituted Reserved for Back Order in
- * Projected, so the two disagreed wherever a product had reservations.
+ * WHY BOTH ARE SUBTRACTED, since the second line looks like double counting:
+ *
+ * Reserved and Back Order are both stock that already has an owner. They
+ * differ only in timing — Reserved is promised and not yet due, Back Order is
+ * promised and already late — and neither can be sold to somebody else. A
+ * projected balance is an answer to "how much will be free to commit", so
+ * anything already committed comes off it, whichever of the two buckets it
+ * sits in.
+ *
+ * The definition used to read `On Hand − Back Order + On Order`, subtracting
+ * only one of them. **That was the hole this revision closes**, not an
+ * elaboration on a rule that was already right: in the current data every
+ * product's Back Order is zero and the reservations are the live figure, so
+ * the old definition let a buyer see 1,850 units free on a product with 150
+ * of them already spoken for — and under-order by exactly that much.
+ *
+ * These lines are the authority for the whole module. `productStock()` follows
+ * them.
  *
  * The totals below are summed from the warehouse rows, while `productStock()`
  * reads the flat per-product fields. That is a second, smaller divergence:
@@ -172,7 +188,7 @@ export function decorateProducts() {
     p.onOrderTotal = d.whRows.reduce((s, r) => s + r.onOrder, 0);
     p.backOrder = d.backOrder;
     p.availTotal = p.onHandTotal - p.resTotal;
-    p.projected = p.onHandTotal - p.backOrder + p.onOrderTotal;
+    p.projected = p.availTotal - p.backOrder + p.onOrderTotal;
   }
 }
 
@@ -234,18 +250,16 @@ export function stockStatus(onHand: number, res: number, rop: number) {
  * to 1.5× the reorder point.
  *
  * `projected` follows the definition stated above `decorateProducts()` and
- * nowhere else:
+ * nowhere else — including why both Reserved and Back Order come off it.
  *
- *     Available = On Hand − Reserved
- *     Projected = On Hand − Back Order + On Order
- *
- * It used to read `available + onOrder`, which silently substituted Reserved
- * for Back Order. Two formulas for one word, seventy lines apart in this
- * file, with a comment above the other one claiming they were "kept distinct
- * on purpose" — the comment described a field (`ProductRow.projected`) that
- * is written and never read, while every screen showing a projected balance
- * was reading this function. A comment that describes something the code
- * does not do is worse than no comment, so the code moved to the comment.
+ * It used to read `available + onOrder`, subtracting neither Back Order nor
+ * anything else beyond the reservation. Two formulas for one word, seventy
+ * lines apart in this file, with a comment above the other one claiming they
+ * were "kept distinct on purpose" — and the field that comment described
+ * (`ProductRow.projected`) is written and never read, while every screen
+ * showing a projected balance reads this function. A comment that describes
+ * something the code does not do is worse than no comment, so the code moved
+ * to the comment and the comment moved to the truth.
  */
 export function productStock(code: string) {
   const p = getProduct(code);
@@ -255,12 +269,12 @@ export function productStock(code: string) {
   const reserved = p.reserved ?? 0;
   const onOrder = p.onOrder ?? 0;
   /* Demand already promised to customers beyond what is on the shelf. Zero
-     throughout the current seed, which is why correcting the formula moves no
-     figure any screen shows today — see the P0b note in docs/BACKLOG.md. */
+     throughout the current seed — which is exactly why the old definition
+     could subtract it alone and look correct. */
   const backOrder = p.backOrder ?? 0;
   const rop = p.lowLevel ?? 0;
   const available = onHand - reserved;
-  const projected = onHand - backOrder + onOrder;
+  const projected = available - backOrder + onOrder;
   const target = Math.round(rop * 1.5);
   const suggested = Math.max(0, target - projected);
 

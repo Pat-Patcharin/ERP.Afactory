@@ -128,16 +128,27 @@ describe("Product catalogue — price, not stock", () => {
 
    The module states its own arithmetic above `decorateProducts()`:
 
-     Available = On Hand − Reserved
-     Projected = On Hand − Back Order + On Order
+     Available  = On Hand − Reserved
+     Projected  = On Hand − Reserved − Back Order + On Order
 
-   `productStock()` used to compute `available + onOrder` instead,
-   quietly substituting Reserved for Back Order. Nothing caught it
-   because no test had ever asserted the formula — only that the
-   numbers were numbers.
+   Both committed buckets come off, because Reserved and Back
+   Order are the same thing at different stages — stock that
+   already has an owner and cannot be sold again.
 
-   These tests are the assertion the comment always needed. They
-   fail if either definition drifts from the other again.
+   Two bugs lived here, and the second was introduced while
+   fixing the first:
+
+     1. `productStock()` computed `available + onOrder`,
+        subtracting neither.
+     2. The stated definition subtracted Back Order ONLY. Since
+        every Back Order in this seed is zero and the
+        reservations are not, following it literally made a
+        product with 150 units spoken for read as 1,850 free
+        rather than 1,700 — worse than the bug being fixed.
+
+   Neither was caught, because the tests asserted that the
+   numbers were numbers. Asserting the formula is what makes
+   them able to refuse anything.
    ============================================================ */
 
 describe("Product stock — the stated formula is the one that runs", () => {
@@ -149,23 +160,63 @@ describe("Product stock — the stated formula is the one that runs", () => {
     }
   });
 
-  it("computes Projected as On Hand − Back Order + On Order", () => {
+  it("computes Projected as On Hand − Reserved − Back Order + On Order", () => {
     for (const s of stocked()) {
-      expect(s.projected, s.code).toBe(s.onHand - s.backOrder + s.onOrder);
+      expect(s.projected, s.code).toBe(s.onHand - s.reserved - s.backOrder + s.onOrder);
+      /* Stated the second way too, since the comment gives both forms and a
+         reader may check either. */
+      expect(s.projected, s.code).toBe(s.available - s.backOrder + s.onOrder);
     }
   });
 
-  it("does not substitute Reserved for Back Order, which is the bug it had", () => {
-    /* The old formula was `available + onOrder`. On every product carrying a
-       reservation the two disagree, so this is the case that would have
-       caught it — and the case a product with no reservations cannot. */
-    const withReservations = stocked().filter((s) => s.reserved > 0);
-    expect(withReservations.length, "the seed must keep such a product").toBeGreaterThan(0);
+  it("takes off stock that is reserved but not yet back-ordered", () => {
+    /* The live case in this seed, and the one the Back-Order-only definition
+       got wrong: a buyer must not see reserved units as free to commit. */
+    const reservedOnly = stocked().filter((s) => s.reserved > 0 && s.backOrder === 0);
+    expect(reservedOnly.length, "the seed must keep such a product").toBeGreaterThan(0);
 
-    for (const s of withReservations) {
-      expect(s.projected, `${s.code} must not be the old formula`).not.toBe(
-        s.available + s.onOrder,
+    for (const s of reservedOnly) {
+      expect(s.projected, `${s.code} must not count reserved units as free`).toBeLessThan(
+        s.onHand + s.onOrder,
       );
+      expect(s.projected, s.code).toBe(s.onHand + s.onOrder - s.reserved);
+    }
+  });
+
+  it("takes off back-ordered stock as well", () => {
+    /* No product in the seed carries a back order, so the case that proves
+       the other half of the rule has to be built. Without it the rule would
+       be half-tested and could regress to subtracting only the reservation
+       without a single test noticing. */
+    const p = stockedProducts().find((x) => (x.reserved ?? 0) > 0)!;
+    const before = p.backOrder;
+    try {
+      p.backOrder = 25;
+      const s = productStock(p.code)!;
+      expect(s.backOrder, "it is carried through, not swallowed").toBe(25);
+      expect(s.projected).toBe(s.onHand - s.reserved - 25 + s.onOrder);
+      /* And it moves the answer — a test that set it and asserted nothing
+         changed would be the shape this file exists to avoid. */
+      expect(s.projected).toBe(productStock(p.code)!.projected);
+      p.backOrder = before;
+      expect(productStock(p.code)!.projected - s.projected).toBe(25);
+    } finally {
+      p.backOrder = before;
+    }
+  });
+
+  it("subtracts nothing when nothing is committed", () => {
+    const p = stockedProducts()[0];
+    const res = p.reserved;
+    const back = p.backOrder;
+    try {
+      p.reserved = 0;
+      p.backOrder = 0;
+      const s = productStock(p.code)!;
+      expect(s.projected).toBe(s.onHand + s.onOrder);
+    } finally {
+      p.reserved = res;
+      p.backOrder = back;
     }
   });
 
