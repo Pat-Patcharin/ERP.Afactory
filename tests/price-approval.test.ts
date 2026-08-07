@@ -412,3 +412,63 @@ describe("srSubmit / srApprove — the floor holds without a quotation", () => {
     expect(r.priceApprovalLevel, "judged again on the way back in").toBe("admin");
   });
 });
+
+/* ============================================================
+   THE GATE STILL CANNOT REACH THE DEMO DATA
+
+   Backlog item 11. The documents carry product codes from one
+   space (`AA-TH003-WL`) and the 807-row price master from
+   another (`D-AD001-01`), so `priceApproval()` resolves nothing
+   and every seeded quotation comes out `level: "admin"` with
+   its whole line count uncheckable.
+
+   Everything above this block proves the rule works when the
+   codes DO line up, because those tests build their lines from
+   `priceMasterRows()`. None of them can notice that no real
+   document reaches the rule at all.
+
+   *** THIS TEST GOING RED IS GOOD NEWS. ***
+
+   It fails on the day a document line resolves to a price-master
+   row — which is the day the floor starts biting real data and
+   item 11 can close. Do not "fix" it back to green: read the
+   backlog entry, confirm the code spaces were genuinely joined,
+   then delete this block and close the item.
+   ============================================================ */
+
+describe("Item 11 — the seeded documents cannot reach the price master", () => {
+  it("resolves no quotation line, and therefore flags none", () => {
+    let lines = 0;
+    let uncheckable = 0;
+    let flagged = 0;
+
+    for (const q of QUOTATIONS) {
+      const items = (q.items ?? []) as never[];
+      if (!items.length) continue;
+      const plan = priceApproval(items);
+      lines += items.length;
+      uncheckable += plan.uncheckable.length;
+      flagged += plan.flagged.length;
+    }
+
+    expect(lines, "the seed must still carry priced quotations").toBeGreaterThan(0);
+    expect(
+      uncheckable,
+      "every line unresolved — see the note above; red here means item 11 is fixed",
+    ).toBe(lines);
+    expect(flagged, "so nothing can ever be escalated from seeded data").toBe(0);
+  });
+
+  it("names the two code spaces that do not meet", () => {
+    /* Pinned so the failure above is self-explaining rather than a bare
+       number: whoever sees it red can tell at once which side moved. */
+    const docCode = String((QUOTATIONS.find((q) => q.items?.length)?.items ?? [])[0]?.code ?? "");
+    const masterCodes = priceMasterRows().map((r) => r.product_code);
+
+    expect(docCode, "documents use the AA-/AB-/AT- space").toMatch(/^A[A-Z]-/);
+    expect(
+      masterCodes.includes(docCode),
+      `${docCode} is absent from the price master — the whole of item 11`,
+    ).toBe(false);
+  });
+});
