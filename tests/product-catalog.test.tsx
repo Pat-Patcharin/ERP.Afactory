@@ -3,7 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ListView } from "@/components/engine/ListView";
 import { FullDetail } from "@/components/engine/FullDetail";
-import { PRODUCTS, getProduct, isStocked, stockedProducts } from "@/lib/domain/product";
+import {
+  PRODUCTS,
+  getProduct,
+  isStocked,
+  productStock,
+  stockedProducts,
+} from "@/lib/domain/product";
 import {
   catalogCategory,
   catalogHeldBack,
@@ -114,6 +120,84 @@ describe("Product catalogue — price, not stock", () => {
     /* price_last is a floor, not a fourth list a customer can buy from. */
     expect(names).not.toContain("Last Price");
     expect(p.priceRef!.floor).toBe(280);
+  });
+});
+
+/* ============================================================
+   ONE DEFINITION OF PROJECTED
+
+   The module states its own arithmetic above `decorateProducts()`:
+
+     Available = On Hand − Reserved
+     Projected = On Hand − Back Order + On Order
+
+   `productStock()` used to compute `available + onOrder` instead,
+   quietly substituting Reserved for Back Order. Nothing caught it
+   because no test had ever asserted the formula — only that the
+   numbers were numbers.
+
+   These tests are the assertion the comment always needed. They
+   fail if either definition drifts from the other again.
+   ============================================================ */
+
+describe("Product stock — the stated formula is the one that runs", () => {
+  const stocked = () => stockedProducts().map((p) => productStock(p.code)!);
+
+  it("computes Available as On Hand − Reserved", () => {
+    for (const s of stocked()) {
+      expect(s.available, s.code).toBe(s.onHand - s.reserved);
+    }
+  });
+
+  it("computes Projected as On Hand − Back Order + On Order", () => {
+    for (const s of stocked()) {
+      expect(s.projected, s.code).toBe(s.onHand - s.backOrder + s.onOrder);
+    }
+  });
+
+  it("does not substitute Reserved for Back Order, which is the bug it had", () => {
+    /* The old formula was `available + onOrder`. On every product carrying a
+       reservation the two disagree, so this is the case that would have
+       caught it — and the case a product with no reservations cannot. */
+    const withReservations = stocked().filter((s) => s.reserved > 0);
+    expect(withReservations.length, "the seed must keep such a product").toBeGreaterThan(0);
+
+    for (const s of withReservations) {
+      expect(s.projected, `${s.code} must not be the old formula`).not.toBe(
+        s.available + s.onOrder,
+      );
+    }
+  });
+
+  it("returns Back Order, which the purchase side reads", () => {
+    for (const s of stocked()) {
+      expect(typeof s.backOrder, s.code).toBe("number");
+      expect(s.backOrder, s.code).toBe(getProduct(s.code)!.backOrder);
+    }
+  });
+
+  it("agrees with the row-level figures the module also derives", () => {
+    /* `decorateProducts()` applies the same two definitions to warehouse-row
+       totals. Where a product's flat fields and its rows agree, the two paths
+       must land on the same number — that is what "one definition" means. */
+    for (const p of stockedProducts()) {
+      const s = productStock(p.code)!;
+      if (p.onHandTotal !== s.onHand || p.onOrderTotal !== s.onOrder) continue;
+      expect(p.projected, p.code).toBe(s.projected);
+    }
+  });
+
+  it("suggests ordering up to target off the projected balance", () => {
+    for (const s of stocked()) {
+      expect(s.suggested, s.code).toBe(Math.max(0, s.target - s.projected));
+    }
+  });
+
+  it("answers nothing for a product the warehouse never held", () => {
+    /* A catalogue row is not "zero in stock" — see `isStocked`. */
+    const p = getProduct("D-AD001-01")!;
+    expect(isStocked(p)).toBe(false);
+    expect(productStock("NO-SUCH-CODE")).toBeNull();
   });
 });
 

@@ -147,8 +147,21 @@ function detailFor(p: Product): ProductDetail {
 
 /**
  * Attach the detail payload and derived stock figures to every product.
+ *
  *   Available = On Hand − Reserved
  *   Projected = On Hand − Back Order + On Order   (kept distinct on purpose)
+ *
+ * These two definitions are the authority for the whole module. `productStock()`
+ * now follows them; until P0b it substituted Reserved for Back Order in
+ * Projected, so the two disagreed wherever a product had reservations.
+ *
+ * The totals below are summed from the warehouse rows, while `productStock()`
+ * reads the flat per-product fields. That is a second, smaller divergence:
+ * where a product carries both, the two can differ. `p.projected` and
+ * `p.availTotal` have no reader anywhere in the app — every screen goes
+ * through `productStock()` — so nothing depends on which wins today. Left in
+ * place rather than deleted in the same commit that changed the formula; see
+ * docs/BACKLOG.md item N-5.
  */
 export function decorateProducts() {
   for (const p of PRODUCTS) {
@@ -219,6 +232,20 @@ export function stockStatus(onHand: number, res: number, rop: number) {
  * Live stock intelligence for a product code — the heart of the "smart"
  * Purchase Request grid. Suggested quantity brings the projected balance up
  * to 1.5× the reorder point.
+ *
+ * `projected` follows the definition stated above `decorateProducts()` and
+ * nowhere else:
+ *
+ *     Available = On Hand − Reserved
+ *     Projected = On Hand − Back Order + On Order
+ *
+ * It used to read `available + onOrder`, which silently substituted Reserved
+ * for Back Order. Two formulas for one word, seventy lines apart in this
+ * file, with a comment above the other one claiming they were "kept distinct
+ * on purpose" — the comment described a field (`ProductRow.projected`) that
+ * is written and never read, while every screen showing a projected balance
+ * was reading this function. A comment that describes something the code
+ * does not do is worse than no comment, so the code moved to the comment.
  */
 export function productStock(code: string) {
   const p = getProduct(code);
@@ -227,9 +254,13 @@ export function productStock(code: string) {
   const onHand = p.onHand ?? p.stock ?? 0;
   const reserved = p.reserved ?? 0;
   const onOrder = p.onOrder ?? 0;
+  /* Demand already promised to customers beyond what is on the shelf. Zero
+     throughout the current seed, which is why correcting the formula moves no
+     figure any screen shows today — see the P0b note in docs/BACKLOG.md. */
+  const backOrder = p.backOrder ?? 0;
   const rop = p.lowLevel ?? 0;
   const available = onHand - reserved;
-  const projected = available + onOrder;
+  const projected = onHand - backOrder + onOrder;
   const target = Math.round(rop * 1.5);
   const suggested = Math.max(0, target - projected);
 
@@ -252,6 +283,7 @@ export function productStock(code: string) {
     onHand,
     reserved,
     onOrder,
+    backOrder,
     available,
     projected,
     rop,
