@@ -1,9 +1,12 @@
+/// <reference types="vite/client" />
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { buildPrintJob, PRINT_CONFIGS, PRINT_DOC_TYPES } from "@/lib/print";
+import { buildPrintJob, PRINT_CONFIGS, PRINT_DOC_TYPES, recordPreview, recordPrint } from "@/lib/print";
 import { SALES_INVOICES } from "@/data/sales-invoices";
+import { audit, issueNumber } from "@/lib/domain/admin";
+import { stamp, today } from "@/lib/format";
 
 /* ============================================================
    ONE ERA, AND IT IS THE GREGORIAN ONE
@@ -97,6 +100,114 @@ describe("data holds Gregorian years", () => {
     }
 
     expect(found, `Buddhist-era dates must not be stored:\n${found.join("\n")}`).toEqual([]);
+  });
+});
+
+describe("no action writes a Buddhist year into a record", () => {
+  /*
+     The blind spot in the test above, and the reason this one exists.
+
+     The file scan reads `data/` at rest. It proves what was committed. It
+     cannot see a value the application writes while it runs — and that is
+     exactly where the worst instance was hiding: `audit()` formatted its own
+     Buddhist timestamp and pushed it onto AUDIT_LOG on every single action.
+     The committed file stayed clean, the file scan stayed green, and the
+     records drifted the moment anybody used the app.
+
+     A file scan and a runtime scan are different tests, not two ways of
+     writing one. Anything that only ever exists in memory is invisible to
+     the first and caught only by the second.
+
+     Why the audit log in particular is worth a test of its own: it is what
+     somebody reads to put events in order, and it sits beside the documents
+     it points at. `LOG-000042 · 08/08/2569` next to `QT2506-0001 ·
+     22/06/2026` cannot be sequenced against each other at all — the log
+     stops being evidence.
+  */
+
+  /* Every record store in the application, not a list somebody maintains —
+     a list would go stale the first time a module was added. */
+  const stores = import.meta.glob("../data/*.ts", { eager: true }) as Record<
+    string,
+    Record<string, unknown>
+  >;
+
+  /** Walk everything reachable, collecting dd/mm/yyyy with their location. */
+  function allDates(): { where: string; text: string; year: number }[] {
+    const out: { where: string; text: string; year: number }[] = [];
+    const seen = new WeakSet<object>();
+
+    const visit = (node: unknown, where: string, depth: number) => {
+      if (depth > 12 || node == null) return;
+      if (typeof node === "string") {
+        for (const m of node.matchAll(DMY)) {
+          const d = Number(m[1]);
+          const mo = Number(m[2]);
+          if (d < 1 || d > 31 || mo < 1 || mo > 12) continue;
+          out.push({ where, text: m[0], year: Number(m[3]) });
+        }
+        return;
+      }
+      if (typeof node !== "object") return;
+      if (seen.has(node as object)) return;
+      seen.add(node as object);
+      if (Array.isArray(node)) {
+        node.forEach((v, i) => visit(v, `${where}[${i}]`, depth + 1));
+        return;
+      }
+      for (const [k, v] of Object.entries(node)) visit(v, `${where}.${k}`, depth + 1);
+    };
+
+    for (const [file, mod] of Object.entries(stores)) {
+      for (const [name, value] of Object.entries(mod)) {
+        if (typeof value === "function") continue;
+        visit(value, `${file.replace("../", "")}:${name}`, 0);
+      }
+    }
+    return out;
+  }
+
+  const buddhist = () => allDates().filter((d) => isBE(d.year));
+  const report = (list: ReturnType<typeof allDates>) =>
+    list.map((d) => `  ${d.where} = ${d.text}`).join("\n");
+
+  it("the walk actually reaches the records", () => {
+    /*
+       Without this the whole block would pass against a walk that visits
+       nothing, which is how a guard ends up green for the wrong reason.
+       The committed data holds hundreds of dates; if this number collapses,
+       the scan broke, not the data.
+    */
+    expect(allDates().length).toBeGreaterThan(400);
+  });
+
+  it("the shared helpers produce Gregorian years", () => {
+    /* Everything below writes through these two. If they were Buddhist,
+       every assertion after this would be testing the wrong thing. */
+    expect(isBE(Number(stamp().split("/")[2].slice(0, 4)))).toBe(false);
+    expect(isBE(Number(today().split("/")[2]))).toBe(false);
+  });
+
+  it("the records start clean", () => {
+    const found = buddhist();
+    expect(found, `before any action:\n${report(found)}`).toEqual([]);
+  });
+
+  it("stays clean after actions that write to records", () => {
+    /* `audit()` is the one that was wrong; the print recorders and the
+       number series are included because they are the other paths that
+       write a stamp without a form in front of them. */
+    audit("Era test", "quotation", "ตรวจว่าบันทึกการใช้งานเป็น ค.ศ.", "QT2506-0001");
+    audit("Era test", "sales-order", "เรียกซ้ำเพื่อให้มีมากกว่าหนึ่งแถว", "SO2506-0001");
+    issueNumber("quotation");
+
+    const job = buildPrintJob("quotation", "QT2506-0001");
+    expect(job).not.toBeNull();
+    recordPreview(job!.config, "QT2506-0001");
+    recordPrint(job!.config, "QT2506-0001", "ORIGINAL", job!.totalPages);
+
+    const found = buddhist();
+    expect(found, `written while the app was running:\n${report(found)}`).toEqual([]);
   });
 });
 

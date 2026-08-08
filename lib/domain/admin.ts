@@ -18,7 +18,7 @@ import {
   type UserDef,
   type WorkflowDef,
 } from "@/data/admin";
-import { DASH, beYear } from "@/lib/format";
+import { DASH, beYear, stamp } from "@/lib/format";
 
 /* ============================================================
    ADMINISTRATION FRAMEWORK
@@ -497,15 +497,26 @@ export function audit(
   result = "Success",
 ): AuditEntry {
   const user = currentUser();
-  const now = new Date();
-  /* The audit log reads in BE, unlike `format.stamp()` which reads in CE —
-     a difference nobody chose, and one D4 settles for the whole app. Left as
-     it was so this step changes no visible value; only the 543 moved. */
-  const stamp = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${beYear(now.getFullYear())} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
+  /*
+     `stamp()`, like every other module — not a Buddhist year built by hand.
+
+     This line used to format its own BE timestamp, with a comment saying the
+     difference was "one D4 settles for the whole app". D4 settled the rule
+     and did not come back for this line, which is the trouble with a comment
+     that defers: nobody is ever assigned to check that the later step
+     happened. It survived until a test went looking.
+
+     Getting it wrong here is worse than getting it wrong on a screen. The
+     audit log is what an investigator reads to put events in order, and it
+     sits beside the documents it refers to — `LOG-000042 · 08/08/2569`
+     against `QT2506-0001 · 22/06/2026` cannot be sequenced at all. It also
+     wrote into a record on every action, so the D5 tripwire, which reads
+     files at rest, could never see it.
+  */
   const entry: AuditEntry = {
     code: `LOG-${String(++auditSeq).padStart(6, "0")}`,
-    when: stamp,
+    when: stamp(),
     event,
     user: user.name,
     userCode: user.code,
