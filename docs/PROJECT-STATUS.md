@@ -10,7 +10,8 @@
 [`BACKLOG.md`](./BACKLOG.md) งานค้างและกฎที่งานนี้สอน ·
 [`Sales-Journey-Spec.md`](./Sales-Journey-Spec.md) สเปกรอบแรก ·
 [`Sales-Journey-Roles-Notifications.md`](./Sales-Journey-Roles-Notifications.md) สเปกรอบสอง ·
-[`PRICING_RULES.md`](./PRICING_RULES.md) กติกาการตั้งราคา
+[`PRICING_RULES.md`](./PRICING_RULES.md) กติกาการตั้งราคา ·
+[`DATE-ERA.md`](./DATE-ERA.md) ศักราช — หน้าจอ ค.ศ. กระดาษ พ.ศ.
 
 ---
 

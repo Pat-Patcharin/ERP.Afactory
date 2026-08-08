@@ -100,6 +100,64 @@ describe("data holds Gregorian years", () => {
   });
 });
 
+describe("the screen does not convert to the Buddhist era", () => {
+  /*
+     The decision, in one sentence: screens are Gregorian, paper is Buddhist,
+     no exceptions. `docs/DATE-ERA.md` carries the reasoning; the short version
+     is that <input type="date"> only speaks Gregorian, so a Buddhist list
+     beside a Gregorian editor would put two eras on one SCREEN — the same
+     fault D5 just chased off the paper, moved rather than fixed.
+
+     This test exists because that decision is only cheap to hold while it is
+     total. Converting one screen "just here" is how it gets lost: each site
+     looks harmless, and the person adding the fortieth one has no way to know
+     a decision was ever made. So the rule is enforced where it can be seen,
+     rather than remembered.
+
+     What this does NOT cover, said plainly so nobody reads more safety into
+     it than it has: three places in `lib/domain/` still convert to BE and
+     feed the screen — the audit-log timestamp and two yearly rollups. They
+     are outside this scan because removing them changes an existing test's
+     expectation, which is a decision, not a cleanup. BACKLOG N-9.
+  */
+  const dirs = ["schemas", "components", "app"];
+
+  function walk(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) return walk(full);
+      return /\.tsx?$/.test(e.name) ? [full] : [];
+    });
+  }
+
+  /* `components/print` renders the sheet, but it renders a PrintJob that
+     `buildPrintJob` has already converted — the conversion lives in
+     lib/print, and no component is entitled to do its own. */
+  const files = dirs.flatMap(walk);
+
+  /* `beYear` / `toBuddhistText` by name, and a bare 543 in any arithmetic. */
+  const BE_CONVERSION = /\b(beYear|toBuddhistText)\s*\(|[+\-]\s*543\b|\b543\s*[+\-]/;
+
+  it("scans a real set of files", () => {
+    expect(files.length).toBeGreaterThan(50);
+  });
+
+  it.each(files)("%s does not convert years for display", (file) => {
+    const src = readFileSync(file, "utf8");
+    const hits = src
+      .split("\n")
+      .map((line, i) => ({ line, no: i + 1 }))
+      .filter(({ line }) => BE_CONVERSION.test(line));
+
+    expect(
+      hits,
+      `screens are Gregorian — see docs/DATE-ERA.md:\n${hits
+        .map((h) => `  ${file}:${h.no}  ${h.line.trim()}`)
+        .join("\n")}`,
+    ).toEqual([]);
+  });
+});
+
 describe("a printed sheet carries one era", () => {
   /*
      The other half. Records being Gregorian is not the promise made to the
