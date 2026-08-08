@@ -22,6 +22,7 @@ import { actingUserName } from "./admin";
 import { stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import { warehouseOptions } from "./outbound";
 import { META_LABELS, printCompany } from "@/lib/print";
+import { bahtText } from "@/lib/print/words";
 import type { PrintConfig, PrintDoc, PrintLine } from "@/lib/print/types";
 
 /* ============================================================
@@ -131,9 +132,11 @@ export function draftFromPurchaseRequest(pr: PurchaseRequest): PurchaseRequestDr
       tax: 0,
       note: it.note,
     })),
-    headerDisc: 0,
-    freight: 0,
-    otherCharges: 0,
+    /* Recovered, not reset — see the note in draftFromQuotation. */
+    headerDisc: pr.headerDisc,
+    freight: pr.freight,
+    otherCharges: pr.otherCharges,
+    /* Rounding is derived by `docTotals`, never typed and never stored. */
     rounding: 0,
   };
 }
@@ -329,7 +332,11 @@ export function prPrintDoc(draft: PurchaseRequestDraft, config: PrintConfig): Pr
       rounding: t.rounding,
       grandTotal: t.grandTotal,
       currency: "THB",
-      amountInWords: "",
+      /* Spelled out, like the quotation and the sales request, and like this
+         same request once it is saved — the print engine fills it in from
+         the store. Left empty here, the preview and the issued sheet
+         disagreed on a line of the paper. */
+      amountInWords: bahtText(t.grandTotal),
     },
     bank: null,
     remarks: str(draft.reason)
@@ -380,6 +387,10 @@ export function savePurchaseRequestDraft(
     warehouse: str(draft.warehouse),
     supplier: str(draft.supplier),
     note: str(draft.reason),
+    /* In `patch`, so an edit rewrites them — see the note in the quotation. */
+    headerDisc: num(draft.headerDisc),
+    freight: num(draft.freight),
+    otherCharges: num(draft.otherCharges),
     items,
     updated: now,
     updatedBy: user,
@@ -391,14 +402,17 @@ export function savePurchaseRequestDraft(
     return { code, created: false };
   }
 
-  PURCHASE_REQUESTS.unshift({
+  /* Typed, not double-cast — see the note in the quotation. `PurchaseRequest`
+     has no decorated variant, so nothing needs casting away at all here. */
+  const fresh: PurchaseRequest = {
     code,
     ...patch,
     status: submit ? "Pending Approval" : "Draft",
     approvals: [],
     created: now,
     createdBy: user,
-  } as unknown as PurchaseRequest);
+  };
+  PURCHASE_REQUESTS.unshift(fresh);
 
   return { code, created: true };
 }

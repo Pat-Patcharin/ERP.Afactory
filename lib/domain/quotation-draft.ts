@@ -287,6 +287,12 @@ export function draftFromQuotation(q: Quotation): QuotationDraft {
        than defaulted, so reopening a 90-day quotation shows 90. */
     validDays: validDaysFrom(dmyToIso(q.quoteDate), dmyToIso(q.validUntil)),
     validUntil: dmyToIso(q.validUntil),
+    /* Recovered, not reset. The round trip is the whole point: a quotation
+       reopened for edit has to show the freight the customer already agreed
+       to, or the next save quietly removes it. */
+    headerDisc: q.headerDisc,
+    freight: q.freight,
+    otherCharges: q.otherCharges,
     customerRef: q.customerRef,
     salesRep: q.salesRep,
     priceList: q.priceList,
@@ -589,6 +595,12 @@ export function saveQuotationDraft(
     billType,
     customerRef: str(draft.customerRef),
     note: str(draft.remarks),
+    /* What the header carries on top of the lines. In `patch`, so an edit
+       writes them too — a freight charge removed on the second save has to
+       actually come off the record. */
+    headerDisc: num(draft.headerDisc),
+    freight: num(draft.freight),
+    otherCharges: num(draft.otherCharges),
     items,
     updated: now,
     updatedBy: user,
@@ -607,7 +619,20 @@ export function saveQuotationDraft(
     return { code, created: false };
   }
 
-  QUOTATIONS.unshift({
+  /*
+     Typed as `Quotation` before the cast, not straight to `QtRow`.
+
+     This said `} as unknown as QtRow)`, and a double cast switches off every
+     check — including the ones that have nothing to do with decoration. That
+     is how three header-charge fields stayed missing from the write for
+     months without the compiler saying a word: nothing was ever checking.
+
+     `QtRow` adds the decorated fields, which are filled by
+     `decorateQuotations()` on the line below and genuinely are not known
+     here. So the literal is checked against the record it must satisfy, and
+     only the decoration gap is cast away.
+  */
+  const fresh: Quotation = {
     code,
     ...patch,
     status: "Draft",
@@ -619,6 +644,14 @@ export function saveQuotationDraft(
     rejectReason: "",
     soRef: "",
     srRef: "",
+    /* These four were missing until the double cast came off, and nothing
+       said so. `revisions` is the one that mattered: the snapshot trail is
+       append-only and every reader does `q.revisions.length`, so a quotation
+       born through the editor carried `undefined` where the history goes. */
+    revisions: [],
+    approvedBy: "",
+    approvedAt: "",
+    sentAt: "",
     created: now,
     createdBy: user,
     history: [
@@ -630,7 +663,8 @@ export function saveQuotationDraft(
         kind: "primary",
       },
     ],
-  } as unknown as QtRow);
+  };
+  QUOTATIONS.unshift(fresh as QtRow);
 
   decorateQuotations();
   return { code, created: true };

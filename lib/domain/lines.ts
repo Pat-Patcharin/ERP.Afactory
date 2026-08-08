@@ -81,3 +81,130 @@ export const docGrandTotal = (d: { items?: DocLine[] }) => sum(d.items, lineNet)
 /** Progress of one quantity against another, clamped to 0–100. */
 export const pctOf = (done: number, total: number) =>
   total > 0 ? Math.min(100, Math.max(0, Math.round((done / total) * 100))) : 0;
+
+/* ------------------------------------------------------------
+   DOCUMENT TOTALS
+
+   Moved here from doc-draft.ts. It is pure line arithmetic and
+   belongs beside the per-line functions it calls, but the reason
+   it MOVED is concrete: outbound.ts needs recordTotals for its
+   list column, doc-draft.ts imports outbound.ts, and the cycle
+   left recordTotals undefined at module-load time — every list
+   decorated at import blew up. lines.ts imports nothing, so
+   nothing can close a loop through it.
+   ------------------------------------------------------------ */
+
+const num = (v: unknown) => Number(v) || 0;
+const str = (v: unknown) => String(v ?? "").trim();
+
+/* ---------- Totals ---------- */
+
+export interface DocTotals {
+  subtotal: number;
+  lineDiscount: number;
+  headerDiscount: number;
+  netAmount: number;
+  vat: number;
+  freight: number;
+  otherCharges: number;
+  rounding: number;
+  grandTotal: number;
+  itemCount: number;
+  totalQty: number;
+}
+
+export interface ChargeFields {
+  headerDisc: number | "";
+  freight: number | "";
+  otherCharges: number | "";
+}
+
+/**
+ * Every figure a document shows, from the shared line maths.
+ *
+ * The header discount is applied after the line discounts and before VAT, so a
+ * quotation, the request it becomes and the order after that agree to the
+ * satang. Nothing here is a second calculation engine — the per-line work is
+ * lib/domain/lines.ts.
+ */
+/**
+ * The least a line has to be for the totals to work.
+ *
+ * Widened from `DraftLine` so a SAVED document can go through the same
+ * function as one being typed. That is the whole point of `recordTotals`
+ * below: a quotation printed from the editor and the same quotation printed
+ * after saving must not be able to disagree, and the only way to guarantee
+ * that is for there to be one function rather than two that match today.
+ */
+export interface TotalsLine {
+  code?: string;
+  qty?: number | "";
+  price?: number | "";
+  disc?: number | "";
+  tax?: number | "";
+}
+
+export function docTotals(items: TotalsLine[], charges: ChargeFields): DocTotals {
+  const priced = items.filter((l) => str(l.code));
+  const lines = priced.map((l) => ({
+    qty: num(l.qty),
+    price: num(l.price),
+    disc: num(l.disc),
+    tax: num(l.tax),
+  }));
+
+  const subtotal = docSubtotal({ items: lines });
+  const lineDiscount = docDiscTotal({ items: lines });
+  const afterLine = subtotal - lineDiscount;
+
+  const headerDiscount = Math.min(num(charges.headerDisc), afterLine);
+  const netAmount = afterLine - headerDiscount;
+
+  /* VAT follows the goods, so a header discount reduces it proportionally.
+     Freight and other charges are quoted VAT-inclusive in this prototype. */
+  const lineTax = docTaxTotal({ items: lines });
+  const vat = afterLine > 0 ? lineTax * (netAmount / afterLine) : 0;
+
+  const freight = num(charges.freight);
+  const otherCharges = num(charges.otherCharges);
+  const beforeRounding = netAmount + vat + freight + otherCharges;
+  const grandTotal = Math.round(beforeRounding * 100) / 100;
+
+  return {
+    subtotal,
+    lineDiscount,
+    headerDiscount,
+    netAmount,
+    vat,
+    freight,
+    otherCharges,
+    rounding: Math.round((grandTotal - beforeRounding) * 100) / 100,
+    grandTotal,
+    itemCount: priced.length,
+    totalQty: lines.reduce((t, i) => t + i.qty, 0),
+  };
+}
+
+/**
+ * Every figure a SAVED document shows — the same function, from the record.
+ *
+ * The print engine used to total a stored document with `docGrandTotal`,
+ * which sums the lines and nothing else, while the editor's preview used
+ * `docTotals`, which also applies the header discount, freight and other
+ * charges. Two formulas for one number: print a quotation before saving and
+ * again afterwards and the customer gets two different totals, with nobody
+ * having done anything wrong.
+ *
+ * There is now one formula. `docGrandTotal` still exists for the documents
+ * that genuinely have no header charges — a picking list is not billed — but
+ * anything a customer is billed from comes through here.
+ */
+export function recordTotals(
+  doc: { items?: TotalsLine[] } & Partial<ChargeFields>,
+): DocTotals {
+  return docTotals(doc.items ?? [], {
+    headerDisc: doc.headerDisc ?? 0,
+    freight: doc.freight ?? 0,
+    otherCharges: doc.otherCharges ?? 0,
+  });
+}

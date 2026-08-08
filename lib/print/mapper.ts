@@ -21,6 +21,7 @@ import {
   docSubtotal,
   docTaxTotal,
 } from "@/lib/domain/lines";
+import { recordTotals } from "@/lib/domain/lines";
 import { DASH } from "@/lib/format";
 import type { BadgeTone } from "@/lib/types";
 import { META_LABELS } from "./config";
@@ -379,7 +380,9 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
           vatRate: 0,
           amount: num(it.qty) * num(it.price),
         })),
-        totals: makeTotals({ grandTotal: subtotal, subtotal }, "THB"),
+        /* Same one function as the editor preview. A request carries no tax,
+           which `recordTotals` gets from the lines rather than being told. */
+        totals: makeTotals(recordTotals(d), "THB"),
         bank: null,
         remarks: [...config.remarks, ...(d.note ? [d.note] : [])],
       };
@@ -411,16 +414,12 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
           approvedAt: d.approvedAt,
         }),
         lines: (d.items ?? []).map((it, i) => priceLine(it, i + 1, true)),
-        totals: makeTotals(
-          {
-            subtotal: docSubtotal(d),
-            lineDiscount: docDiscTotal(d),
-            netAmount: docSubtotal(d) - docDiscTotal(d),
-            vat: docTaxTotal(d),
-            grandTotal: docGrandTotal(d),
-          },
-          d.currency,
-        ),
+        /* `recordTotals` — the same function the editor's preview uses. This
+           listed the figures out by hand and never reached for the header
+           discount, freight or other charges, so the sheet printed from the
+           store disagreed with the sheet printed from the editor. One
+           function, so they cannot drift again. */
+        totals: makeTotals(recordTotals(d), d.currency),
         bank: defaultBank(d.code),
         remarks: [...config.remarks, ...(d.note ? [d.note] : [])],
         /* Only a quotation that actually cleared approval carries one. */
@@ -452,7 +451,8 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
           currency: d.currency,
         }),
         lines: (d.items ?? []).map((it, i) => priceLine(it, i + 1)),
-        totals: makeTotals({ grandTotal: docGrandTotal(d), subtotal: docSubtotal(d) }, d.currency),
+        /* Same one function as the quotation and the editor preview. */
+        totals: makeTotals(recordTotals(d), d.currency),
         bank: null,
         remarks: [...config.remarks, ...(d.note ? [d.note] : [])],
       };

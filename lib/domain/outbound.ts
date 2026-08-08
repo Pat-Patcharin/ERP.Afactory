@@ -10,6 +10,7 @@ import { SALES_REPRESENTATIVES } from "./sales";
 import { PRODUCTS, productStock } from "./product";
 import { WAREHOUSES } from "./warehouse";
 import { docGrandTotal, pctOf } from "./lines";
+import { recordTotals } from "./lines";
 import { DASH, daysUntil } from "@/lib/format";
 
 /* ============================================================
@@ -119,7 +120,16 @@ export interface QtRow extends Quotation {
 
 export const QUOTATIONS = RAW_QT as QtRow[];
 
-export const qtTotal = (qt: { items?: Quotation["items"] }) => docGrandTotal(qt);
+/**
+ * What the list column and the KPI tiles show — the same figure as the sheet.
+ *
+ * `docGrandTotal` sums the lines only. Once a quotation could carry freight
+ * and a header discount, that stopped being the amount the customer is asked
+ * for, and a list showing one number beside a document showing another is the
+ * same fault as the two print paths disagreeing, one screen further out.
+ */
+export const qtTotal = (qt: Parameters<typeof recordTotals>[0]) =>
+  recordTotals(qt).grandTotal;
 
 export function decorateQuotations() {
   for (const qt of QUOTATIONS) {
@@ -170,7 +180,9 @@ export interface SrRow extends SalesRequest {
 
 export const SALES_REQUESTS = RAW_SR as SrRow[];
 
-export const srTotal = (sr: { items?: SalesRequest["items"] }) => docGrandTotal(sr);
+/** Same one figure as the sheet — see qtTotal. */
+export const srTotal = (sr: Parameters<typeof recordTotals>[0]) =>
+  recordTotals(sr).grandTotal;
 
 export function decorateSalesRequests() {
   for (const sr of SALES_REQUESTS) {

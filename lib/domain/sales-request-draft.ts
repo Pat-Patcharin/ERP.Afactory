@@ -183,6 +183,10 @@ export function draftFromSalesRequest(r: SalesRequest): SalesRequestDraft {
     priority: r.priority,
     warehouse: r.warehouse,
     quotationRef: r.quotationRef,
+    /* Recovered, not reset — see the note in draftFromQuotation. */
+    headerDisc: r.headerDisc,
+    freight: r.freight,
+    otherCharges: r.otherCharges,
     customerRef: r.customerRef,
     salesRep: r.salesRep,
     priceList: r.priceList,
@@ -517,6 +521,10 @@ export function saveSalesRequestDraft(
     billType,
     customerRef: str(draft.customerRef),
     note: str(draft.remarks),
+    /* In `patch`, so an edit rewrites them — see the note in the quotation. */
+    headerDisc: num(draft.headerDisc),
+    freight: num(draft.freight),
+    otherCharges: num(draft.otherCharges),
     items,
     updated: now,
     updatedBy: user,
@@ -535,7 +543,9 @@ export function saveSalesRequestDraft(
     return { code, created: false };
   }
 
-  SALES_REQUESTS.unshift({
+  /* Typed as the record before the cast — see the note in the quotation for
+     why `as unknown as` was hiding missing fields rather than bridging them. */
+  const fresh: SalesRequest = {
     code,
     ...patch,
     /* Approval is a deliberate step — a new request always starts as Draft. */
@@ -560,7 +570,8 @@ export function saveSalesRequestDraft(
         kind: "primary",
       },
     ],
-  } as unknown as SrRow);
+  };
+  SALES_REQUESTS.unshift(fresh as SrRow);
 
   /* Close the loop on the quotation this request came from. */
   const qt = getQT(patch.quotationRef);

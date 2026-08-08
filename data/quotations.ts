@@ -125,6 +125,32 @@ export interface Quotation {
   priceList: string;
   channel: string;
   customerRef: string;
+  /* ----------------------------------------------------------
+     HEADER CHARGES — what the document carries on top of its lines.
+
+     Required, not optional, and that is deliberate. These three
+     were editable in the totals panel and printed on the sheet
+     for months while the record had nowhere to put them: the
+     salesperson typed a freight charge, watched the grand total
+     move, printed a preview for the customer — and the moment
+     they saved, it was gone. Print the same quotation again and
+     the customer gets a different figure to the one agreed,
+     without anybody having done anything wrong.
+
+     Declaring them required means the compiler refuses any write
+     path that forgets them. The reason they were lost is that
+     nothing anywhere insisted; `?: number` would leave exactly
+     that hole open.
+
+     Amounts, not percentages. `headerDisc` applies after the
+     line discounts and before VAT; freight and other charges are
+     added after it. The one formula is `docTotals` — see the
+     note there, and do not compute these anywhere else.
+     ---------------------------------------------------------- */
+  headerDisc: number;
+  freight: number;
+  otherCharges: number;
+
   /** Why the customer said no — kept for win/loss reporting later. */
   rejectReason: string;
   note: string;
@@ -262,6 +288,9 @@ export const QUOTATIONS: Quotation[] = [
     customerRef: "RFQ-DS-6806",
     rejectReason: "",
     note: "ลูกค้าขอราคาพิเศษสำหรับออร์เดอร์ประจำเดือน",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 120, price: 120, disc: 5, tax: 7, note: "" },
       { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
@@ -306,6 +335,9 @@ export const QUOTATIONS: Quotation[] = [
     customerRef: "TOR-2569-114",
     rejectReason: "",
     note: "งานประมูลโรงพยาบาล ต้องแนบใบรับรอง อย. ทุกรายการ",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "ราคาประมูล" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
@@ -349,6 +381,9 @@ export const QUOTATIONS: Quotation[] = [
     customerRef: "DMD-Q-0455",
     rejectReason: "",
     note: "ดีลเลอร์ขอเติมสต๊อกไตรมาส 3",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 240, price: 120, disc: 18, tax: 7, note: "ราคาดีลเลอร์" },
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 120, price: 150, disc: 18, tax: 7, note: "" },
@@ -393,6 +428,9 @@ export const QUOTATIONS: Quotation[] = [
     customerRef: "",
     rejectReason: "ราคาสูงเกินไป",
     note: "ลูกค้าแจ้งว่าราคาสูงกว่าคู่แข่ง",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 0, tax: 0, note: "" },
     ],
@@ -434,6 +472,9 @@ export const QUOTATIONS: Quotation[] = [
     customerRef: "",
     rejectReason: "",
     note: "เสนอราคาชุดวัสดุอุดฟันสำหรับคลินิกสาขาใหม่ รอลูกค้าตอบกลับ",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 48, price: 95, disc: 3, tax: 7, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 24, price: 110, disc: 3, tax: 7, note: "" },
@@ -475,6 +516,9 @@ export const QUOTATIONS: Quotation[] = [
     customerRef: "",
     rejectReason: "",
     note: "ร่างใบเสนอราคาสาขา 2 รอยืนยันจำนวนจากลูกค้า",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
     ],
@@ -517,6 +561,9 @@ export const QUOTATIONS: Quotation[] = [
     customerRef: "KWN-0088",
     rejectReason: "",
     note: "ลูกค้ากลับมาสั่งใหม่หลังต่อรองราคารอบก่อนไม่สำเร็จ",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 48, price: 120, disc: 3, tax: 0, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 3, tax: 0, note: "" },

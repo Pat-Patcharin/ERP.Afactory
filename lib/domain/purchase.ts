@@ -18,6 +18,7 @@ import {
   lineNet,
   type DocLine,
 } from "./lines";
+import { recordTotals } from "./lines";
 
 /* ============================================================
    PURCHASE REQUEST
@@ -38,8 +39,9 @@ export const PURCHASE_REQUESTS = RAW_PR as PrRow[];
 export const prLineTotal = (it: { qty?: number; price?: number }) =>
   (Number(it.qty) || 0) * (Number(it.price) || 0);
 
-export const prTotal = (pr: { items?: { qty?: number; price?: number }[] }) =>
-  (pr.items ?? []).reduce((s, it) => s + prLineTotal(it), 0);
+/** Same one figure as the sheet — see qtTotal in outbound.ts. */
+export const prTotal = (pr: Parameters<typeof recordTotals>[0]) =>
+  recordTotals(pr).grandTotal;
 
 export function decoratePRs() {
   for (const pr of PURCHASE_REQUESTS) {

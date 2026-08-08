@@ -63,6 +63,19 @@ export interface SalesRequest {
   /** Optional upstream quotation. Empty when the request came in directly. */
   quotationRef: string;
   note: string;
+
+  /**
+   * Header charges on top of the lines — see the long note on `Quotation`,
+   * which explains why these are required rather than optional.
+   *
+   * A request carries them so the figure agreed on the quotation survives the
+   * conversion. A chain that drops them halfway is the same bug as never
+   * storing them, found one document later.
+   */
+  headerDisc: number;
+  freight: number;
+  otherCharges: number;
+
   items: SrLine[];
   /** Internal approval trail. */
   approvedBy: string;
@@ -152,6 +165,9 @@ export const SALES_REQUESTS: SalesRequest[] = [
     customerRef: "PO-DS-69-0331",
     quotationRef: "QT2506-0001",
     note: "ลูกค้ายืนยันตามใบเสนอราคา ขอรับของช่วงเช้า",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 120, price: 120, disc: 5, tax: 7, note: "" },
       { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
@@ -192,6 +208,9 @@ export const SALES_REQUESTS: SalesRequest[] = [
     customerRef: "HOSP-PO-2569-0771",
     quotationRef: "QT2506-0002",
     note: "ได้งานประมูลแล้ว รอฝ่ายบัญชีตรวจวงเงินเครดิตก่อนอนุมัติ",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "ราคาประมูล" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
@@ -229,6 +248,9 @@ export const SALES_REQUESTS: SalesRequest[] = [
     customerRef: "DMD-PO-0912",
     quotationRef: "QT2506-0003",
     note: "ดีลเลอร์เติมสต๊อกไตรมาส 3 แบ่งกล่องตามสาขาปลายทาง",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 240, price: 120, disc: 18, tax: 7, note: "ราคาดีลเลอร์" },
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 120, price: 150, disc: 18, tax: 7, note: "" },
@@ -270,6 +292,9 @@ export const SALES_REQUESTS: SalesRequest[] = [
     /* No quotation — the clinic phoned the order in directly. */
     quotationRef: "",
     note: "ลูกค้าโทรสั่งตรง ไม่ได้ผ่านใบเสนอราคา รอยืนยันจำนวนอีกครั้ง",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 24, price: 95, disc: 0, tax: 7, note: "" },
     ],
@@ -305,6 +330,9 @@ export const SALES_REQUESTS: SalesRequest[] = [
     customerRef: "",
     quotationRef: "",
     note: "ลูกค้าขอส่วนลดเกินเกณฑ์ที่พนักงานขายอนุมัติได้",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 25, tax: 0, note: "ขอส่วนลด 25%" },
     ],
@@ -356,6 +384,9 @@ export const SALES_REQUESTS: SalesRequest[] = [
     customerRef: "HOSP-PO-2569-0771",
     quotationRef: "",
     note: "ใบสั่งซื้อจากโรงพยาบาล ยอดสูงกว่าวงเงินเดิม ต้องให้บัญชีดูเครดิตก่อน",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
@@ -395,6 +426,9 @@ export const SALES_REQUESTS: SalesRequest[] = [
     customerRef: "",
     quotationRef: "",
     note: "ลูกค้าโทรสั่งและจะมารับเองที่คลังเชียงใหม่",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 24, price: 95, disc: 0, tax: 7, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 12, price: 110, disc: 0, tax: 7, note: "" },
@@ -435,6 +469,9 @@ export const SALES_REQUESTS: SalesRequest[] = [
     quotationRef: "",
     note: "คำสั่งซื้อประจำไตรมาสของดีลเลอร์ ขอให้ส่งครบทุกรายการในรอบเดียว",
     /* The same 38 lines the order carries — the multi-page print fixture. */
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: BULK_ORDER_ITEMS.map((it) => ({
       code: it.code,
       name: it.name,

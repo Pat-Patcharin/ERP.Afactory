@@ -6,7 +6,20 @@ import { PRODUCTS, productStock } from "./product";
 import { priceMasterByProduct } from "./price-master";
 import { checkQuotedPrice } from "./pricing-master";
 import { addressLine, bpBillingAddress, bpDeliveryAddress } from "./partner";
-import { docDiscTotal, docSubtotal, docTaxTotal } from "./lines";
+import {
+  docDiscTotal,
+  docSubtotal,
+  docTaxTotal,
+  docTotals,
+  recordTotals,
+  type ChargeFields,
+  type DocTotals,
+  type TotalsLine,
+} from "./lines";
+/* The totals maths moved to lines.ts — see the note there for why. Re-exported
+   so the document models keep importing it from the place they always have. */
+export { docTotals, recordTotals };
+export type { ChargeFields, DocTotals, TotalsLine };
 import { creditCheck, getCustomer, salesRepOptions } from "./outbound";
 import {
   TIER_TH,
@@ -853,77 +866,6 @@ export function applyProductForCustomer(
 export function lineAvailability(code: string) {
   const st = productStock(str(code));
   return st ? { available: st.available, found: true } : { available: 0, found: false };
-}
-
-/* ---------- Totals ---------- */
-
-export interface DocTotals {
-  subtotal: number;
-  lineDiscount: number;
-  headerDiscount: number;
-  netAmount: number;
-  vat: number;
-  freight: number;
-  otherCharges: number;
-  rounding: number;
-  grandTotal: number;
-  itemCount: number;
-  totalQty: number;
-}
-
-export interface ChargeFields {
-  headerDisc: number | "";
-  freight: number | "";
-  otherCharges: number | "";
-}
-
-/**
- * Every figure a document shows, from the shared line maths.
- *
- * The header discount is applied after the line discounts and before VAT, so a
- * quotation, the request it becomes and the order after that agree to the
- * satang. Nothing here is a second calculation engine — the per-line work is
- * lib/domain/lines.ts.
- */
-export function docTotals(items: DraftLine[], charges: ChargeFields): DocTotals {
-  const priced = items.filter((l) => str(l.code));
-  const lines = priced.map((l) => ({
-    qty: num(l.qty),
-    price: num(l.price),
-    disc: num(l.disc),
-    tax: num(l.tax),
-  }));
-
-  const subtotal = docSubtotal({ items: lines });
-  const lineDiscount = docDiscTotal({ items: lines });
-  const afterLine = subtotal - lineDiscount;
-
-  const headerDiscount = Math.min(num(charges.headerDisc), afterLine);
-  const netAmount = afterLine - headerDiscount;
-
-  /* VAT follows the goods, so a header discount reduces it proportionally.
-     Freight and other charges are quoted VAT-inclusive in this prototype. */
-  const lineTax = docTaxTotal({ items: lines });
-  const vat = afterLine > 0 ? lineTax * (netAmount / afterLine) : 0;
-
-  const freight = num(charges.freight);
-  const otherCharges = num(charges.otherCharges);
-  const beforeRounding = netAmount + vat + freight + otherCharges;
-  const grandTotal = Math.round(beforeRounding * 100) / 100;
-
-  return {
-    subtotal,
-    lineDiscount,
-    headerDiscount,
-    netAmount,
-    vat,
-    freight,
-    otherCharges,
-    rounding: Math.round((grandTotal - beforeRounding) * 100) / 100,
-    grandTotal,
-    itemCount: priced.length,
-    totalQty: lines.reduce((t, i) => t + i.qty, 0),
-  };
 }
 
 /* ---------- Customer insight ---------- */

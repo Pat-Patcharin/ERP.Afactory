@@ -18,6 +18,18 @@ export interface PurchaseRequest {
   warehouse: string;
   supplier: string;
   note: string;
+
+  /**
+   * Header charges on top of the lines — see the long note on `Quotation`.
+   *
+   * A request only ever estimates these; the purchase order negotiates them
+   * for real. Estimated is not the same as discarded, though, and the totals
+   * panel lets somebody type a figure — so it is stored.
+   */
+  headerDisc: number;
+  freight: number;
+  otherCharges: number;
+
   items: {
     code: string;
     name: string;
@@ -80,6 +92,9 @@ export const PURCHASE_REQUESTS: PurchaseRequest[] = [
     warehouse: "WH-BKK Bangkok Main",
     supplier: "DentCare Co., Ltd.",
     note: "ของใกล้หมด ต้องใช้ด่วนสำหรับงานผ่าตัดสัปดาห์หน้า",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       {
         code: "AA-TH003-WL",
@@ -140,6 +155,9 @@ export const PURCHASE_REQUESTS: PurchaseRequest[] = [
     warehouse: "WH-BKK Bangkok Main",
     supplier: "Siam Medical Supply",
     note: "เตรียมสต็อกสำหรับออกบูธ TDA",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       {
         code: "CEM-001",
@@ -200,6 +218,9 @@ export const PURCHASE_REQUESTS: PurchaseRequest[] = [
     warehouse: "WH-BKK Bangkok Main",
     supplier: "Perfect Supply Co., Ltd.",
     note: "",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       {
         code: "ETCH-01",
@@ -253,6 +274,9 @@ export const PURCHASE_REQUESTS: PurchaseRequest[] = [
     warehouse: "WH-CNX Chiangmai",
     supplier: "BKK Dental Lab",
     note: "สื่อการตลาดและตัวอย่างสินค้า",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       {
         code: "IMP-01",
@@ -313,6 +337,9 @@ export const PURCHASE_REQUESTS: PurchaseRequest[] = [
     warehouse: "WH-BKK Bangkok Main",
     supplier: "",
     note: "ขอซื้ออุปกรณ์ไอที",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       {
         code: "BOND-01",
@@ -357,6 +384,9 @@ export const PURCHASE_REQUESTS: PurchaseRequest[] = [
     warehouse: "WH-SVC Service",
     supplier: "",
     note: "ร่างเอกสาร รอตรวจสอบรายการ",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [
       {
         code: "CEM-001",
