@@ -27,7 +27,7 @@ import {
   type PartyFields,
   type TermFields,
 } from "./doc-draft";
-import { toDisplayDate, toInputDate, stamp, today } from "@/lib/format";
+import { isoToDmy, dmyToIso, stamp, today } from "@/lib/format";
 import { META_LABELS } from "@/lib/print/config";
 import { defaultBank, printCompany } from "@/lib/print/mapper";
 import { bahtText } from "@/lib/print/words";
@@ -158,7 +158,7 @@ export const DEFAULT_REMARKS = [
  * `toISOString()`. One formula, called twice.
  */
 export function defaultValidUntil(): string {
-  return validUntilFrom(toInputDate(today()), QT_VALIDITY_DAYS);
+  return validUntilFrom(dmyToIso(today()), QT_VALIDITY_DAYS);
 }
 
 /** The spans a salesperson may pick. Four, so they fit as chips side by side. */
@@ -243,7 +243,7 @@ export function blankDraft(): QuotationDraft {
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
-    quoteDate: toInputDate(today()),
+    quoteDate: dmyToIso(today()),
     validDays: QT_VALIDITY_DAYS,
     validUntil: defaultValidUntil(),
     customerRef: "",
@@ -282,11 +282,11 @@ export function draftFromQuotation(q: Quotation): QuotationDraft {
     customerPick: pick,
     customerCode: q.customerCode,
     customer: q.customer,
-    quoteDate: toInputDate(q.quoteDate),
+    quoteDate: dmyToIso(q.quoteDate),
     /* The record keeps the date; the editor works in spans. Recovered rather
        than defaulted, so reopening a 90-day quotation shows 90. */
-    validDays: validDaysFrom(toInputDate(q.quoteDate), toInputDate(q.validUntil)),
-    validUntil: toInputDate(q.validUntil),
+    validDays: validDaysFrom(dmyToIso(q.quoteDate), dmyToIso(q.validUntil)),
+    validUntil: dmyToIso(q.validUntil),
     customerRef: q.customerRef,
     salesRep: q.salesRep,
     priceList: q.priceList,
@@ -409,8 +409,8 @@ export function draftPrintDoc(draft: QuotationDraft, config: PrintConfig): Print
         (
           {
             docNo: draft.code,
-            docDate: toDisplayDate(draft.quoteDate),
-            dueDate: toDisplayDate(draft.validUntil),
+            docDate: isoToDmy(draft.quoteDate),
+            dueDate: isoToDmy(draft.validUntil),
             customerCode: draft.customerCode,
             salesRep: draft.salesRep,
             payTerm: draft.payTerm,
@@ -419,7 +419,7 @@ export function draftPrintDoc(draft: QuotationDraft, config: PrintConfig): Print
                sheet even though the input moved off the paper: this is the
                number their accounts team matches our invoice against. */
             reference: draft.customerRef,
-            deliveryDate: toDisplayDate(draft.deliveryDate),
+            deliveryDate: isoToDmy(draft.deliveryDate),
           } as Record<string, string>
         )[field],
       ),
@@ -464,7 +464,7 @@ export function draftPrintDoc(draft: QuotationDraft, config: PrintConfig): Print
     code: draft.code,
     status: draft.status,
     statusTone: "info",
-    date: toDisplayDate(draft.quoteDate),
+    date: isoToDmy(draft.quoteDate),
     company: printCompany(),
     billTo: {
       name: draft.customer,
@@ -577,11 +577,11 @@ export function saveQuotationDraft(
     customer: str(draft.customer),
     customerCode: str(draft.customerCode),
     salesRep: str(draft.salesRep),
-    quoteDate: toDisplayDate(draft.quoteDate),
+    quoteDate: isoToDmy(draft.quoteDate),
     /* Derived here, not copied from the draft. This is the one place every
        quotation passes through — the editor, a conversion, an import — so it
        is the only place the date and the span cannot drift apart. */
-    validUntil: toDisplayDate(validUntilFrom(draft.quoteDate, draft.validDays)),
+    validUntil: isoToDmy(validUntilFrom(draft.quoteDate, draft.validDays)),
     currency: str(draft.currency) || "THB",
     payTerm: str(draft.payTerm),
     priceList: str(draft.priceList),

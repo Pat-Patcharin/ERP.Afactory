@@ -19,7 +19,7 @@ import {
   type DraftLine,
 } from "./doc-draft";
 import { actingUserName } from "./admin";
-import { stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
+import { stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import { warehouseOptions } from "./outbound";
 import { META_LABELS, printCompany } from "@/lib/print";
 import type { PrintConfig, PrintDoc, PrintLine } from "@/lib/print/types";
@@ -92,7 +92,7 @@ export function blankPrDraft(): PurchaseRequestDraft {
        is asking. Still editable — a supervisor may raise one for somebody. */
     requester: PR_REQUESTERS.includes(actingUserName() as never) ? actingUserName() : "",
     needBy: "",
-    requestDate: toInputDate(today()),
+    requestDate: dmyToIso(today()),
     priority: "Normal",
     warehouse: "",
     supplier: "",
@@ -112,8 +112,8 @@ export function draftFromPurchaseRequest(pr: PurchaseRequest): PurchaseRequestDr
     mode: "edit",
     dept: pr.dept,
     requester: pr.requester,
-    needBy: toInputDate(pr.needBy),
-    requestDate: toInputDate(pr.date),
+    needBy: dmyToIso(pr.needBy),
+    requestDate: dmyToIso(pr.date),
     priority: pr.priority,
     warehouse: pr.warehouse,
     supplier: pr.supplier,
@@ -249,8 +249,8 @@ export function prPrintDoc(draft: PurchaseRequestDraft, config: PrintConfig): Pr
 
   const values: Record<string, string> = {
     docNo: draft.code,
-    docDate: toDisplayDate(draft.requestDate),
-    deliveryDate: toDisplayDate(draft.needBy),
+    docDate: isoToDmy(draft.requestDate),
+    deliveryDate: isoToDmy(draft.needBy),
     warehouse: draft.warehouse,
     currency: "THB",
   };
@@ -295,7 +295,7 @@ export function prPrintDoc(draft: PurchaseRequestDraft, config: PrintConfig): Pr
     code: draft.code,
     status: draft.status,
     statusTone: "info",
-    date: toDisplayDate(draft.requestDate),
+    date: isoToDmy(draft.requestDate),
     company: printCompany(),
     billTo: {
       name: draft.dept ? `แผนก${draft.dept}` : "",
@@ -375,8 +375,8 @@ export function savePurchaseRequestDraft(
     dept: str(draft.dept),
     requester: str(draft.requester),
     priority: str(draft.priority) || "Normal",
-    date: toDisplayDate(draft.requestDate),
-    needBy: toDisplayDate(draft.needBy),
+    date: isoToDmy(draft.requestDate),
+    needBy: isoToDmy(draft.needBy),
     warehouse: str(draft.warehouse),
     supplier: str(draft.supplier),
     note: str(draft.reason),

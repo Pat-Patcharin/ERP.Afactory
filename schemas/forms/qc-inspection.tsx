@@ -20,7 +20,7 @@ import {
   qcSupplierStat,
   type QcRow,
 } from "@/lib/domain/inbound";
-import { fmt, stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
+import { fmt, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow } from "@/lib/types";
 import {
   FORM_USER,
@@ -89,7 +89,7 @@ export const QC_FORM: FormSchema<QcRow> = {
     sampleAccept: 0,
     sampleReject: 0,
     expiry: "",
-    inspectionDate: toInputDate(today()),
+    inspectionDate: dmyToIso(today()),
     checklist: newChecklist(),
     reason: "",
     correctiveAction: "",
@@ -110,7 +110,7 @@ export const QC_FORM: FormSchema<QcRow> = {
     serial: q.serial,
     warehouse: q.warehouse,
     inspector: q.inspector,
-    dueDate: toInputDate(q.dueDate),
+    dueDate: dmyToIso(q.dueDate),
     priority: q.priority,
     status: q.status,
     result: q.result,
@@ -123,8 +123,8 @@ export const QC_FORM: FormSchema<QcRow> = {
     sampleSize: q.sampleSize,
     sampleAccept: q.sampleAccept,
     sampleReject: q.sampleReject,
-    expiry: toInputDate(q.expiry),
-    inspectionDate: toInputDate(q.inspectionDate),
+    expiry: dmyToIso(q.expiry),
+    inspectionDate: dmyToIso(q.inspectionDate),
     checklist: (q.checklist ?? newChecklist()).map((c) => ({ ...c })),
     reason: q.reason,
     correctiveAction: q.correctiveAction,
@@ -449,7 +449,7 @@ export const QC_FORM: FormSchema<QcRow> = {
     s.supplier = gr.supplier;
     s.warehouse = gr.qc?.qcWh || "WH-QC Quality Hold";
     s.inspector = s.inspector || gr.qc?.inspector || "";
-    s.dueDate = s.dueDate || toInputDate(gr.qc?.dueDate);
+    s.dueDate = s.dueDate || dmyToIso(gr.qc?.dueDate);
 
     if (line) {
       s.product = line.code;
@@ -567,7 +567,7 @@ export const QC_FORM: FormSchema<QcRow> = {
         ? "WH-CLAIM Claim Warehouse"
         : String(s.warehouse ?? "WH-QC Quality Hold"),
       inspector: String(s.inspector ?? ""),
-      dueDate: toDisplayDate(s.dueDate),
+      dueDate: isoToDmy(s.dueDate),
       priority: String(s.priority ?? "Medium"),
       result: String(s.result ?? "Pending"),
       status: decided ? "Completed" : "In Progress",
@@ -580,8 +580,8 @@ export const QC_FORM: FormSchema<QcRow> = {
       sampleSize: num(s.sampleSize),
       sampleAccept: num(s.sampleAccept),
       sampleReject: num(s.sampleReject),
-      expiry: toDisplayDate(s.expiry),
-      inspectionDate: toDisplayDate(s.inspectionDate),
+      expiry: isoToDmy(s.expiry),
+      inspectionDate: isoToDmy(s.inspectionDate),
       checklist: ((s.checklist ?? []) as GridRow[])
         .filter((c) => String(c.item ?? "").trim())
         .map((c) => ({

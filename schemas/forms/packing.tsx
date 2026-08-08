@@ -13,7 +13,7 @@ import {
   warehouseOptions,
   type PackRow,
 } from "@/lib/domain/outbound";
-import { fmt, stamp, toDisplayDate, toInputDate } from "@/lib/format";
+import { fmt, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema, GridRow } from "@/lib/types";
 import { FORM_USER, RailCard, RailRow, RailTotal, opts, saved } from "./common";
 
@@ -73,8 +73,8 @@ export const PACK_FORM: FormSchema<PackRow> = {
     warehouse: t.warehouse,
     packer: t.packer,
     status: t.status,
-    packDate: toInputDate(t.packDate),
-    dueDate: toInputDate(t.dueDate),
+    packDate: dmyToIso(t.packDate),
+    dueDate: dmyToIso(t.dueDate),
     priority: t.priority,
     handling: t.handling,
     remark: t.remark,
@@ -310,7 +310,7 @@ export const PACK_FORM: FormSchema<PackRow> = {
     s.customerCode = pick.customerCode;
     s.warehouse = pick.warehouse;
     s.priority = pick.priority;
-    s.dueDate = toInputDate(pick.dueDate);
+    s.dueDate = dmyToIso(pick.dueDate);
 
     s.items = (pick.items ?? [])
       .filter((it) => num(it.picked) > 0)
@@ -427,8 +427,8 @@ export const PACK_FORM: FormSchema<PackRow> = {
       customerCode: String(s.customerCode ?? ""),
       warehouse: String(s.warehouse ?? ""),
       packer,
-      packDate: toDisplayDate(s.packDate) || (anyPacked ? now.split(" ")[0] : ""),
-      dueDate: toDisplayDate(s.dueDate),
+      packDate: isoToDmy(s.packDate) || (anyPacked ? now.split(" ")[0] : ""),
+      dueDate: isoToDmy(s.dueDate),
       priority: String(s.priority ?? "Normal"),
       handling: String(s.handling ?? "ปกติ"),
       remark: String(s.remark ?? ""),

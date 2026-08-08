@@ -24,7 +24,7 @@ import {
   submitReadiness,
   type CnRow,
 } from "@/lib/domain/credit-note";
-import { fmt, money, money0, stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
+import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
 import { FORM_USER, RailCard, RailRow, RailTotal, ReviewCard, opts, saved } from "./common";
 
@@ -77,7 +77,7 @@ export const CN_FORM: FormSchema<CnRow> = {
   blank: () => ({
     _mode: "create",
     code: nextCreditNoteCode(),
-    creditDate: toInputDate(today()),
+    creditDate: dmyToIso(today()),
     sourceType: "Sales Return",
     sourceDoc: "",
     returnRef: "",
@@ -114,7 +114,7 @@ export const CN_FORM: FormSchema<CnRow> = {
   toState: (c) => ({
     _mode: "edit",
     code: c.code,
-    creditDate: toInputDate(c.creditDate),
+    creditDate: dmyToIso(c.creditDate),
     sourceType: c.sourceType,
     sourceDoc: c.sourceDoc,
     returnRef: c.returnRef,
@@ -764,7 +764,7 @@ export const CN_FORM: FormSchema<CnRow> = {
       <>
         <ReviewCard title="Credit Note & Customer">
           {row("Credit Note No.", s.code, "info")}
-          {row("Credit Date", toDisplayDate(s.creditDate), "info")}
+          {row("Credit Date", isoToDmy(s.creditDate), "info")}
           {row("Credit Type", s.creditType, "info")}
           {row("Reason", s.reason, "info")}
           {row("Customer", s.customer, "customer")}
@@ -840,7 +840,7 @@ export const CN_FORM: FormSchema<CnRow> = {
       }));
 
     const patch = {
-      creditDate: toDisplayDate(s.creditDate),
+      creditDate: isoToDmy(s.creditDate),
       sourceType: String(s.sourceType ?? "Manual"),
       sourceDoc: String(s.sourceDoc ?? ""),
       returnRef: String(s.returnRef ?? ""),

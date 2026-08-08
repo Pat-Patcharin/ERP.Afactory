@@ -13,7 +13,7 @@ import {
 } from "./outbound";
 import { BUSINESS_PARTNERS } from "./partner";
 import { lineBase } from "./lines";
-import { DASH, daysUntil, toDisplayDate, toInputDate } from "@/lib/format";
+import { DASH, daysUntil, isoToDmy, dmyToIso } from "@/lib/format";
 
 /* ============================================================
    SALES INVOICE — billing only.
@@ -626,4 +626,4 @@ export function customerOutstanding(customerCode: string): number {
   );
 }
 
-export { DASH, toDisplayDate, toInputDate };
+export { DASH, isoToDmy, dmyToIso };

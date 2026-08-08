@@ -17,7 +17,7 @@ import {
   warehouseOptions,
   type DoRow,
 } from "@/lib/domain/outbound";
-import { fmt, money0, stamp, toDisplayDate, toInputDate } from "@/lib/format";
+import { fmt, money0, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema, GridRow } from "@/lib/types";
 import { FORM_USER, RailCard, RailRow, RailTotal, opts, saved } from "./common";
 
@@ -91,7 +91,7 @@ export const DO_FORM: FormSchema<DoRow> = {
     driver: d.driver,
     vehicle: d.vehicle,
     trackingNo: d.trackingNo,
-    deliveryDate: toInputDate(d.deliveryDate),
+    deliveryDate: dmyToIso(d.deliveryDate),
     deliveryTime: d.deliveryTime,
     status: d.status,
     priority: d.priority,
@@ -377,7 +377,7 @@ export const DO_FORM: FormSchema<DoRow> = {
     s.weight = pack.totalWeight;
 
     if (so) {
-      s.deliveryDate = toInputDate(so.deliveryDate);
+      s.deliveryDate = dmyToIso(so.deliveryDate);
       s.shipTo = so.shipTo || shipToOptions(`${so.customerCode} - ${so.customer}`)[0] || "";
       /* Cash customers pay on delivery — surface it rather than hide it. */
       s.codAmount = so.payTerm === "เงินสด" ? Math.round(so.total) : 0;
@@ -500,7 +500,7 @@ export const DO_FORM: FormSchema<DoRow> = {
       driver: String(s.driver ?? ""),
       vehicle: String(s.vehicle ?? ""),
       trackingNo: String(s.trackingNo ?? ""),
-      deliveryDate: toDisplayDate(s.deliveryDate),
+      deliveryDate: isoToDmy(s.deliveryDate),
       deliveryTime: String(s.deliveryTime ?? ""),
       priority: String(s.priority ?? "Normal"),
       packages: num(s.packages),

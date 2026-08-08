@@ -22,7 +22,7 @@ import {
   nextSRCode,
   type SalesRepRow,
 } from "@/lib/domain/sales";
-import { money0, stamp, toDisplayDate, toInputDate } from "@/lib/format";
+import { money0, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema } from "@/lib/types";
 import { FORM_USER, RailCard, RailRow, isCreate, opts, saved } from "./common";
 
@@ -112,14 +112,14 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
     last: r.last,
     nick: r.nick,
     gender: r.gender,
-    birth: toInputDate(r.birth),
+    birth: dmyToIso(r.birth),
     dept: r.dept,
     position: r.position,
     team: r.team,
     manager: r.manager,
     status: r.status,
-    hireDate: toInputDate(r.hireDate),
-    resignDate: toInputDate(r.resignDate),
+    hireDate: dmyToIso(r.hireDate),
+    resignDate: dmyToIso(r.resignDate),
     mobile: r.mobile,
     office: r.office,
     email: r.email,
@@ -526,14 +526,14 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
       last: String(s.last ?? "").trim(),
       nick: String(s.nick ?? ""),
       gender: String(s.gender ?? ""),
-      birth: toDisplayDate(s.birth),
+      birth: isoToDmy(s.birth),
       dept: String(s.dept ?? ""),
       position: String(s.position ?? ""),
       team: String(s.team ?? ""),
       manager: String(s.manager ?? ""),
       status: String(s.status ?? "Active"),
-      hireDate: toDisplayDate(s.hireDate),
-      resignDate: toDisplayDate(s.resignDate),
+      hireDate: isoToDmy(s.hireDate),
+      resignDate: isoToDmy(s.resignDate),
       mobile: String(s.mobile ?? ""),
       office: String(s.office ?? ""),
       email: String(s.email ?? ""),

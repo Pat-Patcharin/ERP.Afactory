@@ -19,7 +19,7 @@ import {
 } from "@/lib/domain/purchase-request-draft";
 import type { PurchaseRequest } from "@/data/purchase-requests";
 import { buildPrintJob, getPrintConfig } from "@/lib/print";
-import { toDisplayDate } from "@/lib/format";
+import { isoToDmy } from "@/lib/format";
 import { useActionCtx } from "@/components/engine/useActionCtx";
 import { useCrumbCode } from "@/components/layout/Topbar";
 import {
@@ -260,7 +260,7 @@ export function PurchaseRequestEditor({ record }: { record?: PurchaseRequest }) 
         label: "Request Date",
         required: true,
         control: txt("requestDate", "Request Date", "date"),
-        read: toDisplayDate(draft.requestDate),
+        read: isoToDmy(draft.requestDate),
       },
       {
         field: "priority",

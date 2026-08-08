@@ -34,7 +34,7 @@ import {
 } from "@/lib/domain/shipment";
 import type { ShpRow } from "@/lib/domain/shipment";
 import { warehouseOptions } from "@/lib/domain/outbound";
-import { fmt, stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
+import { fmt, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
 import { FORM_USER, RailCard, RailRow, RailTotal, ReviewCard, opts, saved } from "./common";
 
@@ -115,7 +115,7 @@ export const SHP_FORM: FormSchema<ShpRow> = {
     vehicleType: "Van",
     vehicleNo: "",
     route: "",
-    shipmentDate: toInputDate(today()),
+    shipmentDate: dmyToIso(today()),
     expectedDelivery: "",
     pickupTime: "",
     specialInstructions: "",
@@ -154,8 +154,8 @@ export const SHP_FORM: FormSchema<ShpRow> = {
     vehicleType: s.vehicleType,
     vehicleNo: s.vehicleNo,
     route: s.route,
-    shipmentDate: toInputDate(s.shipmentDate),
-    expectedDelivery: toInputDate(s.expectedDelivery),
+    shipmentDate: dmyToIso(s.shipmentDate),
+    expectedDelivery: dmyToIso(s.expectedDelivery),
     pickupTime: s.pickupTime,
     specialInstructions: s.specialInstructions,
     note: s.note,
@@ -693,7 +693,7 @@ export const SHP_FORM: FormSchema<ShpRow> = {
         s.salesRep = head.salesRep;
         s.customerRef = head.customerRef;
         s.priority = head.priority;
-        s.expectedDelivery = toInputDate(head.expectedDelivery);
+        s.expectedDelivery = dmyToIso(head.expectedDelivery);
         if (head.carrier) s.carrier = head.carrier;
         if (head.trackingNo) s.trackingNo = head.trackingNo;
       }
@@ -778,7 +778,7 @@ export const SHP_FORM: FormSchema<ShpRow> = {
         <RailRow label="ลูกค้า" value={String(s.customer ?? "") || "ยังไม่ได้เลือก"} />
         <RailRow label="ผู้ขนส่ง" value={String(s.carrier ?? "")} />
         <RailRow label="กล่อง / น้ำหนัก" value={`${boxes.length} · ${draftWeight(s)} kg`} />
-        <RailRow label="คาดว่าถึง" value={toDisplayDate(s.expectedDelivery) || "—"} />
+        <RailRow label="คาดว่าถึง" value={isoToDmy(s.expectedDelivery) || "—"} />
         <RailTotal
           label="จำนวนที่ส่ง"
           value={`${fmt(rows.reduce((t, r) => t + num(r.shipmentQty), 0))} หน่วย`}
@@ -851,8 +851,8 @@ export const SHP_FORM: FormSchema<ShpRow> = {
           {row("Customer", s.customer, "destination")}
           {row("Delivery Address", s.deliveryAddress, "destination")}
           {row("Contact", `${s.contactPerson ?? ""} · ${s.contactPhone ?? ""}`, "destination")}
-          {row("Shipment Date", toDisplayDate(s.shipmentDate), "info")}
-          {row("Expected Delivery", toDisplayDate(s.expectedDelivery), "info")}
+          {row("Shipment Date", isoToDmy(s.shipmentDate), "info")}
+          {row("Expected Delivery", isoToDmy(s.expectedDelivery), "info")}
           {row("Warehouse", s.warehouse, "info")}
         </ReviewCard>
         <ReviewCard title="Carrier">
@@ -973,8 +973,8 @@ export const SHP_FORM: FormSchema<ShpRow> = {
       vehicleType: String(s.vehicleType ?? ""),
       vehicleNo: String(s.vehicleNo ?? ""),
       route: String(s.route ?? ""),
-      shipmentDate: toDisplayDate(s.shipmentDate),
-      expectedDelivery: toDisplayDate(s.expectedDelivery),
+      shipmentDate: isoToDmy(s.shipmentDate),
+      expectedDelivery: isoToDmy(s.expectedDelivery),
       pickupTime: String(s.pickupTime ?? ""),
       specialInstructions: String(s.specialInstructions ?? ""),
       note: String(s.note ?? ""),

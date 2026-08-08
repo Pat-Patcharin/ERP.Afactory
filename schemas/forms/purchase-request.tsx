@@ -10,7 +10,7 @@ import {
   prTotal,
   type PrRow,
 } from "@/lib/domain/purchase";
-import { fmt, money, stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
+import { fmt, money, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
 import {
   FORM_USER,
@@ -63,7 +63,7 @@ export const PR_FORM: FormSchema<PrRow> = {
     dept: "",
     requester: "",
     priority: "Normal",
-    date: toInputDate(today()),
+    date: dmyToIso(today()),
     needBy: "",
     warehouse: "",
     supplier: "",
@@ -78,8 +78,8 @@ export const PR_FORM: FormSchema<PrRow> = {
     dept: pr.dept,
     requester: pr.requester,
     priority: pr.priority,
-    date: toInputDate(pr.date),
-    needBy: toInputDate(pr.needBy),
+    date: dmyToIso(pr.date),
+    needBy: dmyToIso(pr.needBy),
     warehouse: pr.warehouse,
     supplier: pr.supplier,
     note: pr.note,
@@ -385,8 +385,8 @@ export const PR_FORM: FormSchema<PrRow> = {
           {row("Department", s.dept, "header")}
           {row("Requester", s.requester, "header")}
           {row("Priority", s.priority, "header")}
-          {row("Request Date", toDisplayDate(s.date), "header")}
-          {row("Need By Date", toDisplayDate(s.needBy), "header")}
+          {row("Request Date", isoToDmy(s.date), "header")}
+          {row("Need By Date", isoToDmy(s.needBy), "header")}
           {row("Deliver To", s.warehouse, "header")}
         </ReviewCard>
         <ReviewCard title="Items">
@@ -434,8 +434,8 @@ export const PR_FORM: FormSchema<PrRow> = {
       dept: String(s.dept ?? ""),
       requester: String(s.requester ?? ""),
       priority: String(s.priority ?? "Normal"),
-      date: toDisplayDate(s.date),
-      needBy: toDisplayDate(s.needBy),
+      date: isoToDmy(s.date),
+      needBy: isoToDmy(s.needBy),
       warehouse: String(s.warehouse ?? ""),
       supplier: String(s.supplier ?? ""),
       note: String(s.note ?? ""),

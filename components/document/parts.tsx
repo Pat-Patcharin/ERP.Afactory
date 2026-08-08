@@ -18,7 +18,7 @@ import {
 import { billName, displayName } from "@/lib/domain/lines";
 import { bahtText } from "@/lib/print/words";
 import { AFactoryLogo, BarcodePlaceholder, QRPlaceholder } from "@/components/print/marks";
-import { fmt, money, money0, toDisplayDate } from "@/lib/format";
+import { fmt, money, money0, isoToDmy } from "@/lib/format";
 import { Icon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 import {
@@ -439,7 +439,7 @@ export function RequesterPanel({
               onChange={(e) => set({ needBy: e.target.value })}
             />
           ) : (
-            <DocValue value={toDisplayDate(draft.needBy)} />
+            <DocValue value={isoToDmy(draft.needBy)} />
           )}
         </DocRow>
       </div>

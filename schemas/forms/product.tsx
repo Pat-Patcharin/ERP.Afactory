@@ -2,7 +2,7 @@ import { OPT } from "@/data/options";
 import { PRODUCTS, decorateProducts, type ProductRow } from "@/lib/domain/product";
 import { WAREHOUSES } from "@/lib/domain/warehouse";
 import { marginPct, markupPct } from "@/lib/domain/pricing";
-import { money, stamp, toDisplayDate, toInputDate } from "@/lib/format";
+import { money, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
 import type { FormSchema, GridRow } from "@/lib/types";
 import { Badge } from "@/components/ui";
@@ -117,19 +117,19 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       lastCost: p.pricing.lastCost,
       avgCost: p.pricing.avgCost,
       vat: p.pricing.vat,
-      effective: toInputDate(p.pricing.effective),
+      effective: dmyToIso(p.pricing.effective),
     },
     tiers: p.detail.tiers.map((t) => ({ ...t })),
     lowLevel: p.lowLevel,
-    stocks: p.stocks.map((s) => ({ ...s, exp: toInputDate(s.exp) })),
+    stocks: p.stocks.map((s) => ({ ...s, exp: dmyToIso(s.exp) })),
     supplier: p.supplier,
     sup: { ...p.sup },
     altSuppliers: p.altSuppliers.map((a) => ({ ...a })),
     reg: {
       no: p.reg.no,
       status: p.reg.status,
-      issue: toInputDate(p.reg.issue),
-      expiry: toInputDate(p.reg.expiry),
+      issue: dmyToIso(p.reg.issue),
+      expiry: dmyToIso(p.reg.expiry),
       custWarranty: p.reg.custWarranty,
     },
   }),
@@ -793,7 +793,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       <ReviewCard title="Registration">
         {row("Registration Number", s.reg?.no, "registration")}
         {row("Registration Status", s.reg?.status, "registration")}
-        {row("Expiry Date", toDisplayDate(s.reg?.expiry), "registration")}
+        {row("Expiry Date", isoToDmy(s.reg?.expiry), "registration")}
       </ReviewCard>
     </>
   ),
@@ -811,7 +811,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       lastCost: num(s.pricing?.lastCost),
       avgCost: num(s.pricing?.avgCost),
       vat: String(s.pricing?.vat ?? ""),
-      effective: toDisplayDate(s.pricing?.effective),
+      effective: isoToDmy(s.pricing?.effective),
       contract: existing?.pricing.contract ?? null,
     };
 
@@ -821,7 +821,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       avail: num(r.avail),
       res: num(r.res),
       lot: String(r.lot ?? ""),
-      exp: toDisplayDate(r.exp),
+      exp: isoToDmy(r.exp),
     }));
 
     const patch = {
@@ -865,8 +865,8 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       reg: {
         no: String(s.reg?.no ?? ""),
         status: String(s.reg?.status ?? "Pending"),
-        issue: toDisplayDate(s.reg?.issue),
-        expiry: toDisplayDate(s.reg?.expiry),
+        issue: isoToDmy(s.reg?.issue),
+        expiry: isoToDmy(s.reg?.expiry),
         warranty: String(s.sup?.warranty ?? ""),
         custWarranty: String(s.reg?.custWarranty ?? ""),
         docs: existing?.reg.docs ?? [],

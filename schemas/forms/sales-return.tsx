@@ -24,7 +24,7 @@ import {
   submitReadiness,
   type RtnRow,
 } from "@/lib/domain/sales-return";
-import { fmt, money, money0, stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
+import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
 import { FORM_USER, RailCard, RailRow, RailTotal, ReviewCard, opts, saved } from "./common";
 
@@ -97,7 +97,7 @@ export const RTN_FORM: FormSchema<RtnRow> = {
     email: "",
     pickupAddress: "",
     salesRep: "",
-    returnDate: toInputDate(today()),
+    returnDate: dmyToIso(today()),
     returnType: "",
     returnReason: "",
     priority: "Normal",
@@ -136,7 +136,7 @@ export const RTN_FORM: FormSchema<RtnRow> = {
     email: r.email,
     pickupAddress: r.pickupAddress,
     salesRep: r.salesRep,
-    returnDate: toInputDate(r.returnDate),
+    returnDate: dmyToIso(r.returnDate),
     returnType: r.returnType,
     returnReason: r.returnReason,
     priority: r.priority,
@@ -753,7 +753,7 @@ export const RTN_FORM: FormSchema<RtnRow> = {
           {row("Return Number", s.code, "source")}
           {row("Source Document", s.sourceDoc || "Manual", "source")}
           {row("Customer", s.customer, "customer")}
-          {row("Return Date", toDisplayDate(s.returnDate), "info")}
+          {row("Return Date", isoToDmy(s.returnDate), "info")}
           {row("Return Type", s.returnType, "info")}
           {row("Return Reason", s.returnReason, "info")}
           {row("Return Warehouse", s.returnWarehouse, "info")}
@@ -819,7 +819,7 @@ export const RTN_FORM: FormSchema<RtnRow> = {
         unit: String(r.unit ?? ""),
         serial: String(r.serial ?? ""),
         lot: String(r.lot ?? ""),
-        expiry: toDisplayDate(r.expiry),
+        expiry: isoToDmy(r.expiry),
         condition: String(r.condition ?? "New / Unopened"),
         reason: String(r.reason ?? s.returnReason ?? ""),
         unitPrice: num(r.unitPrice),
@@ -844,7 +844,7 @@ export const RTN_FORM: FormSchema<RtnRow> = {
       email: String(s.email ?? ""),
       pickupAddress: String(s.pickupAddress ?? ""),
       salesRep: String(s.salesRep ?? ""),
-      returnDate: toDisplayDate(s.returnDate),
+      returnDate: isoToDmy(s.returnDate),
       returnType: String(s.returnType ?? ""),
       returnReason: String(s.returnReason ?? ""),
       priority: String(s.priority ?? "Normal"),

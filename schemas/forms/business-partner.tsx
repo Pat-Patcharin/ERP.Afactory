@@ -42,7 +42,7 @@ import {
   type BpRow,
 } from "@/lib/domain/partner";
 import { BILLING_ADDRESS_TYPES, DELIVERY_ADDRESS_TYPES } from "@/data/partners";
-import { money0, stamp, toDisplayDate, toInputDate } from "@/lib/format";
+import { money0, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema, FormState, GridRow } from "@/lib/types";
 import { FORM_USER, opts, saved } from "./common";
 
@@ -242,12 +242,12 @@ export const BP_FORM: FormSchema<BpRow> = {
     website: b.website,
     status: b.status,
     notes: b.notes,
-    since: toInputDate(b.since),
+    since: dmyToIso(b.since),
     billType: b.billType ?? "VAT",
     creditTerm: b.creditTerm ?? "30",
     roles: { ...b.roles },
     cls: { ...b.cls },
-    tax: { ...b.tax, vatDate: toInputDate(b.tax?.vatDate) },
+    tax: { ...b.tax, vatDate: dmyToIso(b.tax?.vatDate) },
     contacts: (b.contacts ?? []).map((c) => ({ ...c })),
     addresses: (b.addresses ?? []).map((a) => ({ ...a })),
     sales: b.sales ? { ...b.sales } : {},
@@ -1524,12 +1524,12 @@ export const BP_FORM: FormSchema<BpRow> = {
       website: String(s.website ?? ""),
       status: String(s.status ?? "Active"),
       notes: String(s.notes ?? ""),
-      since: toDisplayDate(s.since),
+      since: isoToDmy(s.since),
       billType: String(s.billType ?? "VAT"),
       creditTerm: String(s.creditTerm ?? "30"),
       roles: { ...(s.roles ?? {}) },
       cls: { ...(s.cls ?? {}) },
-      tax: { ...(s.tax ?? {}), vatDate: toDisplayDate(s.tax?.vatDate) },
+      tax: { ...(s.tax ?? {}), vatDate: isoToDmy(s.tax?.vatDate) },
       contacts: ((s.contacts ?? []) as GridRow[]).map((c, i) => ({
         ...c,
         code: c.code || `CT${String(i + 1).padStart(3, "0")}`,
@@ -1551,20 +1551,20 @@ export const BP_FORM: FormSchema<BpRow> = {
         ? ((s.supplierItems ?? []) as GridRow[]).map((i) => ({
             ...i,
             /* Dates are carried, not edited — an older row keeps its own. */
-            effective: i.effective ? toDisplayDate(i.effective) : "",
-            expiry: i.expiry ? toDisplayDate(i.expiry) : "",
+            effective: i.effective ? isoToDmy(i.effective) : "",
+            expiry: i.expiry ? isoToDmy(i.expiry) : "",
           }))
         : [],
       docs: ((s.docs ?? []) as GridRow[]).map((d) => ({
         ...d,
-        issue: toDisplayDate(d.issue),
-        expiry: toDisplayDate(d.expiry),
-        date: toDisplayDate(d.date),
+        issue: isoToDmy(d.issue),
+        expiry: isoToDmy(d.expiry),
+        date: isoToDmy(d.date),
       })),
       images: ((s.images ?? []) as GridRow[]).map((i, idx) => ({
         ...i,
         id: i.id || `IMG${String(idx + 1).padStart(3, "0")}`,
-        date: toDisplayDate(i.date),
+        date: isoToDmy(i.date),
       })),
       updated: now,
       updatedBy: FORM_USER(),

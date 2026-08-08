@@ -13,7 +13,7 @@ import {
   plRuleSummary,
   type PriceListRow,
 } from "@/lib/domain/pricing";
-import { daysUntil, stamp, toDisplayDate, toInputDate } from "@/lib/format";
+import { daysUntil, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema } from "@/lib/types";
 import { FORM_USER, RailCard, RailRow, isCreate, opts, saved } from "./common";
 
@@ -85,8 +85,8 @@ export const PRICE_LIST_FORM: FormSchema<PriceListRow> = {
     currency: p.currency,
     status: p.status,
     priority: p.priority,
-    effective: toInputDate(p.effective),
-    expiry: toInputDate(p.expiry),
+    effective: dmyToIso(p.effective),
+    expiry: dmyToIso(p.expiry),
     custGroup: p.custGroup,
     channel: p.channel,
     area: p.area,
@@ -181,7 +181,7 @@ export const PRICE_LIST_FORM: FormSchema<PriceListRow> = {
               label: "สถานะช่วงเวลา",
               value: (s) => {
                 if (!s.expiry) return "ไม่มีวันสิ้นสุด";
-                const d = daysUntil(toDisplayDate(s.expiry));
+                const d = daysUntil(isoToDmy(s.expiry));
                 if (d === null) return "—";
                 if (d < 0) return `หมดอายุแล้ว ${Math.abs(d)} วัน`;
                 return `เหลืออีก ${d} วัน`;
@@ -351,7 +351,7 @@ export const PRICE_LIST_FORM: FormSchema<PriceListRow> = {
       step: "validity",
       test: (s) => {
         if (s.status !== "Active" || !s.expiry) return true;
-        const d = daysUntil(toDisplayDate(s.expiry));
+        const d = daysUntil(isoToDmy(s.expiry));
         return d === null || d >= 0;
       },
     },
@@ -435,8 +435,8 @@ export const PRICE_LIST_FORM: FormSchema<PriceListRow> = {
       currency: String(s.currency ?? "THB"),
       status: String(s.status ?? "Draft"),
       priority: num(s.priority),
-      effective: toDisplayDate(s.effective),
-      expiry: toDisplayDate(s.expiry),
+      effective: isoToDmy(s.effective),
+      expiry: isoToDmy(s.expiry),
       custGroup: String(s.custGroup ?? ""),
       channel: String(s.channel ?? ""),
       area: String(s.area ?? ""),

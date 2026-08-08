@@ -2,7 +2,7 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import { cn, getPath } from "@/lib/utils";
-import { esc, toInputDate } from "@/lib/format";
+import { esc, dmyToIso } from "@/lib/format";
 import { Icon } from "@/lib/icons";
 import { checkPermission } from "@/lib/permissions";
 import {
@@ -122,7 +122,7 @@ export function FieldView({ field: f, api }: { field: FormField; api: FormApi })
         return (
           <Input
             type="date"
-            value={toInputDate(value as string)}
+            value={dmyToIso(value as string)}
             readOnly={f.readonly}
             aria-invalid={isBlank || undefined}
             className={cn("tnum", ring)}
@@ -750,7 +750,7 @@ function GridCell({
       return (
         <CellInput
           type="date"
-          value={toInputDate(v as string)}
+          value={dmyToIso(v as string)}
           className="tnum"
           onChange={(e) => put(e.target.value)}
         />

@@ -21,7 +21,7 @@ import {
 import type { DraftLine } from "@/lib/domain/doc-draft";
 import type { SalesRequest } from "@/data/sales-requests";
 import { buildPrintJob, getPrintConfig } from "@/lib/print";
-import { toDisplayDate } from "@/lib/format";
+import { isoToDmy } from "@/lib/format";
 import { useActionCtx } from "@/components/engine/useActionCtx";
 import { useCrumbCode } from "@/components/layout/Topbar";
 import {
@@ -282,8 +282,8 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
     const { txt, sel } = metaControls(draft, set);
 
     return [
-      { field: "requestDate", label: "Request Date", required: true, control: txt("requestDate", "Request Date", "date"), read: toDisplayDate(draft.requestDate) },
-      { field: "requiredDate", label: "Required Date", required: true, control: txt("requiredDate", "Required Date", "date"), read: toDisplayDate(draft.requiredDate) },
+      { field: "requestDate", label: "Request Date", required: true, control: txt("requestDate", "Request Date", "date"), read: isoToDmy(draft.requestDate) },
+      { field: "requiredDate", label: "Required Date", required: true, control: txt("requiredDate", "Required Date", "date"), read: isoToDmy(draft.requiredDate) },
       { field: "priority", label: "Priority", required: true, control: sel("priority", "Priority", SR_PRIORITY), read: draft.priority },
       {
         field: "quotationRef",

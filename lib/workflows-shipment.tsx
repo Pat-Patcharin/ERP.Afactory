@@ -4,7 +4,7 @@ import { actingUserName } from "./domain/admin";
 import { useState, type ReactNode } from "react";
 import { notify } from "./domain/notify";
 import { SALES_ORDERS, SALES_REQUESTS } from "./domain/outbound";
-import { DASH, fmt, stamp, toDisplayDate, today, toInputDate } from "./format";
+import { DASH, fmt, stamp, isoToDmy, today, dmyToIso } from "./format";
 import { cn } from "./utils";
 import { Icon } from "./icons";
 import type { ActionCtx } from "./types";
@@ -534,7 +534,7 @@ interface DeliveryDraft {
 
 function DeliveryBody({ s, onChange }: { s: ShpRow; onChange: (v: DeliveryDraft) => void }) {
   const [v, setV] = useState<DeliveryDraft>({
-    date: toInputDate(today()),
+    date: dmyToIso(today()),
     time: "14:45",
     recipient: "",
     position: "",
@@ -717,12 +717,12 @@ export function shpConfirmDelivery(s: ShpRow, ctx: ActionCtx) {
       const from = s.status;
       s.status = failed ? "Delivery Failed" : partial ? "Partially Delivered" : "Delivered";
       s.deliveryStatus = failed ? "Failed" : partial ? "Partially Delivered" : "Delivered";
-      s.actualDelivery = `${toDisplayDate(d.date)} ${d.time}`;
+      s.actualDelivery = `${isoToDmy(d.date)} ${d.time}`;
       s.pod = {
         recipient: d.recipient.trim(),
         position: d.position.trim(),
         phone: d.phone.trim(),
-        date: toDisplayDate(d.date),
+        date: isoToDmy(d.date),
         time: d.time,
         result: d.result,
         signature: d.signature ? "ลายเซ็นอิเล็กทรอนิกส์ (จำลอง)" : "",
@@ -878,7 +878,7 @@ export function shpRecordException(s: ShpRow, ctx: ActionCtx) {
         severity: e.severity,
         party: e.party,
         resolution: e.resolution.trim(),
-        followUp: toDisplayDate(e.followUp),
+        followUp: isoToDmy(e.followUp),
         status: e.resolution.trim() ? "Resolved" : "Open",
       });
 
@@ -1005,7 +1005,7 @@ export function shpReschedule(s: ShpRow, ctx: ActionCtx) {
       const oldDate = s.expectedDelivery;
       const from = s.status;
       s.rescheduledFrom = oldDate;
-      s.expectedDelivery = toDisplayDate(r.date);
+      s.expectedDelivery = isoToDmy(r.date);
       s.rescheduleReason = r.notes.trim() ? `${r.reason} — ${r.notes.trim()}` : r.reason;
       if (r.driver) s.driver = r.driver;
       s.status = "Rescheduled";

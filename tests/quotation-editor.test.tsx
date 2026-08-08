@@ -13,7 +13,7 @@ import { PRODUCTS } from "@/lib/domain/product";
 import { QUOTATIONS, getCustomer } from "@/lib/domain/outbound";
 import { qtRequestEdit } from "@/lib/workflows-outbound";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
-import { toDisplayDate } from "@/lib/format";
+import { isoToDmy } from "@/lib/format";
 import {
   applyCustomer,
   applyProduct,
@@ -1534,7 +1534,7 @@ describe("Quotation — validity as a span", () => {
     const d = readyDraft({ quoteDate: "2026-05-01", validDays: 60 });
     const res = saveQuotationDraft({ ...d, validUntil: "1999-01-01" }, { issue: true });
     const saved = QUOTATIONS.find((q) => q.code === res.code)!;
-    expect(saved.validUntil).toBe(toDisplayDate(validUntilFrom("2026-05-01", 60)));
+    expect(saved.validUntil).toBe(isoToDmy(validUntilFrom("2026-05-01", 60)));
     expect(saved.validUntil).not.toContain("1999");
   });
 

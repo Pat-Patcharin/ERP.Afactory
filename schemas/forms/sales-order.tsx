@@ -25,7 +25,7 @@ import {
   warehouseOptions,
   type SoRow,
 } from "@/lib/domain/outbound";
-import { fmt, money, money0, stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
+import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
 import {
   FORM_USER,
@@ -76,7 +76,7 @@ export const SO_FORM: FormSchema<SoRow> = {
     customer: "",
     customerCode: "",
     salesRep: "",
-    orderDate: toInputDate(today()),
+    orderDate: dmyToIso(today()),
     deliveryDate: "",
     warehouse: "",
     currency: "THB",
@@ -101,8 +101,8 @@ export const SO_FORM: FormSchema<SoRow> = {
     customer: so.customer,
     customerCode: so.customerCode,
     salesRep: so.salesRep,
-    orderDate: toInputDate(so.orderDate),
-    deliveryDate: toInputDate(so.deliveryDate),
+    orderDate: dmyToIso(so.orderDate),
+    deliveryDate: dmyToIso(so.deliveryDate),
     warehouse: so.warehouse,
     currency: so.currency,
     fx: so.fx,
@@ -459,7 +459,7 @@ export const SO_FORM: FormSchema<SoRow> = {
       s.channel = sr.channel;
       s.priority = sr.priority;
       s.customerPo = sr.customerRef;
-      s.deliveryDate = toInputDate(sr.requiredDate);
+      s.deliveryDate = dmyToIso(sr.requiredDate);
       const addresses = shipToOptions(s.customerPick);
       s.shipTo = addresses[0] ?? "";
       s.items = (sr.items ?? []).map((it) => ({
@@ -607,8 +607,8 @@ export const SO_FORM: FormSchema<SoRow> = {
           {row("SO Number", s.code, "customer")}
           {row("Customer", s.customer, "customer")}
           {row("Sales Rep", s.salesRep, "customer")}
-          {row("Order Date", toDisplayDate(s.orderDate), "customer")}
-          {row("Delivery Date", toDisplayDate(s.deliveryDate), "customer")}
+          {row("Order Date", isoToDmy(s.orderDate), "customer")}
+          {row("Delivery Date", isoToDmy(s.deliveryDate), "customer")}
           {row("Ship To", s.shipTo, "customer")}
           {row("Source Warehouse", s.warehouse, "customer")}
           {row("Payment Term", s.payTerm, "customer")}
@@ -714,8 +714,8 @@ export const SO_FORM: FormSchema<SoRow> = {
       customer: bp ? bp.nameTh || bp.nameEn : String(s.customer ?? ""),
       customerCode: bp?.code ?? String(s.customerCode ?? ""),
       salesRep: String(s.salesRep ?? ""),
-      orderDate: toDisplayDate(s.orderDate),
-      deliveryDate: toDisplayDate(s.deliveryDate),
+      orderDate: isoToDmy(s.orderDate),
+      deliveryDate: isoToDmy(s.deliveryDate),
       warehouse: String(s.warehouse ?? ""),
       currency: String(s.currency ?? "THB"),
       fx: num(s.fx) || 1,

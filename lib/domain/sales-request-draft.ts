@@ -34,7 +34,7 @@ import {
   type PartyFields,
   type TermFields,
 } from "./doc-draft";
-import { toDisplayDate, toInputDate, stamp, today } from "@/lib/format";
+import { isoToDmy, dmyToIso, stamp, today } from "@/lib/format";
 import { META_LABELS } from "@/lib/print/config";
 import { defaultBank, printCompany } from "@/lib/print/mapper";
 import { bahtText } from "@/lib/print/words";
@@ -139,7 +139,7 @@ export function blankSrDraft(): SalesRequestDraft {
     mode: "create",
     code: nextSalesRequestCode(),
     status: "Draft",
-    requestDate: toInputDate(today()),
+    requestDate: dmyToIso(today()),
     requiredDate: defaultRequiredDate(),
     priority: "Normal",
     warehouse: "",
@@ -178,8 +178,8 @@ export function draftFromSalesRequest(r: SalesRequest): SalesRequestDraft {
     customerPick: pick,
     customerCode: r.customerCode,
     customer: r.customer,
-    requestDate: toInputDate(r.requestDate),
-    requiredDate: toInputDate(r.requiredDate),
+    requestDate: dmyToIso(r.requestDate),
+    requiredDate: dmyToIso(r.requiredDate),
     priority: r.priority,
     warehouse: r.warehouse,
     quotationRef: r.quotationRef,
@@ -251,7 +251,7 @@ export function applyQuotation(draft: SalesRequestDraft, quotationRef: string): 
     billType: qt.billType,
     customerRef: qt.customerRef,
     /* The customer wanted the goods by the day the price stops standing. */
-    requiredDate: toInputDate(qt.validUntil),
+    requiredDate: dmyToIso(qt.validUntil),
     items: (qt.items ?? []).map((it) => ({
       ...blankLine(),
       code: it.code,
@@ -352,8 +352,8 @@ export function srPrintDoc(draft: SalesRequestDraft, config: PrintConfig): Print
   const t = srTotals(draft);
   const values: Record<string, string> = {
     docNo: draft.code,
-    docDate: toDisplayDate(draft.requestDate),
-    deliveryDate: toDisplayDate(draft.requiredDate),
+    docDate: isoToDmy(draft.requestDate),
+    deliveryDate: isoToDmy(draft.requiredDate),
     customerCode: draft.customerCode,
     salesRep: draft.salesRep,
     quotationNo: draft.quotationRef,
@@ -410,7 +410,7 @@ export function srPrintDoc(draft: SalesRequestDraft, config: PrintConfig): Print
     code: draft.code,
     status: draft.status,
     statusTone: "info",
-    date: toDisplayDate(draft.requestDate),
+    date: isoToDmy(draft.requestDate),
     company: printCompany(),
     billTo: {
       name: draft.customer,
@@ -506,8 +506,8 @@ export function saveSalesRequestDraft(
     customer: str(draft.customer),
     customerCode: str(draft.customerCode),
     salesRep: str(draft.salesRep),
-    requestDate: toDisplayDate(draft.requestDate),
-    requiredDate: toDisplayDate(draft.requiredDate),
+    requestDate: isoToDmy(draft.requestDate),
+    requiredDate: isoToDmy(draft.requiredDate),
     priority: str(draft.priority) || "Normal",
     warehouse: str(draft.warehouse),
     currency: str(draft.currency) || "THB",

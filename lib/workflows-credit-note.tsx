@@ -2,7 +2,7 @@
 
 import { actingUserName } from "./domain/admin";
 import { useState, type ReactNode } from "react";
-import { fmt, money, money0, stamp, toDisplayDate, toInputDate, today } from "./format";
+import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "./format";
 import { cn } from "./utils";
 import { Icon } from "./icons";
 import type { ActionCtx } from "./types";
@@ -364,7 +364,7 @@ function ApplyBody({ c, onChange }: { c: CnRow; onChange: (v: { amount: string; 
   const [v, setV] = useState({
     amount: String(c.outstandingCredit),
     invoice: c.invoiceRef,
-    date: toInputDate(today()),
+    date: dmyToIso(today()),
   });
   const put = (next: typeof v) => {
     setV(next);
@@ -435,7 +435,7 @@ export function cnApply(c: CnRow, ctx: ActionCtx) {
     return;
   }
 
-  let v = { amount: String(c.outstandingCredit), invoice: c.invoiceRef, date: toInputDate(today()) };
+  let v = { amount: String(c.outstandingCredit), invoice: c.invoiceRef, date: dmyToIso(today()) };
 
   ctx.formModal({
     title: "Apply Credit",
@@ -463,7 +463,7 @@ export function cnApply(c: CnRow, ctx: ActionCtx) {
 
       const now = stamp();
       c.appliedAmount = Math.round((num(c.appliedAmount) + amount) * 100) / 100;
-      c.appliedDate = toDisplayDate(v.date);
+      c.appliedDate = isoToDmy(v.date);
       c.appliedTo = v.invoice.trim();
       c.status = "Applied";
       c.updated = now;

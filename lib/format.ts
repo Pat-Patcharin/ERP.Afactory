@@ -108,8 +108,34 @@ export function daysUntil(str: string | null | undefined): number | null {
   return Math.ceil((new Date(ceYear(y), m - 1, d).getTime() - Date.now()) / 86_400_000);
 }
 
-/** dd/mm/yyyy for display; accepts both an ISO date input and a Thai-style string. */
-export function toDisplayDate(v: string | null | undefined): string {
+/* ------------------------------------------------------------
+   THE TWO FORMATS, AND WHY THESE NAMES
+
+     dd/mm/yyyy   what a record stores, and what a screen shows
+     yyyy-mm-dd   what <input type="date"> speaks, and only it
+
+   Both are Gregorian. Neither of these functions touches the
+   era — that happens once, at print time, and nowhere else.
+   `docs/DATE-ERA.md` has the decision.
+
+   These were called `toDisplayDate` and `toInputDate` until the
+   names caused a real mistake. A name describing PURPOSE gets
+   believed: "display" made this look like the one place every
+   date passes through on its way to the screen, so converting
+   to พ.ศ. inside it looked like a one-line change. It is not
+   that place. Records already hold dd/mm/yyyy and render
+   straight out of the object, and 73 of this function's callers
+   are save paths — the "one-line change" would have written
+   Buddhist years back into `data/`.
+
+   Named for the transformation instead, because a name that
+   makes no claim about intent cannot be wrong about it. The
+   direction is also readable at the call site now, which the
+   `to*` pair never was.
+   ------------------------------------------------------------ */
+
+/** ISO → dd/mm/yyyy. A string already in dd/mm/yyyy passes through unchanged. */
+export function isoToDmy(v: string | null | undefined): string {
   if (!v) return "";
   if (/^\d{4}-\d{2}-\d{2}/.test(v)) {
     const [y, m, d] = v.slice(0, 10).split("-");
@@ -118,8 +144,8 @@ export function toDisplayDate(v: string | null | undefined): string {
   return v;
 }
 
-/** yyyy-mm-dd for <input type="date">; accepts a dd/mm/yyyy string. */
-export function toInputDate(v: string | null | undefined): string {
+/** dd/mm/yyyy → ISO. A string already in ISO passes through, trimmed to the date. */
+export function dmyToIso(v: string | null | undefined): string {
   if (!v) return "";
   if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
   const [d, m, y] = v.split("/");

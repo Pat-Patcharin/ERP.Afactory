@@ -20,7 +20,7 @@ import {
   nextGRCode,
   type GrRow,
 } from "@/lib/domain/inbound";
-import { fmt, stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
+import { fmt, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
 import {
   FORM_USER,
@@ -70,7 +70,7 @@ export const GR_FORM: FormSchema<GrRow> = {
     poRef: "",
     supplier: "",
     warehouse: GR_WAREHOUSES[0],
-    receiptDate: toInputDate(today()),
+    receiptDate: dmyToIso(today()),
     expectedDate: "",
     receiver: "",
     status: "Draft",
@@ -105,8 +105,8 @@ export const GR_FORM: FormSchema<GrRow> = {
     poRef: gr.poRef,
     supplier: gr.supplier,
     warehouse: gr.warehouse,
-    receiptDate: toInputDate(gr.receiptDate),
-    expectedDate: toInputDate(gr.expectedDate),
+    receiptDate: dmyToIso(gr.receiptDate),
+    expectedDate: dmyToIso(gr.expectedDate),
     receiver: gr.receiver,
     status: gr.status,
     qcStatus: gr.qcStatus,
@@ -124,7 +124,7 @@ export const GR_FORM: FormSchema<GrRow> = {
     nonPoReason: gr.nonPoReason ?? "",
     /* Lot and serial detail is captured on the QC and Put Away steps, not here. */
     items: (gr.items ?? []).map(({ lots, serials, ...rest }) => ({ ...rest })),
-    qc: { ...gr.qc, dueDate: toInputDate(gr.qc?.dueDate) },
+    qc: { ...gr.qc, dueDate: dmyToIso(gr.qc?.dueDate) },
   }),
 
   steps: [
@@ -484,7 +484,7 @@ export const GR_FORM: FormSchema<GrRow> = {
     if (!po) return;
 
     s.supplier = po.supplier;
-    s.expectedDate = toInputDate(po.expectedDate);
+    s.expectedDate = dmyToIso(po.expectedDate);
     if (po.warehouse) s.warehouse = po.warehouse;
 
     s.items = (po.items ?? [])
@@ -635,8 +635,8 @@ export const GR_FORM: FormSchema<GrRow> = {
       poRef: String(s.poRef ?? ""),
       supplier: String(s.supplier ?? ""),
       warehouse: String(s.warehouse ?? ""),
-      receiptDate: toDisplayDate(s.receiptDate),
-      expectedDate: toDisplayDate(s.expectedDate),
+      receiptDate: isoToDmy(s.receiptDate),
+      expectedDate: isoToDmy(s.expectedDate),
       receiver: String(s.receiver ?? ""),
       discrepancy: String(s.discrepancy ?? "None"),
       deliveryNote: String(s.deliveryNote ?? ""),
@@ -651,7 +651,7 @@ export const GR_FORM: FormSchema<GrRow> = {
       remark: String(s.remark ?? ""),
       nonPoReason: String(s.nonPoReason ?? ""),
       items,
-      qc: { ...(s.qc ?? {}), dueDate: toDisplayDate(s.qc?.dueDate) },
+      qc: { ...(s.qc ?? {}), dueDate: isoToDmy(s.qc?.dueDate) },
       qcStatus: anyQc ? "Pending" : "Not Required",
       status: anyQc ? "Pending QC" : fullyReceived ? "Ready for Put Away" : "Partial",
       updated: now,

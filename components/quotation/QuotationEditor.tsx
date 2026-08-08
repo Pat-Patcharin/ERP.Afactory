@@ -21,7 +21,7 @@ import {
 import type { DraftLine } from "@/lib/domain/doc-draft";
 import type { Quotation } from "@/data/quotations";
 import { buildPrintJob, getPrintConfig } from "@/lib/print";
-import { toDisplayDate } from "@/lib/format";
+import { isoToDmy } from "@/lib/format";
 import { useActionCtx } from "@/components/engine/useActionCtx";
 import { useCrumbCode } from "@/components/layout/Topbar";
 import {
@@ -287,12 +287,12 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
                                             under the panel rather than as a
                                             date somebody counts out */
     return [
-      { field: "quoteDate", label: "Quotation Date", required: true, control: txt("quoteDate", "Quotation Date", "date"), read: toDisplayDate(draft.quoteDate) },
+      { field: "quoteDate", label: "Quotation Date", required: true, control: txt("quoteDate", "Quotation Date", "date"), read: isoToDmy(draft.quoteDate) },
       { field: "salesRep", label: "Sales Representative", required: true, control: sel("salesRep", "Sales Representative", salesRepOptions(), "— เลือกพนักงานขาย —"), read: draft.salesRep },
       { field: "priceList", label: "Price List", required: true, control: sel("priceList", "Price List", QT_PRICE_LISTS), read: draft.priceList },
       { field: "currency", label: "Currency", required: true, control: sel("currency", "Currency", PO_CURRENCIES), read: draft.currency },
       { field: "payTerm", label: "Payment Term", control: sel("payTerm", "Payment Term", PAY_TERMS), read: draft.payTerm },
-      { field: "deliveryDate", label: "Delivery Date", control: txt("deliveryDate", "Delivery Date", "date"), read: toDisplayDate(draft.deliveryDate) },
+      { field: "deliveryDate", label: "Delivery Date", control: txt("deliveryDate", "Delivery Date", "date"), read: isoToDmy(draft.deliveryDate) },
     ];
   }, [draft, set]);
 
@@ -378,7 +378,7 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
               prose on the finished sheet, not a labelled field. */}
           <ValidityChips
             days={draft.validDays}
-            until={toDisplayDate(draft.validUntil)}
+            until={isoToDmy(draft.validUntil)}
             options={QT_VALID_DAY_OPTIONS}
             mode={docMode}
             onChange={(validDays) => set({ validDays })}

@@ -32,7 +32,7 @@ import {
   sourceOptions,
   type InvRow,
 } from "@/lib/domain/invoice";
-import { fmt, money, money0, stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
+import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
 import {
   FORM_USER,
@@ -135,8 +135,8 @@ export const INV_FORM: FormSchema<InvRow> = {
     contactPerson: "",
     phone: "",
     email: "",
-    invoiceDate: toInputDate(today()),
-    dueDate: dueDateFrom(toInputDate(today()), 30),
+    invoiceDate: dmyToIso(today()),
+    dueDate: dueDateFrom(dmyToIso(today()), 30),
     status: "Draft",
     paymentStatus: "Unpaid",
     approvalStatus: "Not Required",
@@ -183,8 +183,8 @@ export const INV_FORM: FormSchema<InvRow> = {
     contactPerson: inv.contactPerson,
     phone: inv.phone,
     email: inv.email,
-    invoiceDate: toInputDate(inv.invoiceDate),
-    dueDate: toInputDate(inv.dueDate),
+    invoiceDate: dmyToIso(inv.invoiceDate),
+    dueDate: dmyToIso(inv.dueDate),
     status: inv.status,
     paymentStatus: inv.paymentStatus,
     approvalStatus: inv.approvalStatus,
@@ -569,7 +569,7 @@ export const INV_FORM: FormSchema<InvRow> = {
               hint: "เปลี่ยนแล้วระบบจะคำนวณ Due Date ใหม่",
             },
             { type: "number", path: "creditDays", label: "Credit Days", required: true, min: 0, max: 365 },
-            { type: "static", path: "dueDate", label: "Due Date", value: (st) => toDisplayDate(st.dueDate) },
+            { type: "static", path: "dueDate", label: "Due Date", value: (st) => isoToDmy(st.dueDate) },
             {
               type: "select",
               path: "paymentMethod",
@@ -910,7 +910,7 @@ export const INV_FORM: FormSchema<InvRow> = {
         <RailRow label="เลขที่" value={String(s.code ?? "")} />
         <RailRow label="ลูกค้า" value={String(s.customer ?? "") || "ยังไม่ได้เลือก"} />
         <RailRow label="ต้นทาง" value={String(s.sourceDoc ?? "") || "Manual"} />
-        <RailRow label="ครบกำหนด" value={toDisplayDate(s.dueDate) || "—"} />
+        <RailRow label="ครบกำหนด" value={isoToDmy(s.dueDate) || "—"} />
         <RailRow label="Subtotal" value={money(t.taxable)} />
         <RailRow label={`Tax (${num(s.vatRate)}%)`} value={money(t.tax)} />
         <RailTotal label={`Grand Total (${String(s.currency ?? "THB")})`} value={money(t.grandTotal)} />
@@ -978,8 +978,8 @@ export const INV_FORM: FormSchema<InvRow> = {
       <>
         <ReviewCard title="Invoice & Customer">
           {row("Invoice Number", s.code, "invoice")}
-          {row("Invoice Date", toDisplayDate(s.invoiceDate), "invoice")}
-          {row("Due Date", toDisplayDate(s.dueDate), "invoice")}
+          {row("Invoice Date", isoToDmy(s.invoiceDate), "invoice")}
+          {row("Due Date", isoToDmy(s.dueDate), "invoice")}
           {row("Source Document", s.sourceDoc || "Manual", "source")}
           {row("Customer", s.customer, "customer")}
           {row("Tax ID", s.taxId, "customer")}
@@ -1098,8 +1098,8 @@ export const INV_FORM: FormSchema<InvRow> = {
       contactPerson: String(s.contactPerson ?? ""),
       phone: String(s.phone ?? ""),
       email: String(s.email ?? ""),
-      invoiceDate: toDisplayDate(s.invoiceDate),
-      dueDate: toDisplayDate(s.dueDate),
+      invoiceDate: isoToDmy(s.invoiceDate),
+      dueDate: isoToDmy(s.dueDate),
       branch: String(s.branch ?? ""),
       channel: String(s.channel ?? ""),
       salesRep: String(s.salesRep ?? ""),

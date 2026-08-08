@@ -2,7 +2,7 @@
 
 import { actingUserName } from "./domain/admin";
 import { useState, type ReactNode } from "react";
-import { fmt, money, money0, stamp, toDisplayDate, toInputDate, today } from "./format";
+import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "./format";
 import { cn } from "./utils";
 import { Icon } from "./icons";
 import type { ActionCtx } from "./types";
@@ -496,8 +496,8 @@ export function rtnAuthorize(r: RtnRow, ctx: ActionCtx) {
       r.returnWarehouse = a.warehouse;
       r.returnMethod = a.method;
       r.pickupRequired = a.pickup;
-      r.expectedReturnDate = toDisplayDate(a.expected);
-      r.authExpiryDate = toDisplayDate(a.expiry);
+      r.expectedReturnDate = isoToDmy(a.expected);
+      r.authExpiryDate = isoToDmy(a.expiry);
       r.returnInstructions = a.instructions;
       r.packingInstructions = a.packing;
       r.authorizedBy = USER();
@@ -541,7 +541,7 @@ interface ReceiveDraft {
 
 function ReceiveBody({ r, onChange }: { r: RtnRow; onChange: (v: ReceiveDraft) => void }) {
   const [v, setV] = useState<ReceiveDraft>({
-    date: toInputDate(today()),
+    date: dmyToIso(today()),
     warehouse: r.returnWarehouse || "Return Center",
     receiver: "Warehouse Staff",
     packageCount: "1",
@@ -715,7 +715,7 @@ export function rtnReceive(r: RtnRow, ctx: ActionCtx) {
       const full = receivedTotal >= approvedTotal;
 
       r.receiving = {
-        receivedDate: `${toDisplayDate(d.date)} ${now.split(" ")[1] ?? ""}`.trim(),
+        receivedDate: `${isoToDmy(d.date)} ${now.split(" ")[1] ?? ""}`.trim(),
         warehouse: d.warehouse,
         receiver: d.receiver,
         packageCount: num(d.packageCount),
@@ -1409,7 +1409,7 @@ export function rtnException(r: RtnRow, ctx: ActionCtx) {
         severity: e.severity,
         party: e.party,
         resolution: e.resolution.trim(),
-        followUp: toDisplayDate(e.followUp),
+        followUp: isoToDmy(e.followUp),
         status: e.resolution.trim() ? "Resolved" : "Open",
       });
       r.updated = now;

@@ -15,7 +15,7 @@ import {
   poTaxTotal,
   type PoRow,
 } from "@/lib/domain/purchase";
-import { fmt, money, stamp, toDisplayDate, toInputDate, today } from "@/lib/format";
+import { fmt, money, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
 import {
   FORM_USER,
@@ -55,7 +55,7 @@ export const PO_FORM: FormSchema<PoRow> = {
     code: nextPOCode(),
     supplier: "",
     buyer: "",
-    orderDate: toInputDate(today()),
+    orderDate: dmyToIso(today()),
     expectedDate: "",
     warehouse: WAREHOUSES[0] ? `${WAREHOUSES[0].code} ${WAREHOUSES[0].name}` : "",
     currency: "THB",
@@ -73,8 +73,8 @@ export const PO_FORM: FormSchema<PoRow> = {
     code: po.code,
     supplier: po.supplier,
     buyer: po.buyer,
-    orderDate: toInputDate(po.orderDate),
-    expectedDate: toInputDate(po.expectedDate),
+    orderDate: dmyToIso(po.orderDate),
+    expectedDate: dmyToIso(po.expectedDate),
     warehouse: po.warehouse,
     currency: po.currency,
     fx: po.fx,
@@ -411,8 +411,8 @@ export const PO_FORM: FormSchema<PoRow> = {
     const patch = {
       supplier: String(s.supplier ?? ""),
       buyer: String(s.buyer ?? ""),
-      orderDate: toDisplayDate(s.orderDate),
-      expectedDate: toDisplayDate(s.expectedDate),
+      orderDate: isoToDmy(s.orderDate),
+      expectedDate: isoToDmy(s.expectedDate),
       warehouse: String(s.warehouse ?? ""),
       currency: String(s.currency ?? "THB"),
       fx: num(s.fx) || 1,

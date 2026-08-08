@@ -16,7 +16,7 @@ import {
   warehouseOptions,
   type PickRow,
 } from "@/lib/domain/outbound";
-import { fmt, stamp, toDisplayDate, toInputDate } from "@/lib/format";
+import { fmt, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema, GridRow } from "@/lib/types";
 import { FORM_USER, RailCard, RailRow, RailTotal, opts, saved } from "./common";
 
@@ -73,8 +73,8 @@ export const PICK_FORM: FormSchema<PickRow> = {
     assignedTo: t.assignedTo,
     priority: t.priority,
     status: t.status,
-    pickDate: toInputDate(t.pickDate),
-    dueDate: toInputDate(t.dueDate),
+    pickDate: dmyToIso(t.pickDate),
+    dueDate: dmyToIso(t.dueDate),
     strategy: t.strategy,
     remark: t.remark,
     items: (t.items ?? []).map((it) => ({ ...it })),
@@ -282,7 +282,7 @@ export const PICK_FORM: FormSchema<PickRow> = {
     s.customerCode = so.customerCode;
     s.warehouse = so.warehouse;
     s.priority = so.priority;
-    s.dueDate = toInputDate(so.deliveryDate);
+    s.dueDate = dmyToIso(so.deliveryDate);
 
     s.items = (so.items ?? [])
       .filter((it) => num(it.qty) - num(it.picked) > 0)
@@ -415,8 +415,8 @@ export const PICK_FORM: FormSchema<PickRow> = {
       warehouse: String(s.warehouse ?? ""),
       assignedTo,
       priority: String(s.priority ?? "Normal"),
-      pickDate: toDisplayDate(s.pickDate) || (anyPicked ? now.split(" ")[0] : ""),
-      dueDate: toDisplayDate(s.dueDate),
+      pickDate: isoToDmy(s.pickDate) || (anyPicked ? now.split(" ")[0] : ""),
+      dueDate: isoToDmy(s.dueDate),
       strategy: String(s.strategy ?? ""),
       remark: String(s.remark ?? ""),
       items,
