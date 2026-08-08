@@ -11,6 +11,7 @@ import type { BadgeTone, RecordBase } from "@/lib/types";
 import { PRODUCTS, isStocked, stockedProducts } from "./product";
 import { WAREHOUSES } from "./warehouse";
 import { parseStamp } from "./inventory";
+import { formatStamp } from "@/lib/format";
 import { GOODS_RECEIPTS, PUTAWAY_TASKS, QC_INSPECTIONS } from "./inbound";
 import { PICKING_TASKS, SALES_ORDERS } from "./outbound";
 import { SHIPMENTS } from "./shipment";
@@ -55,13 +56,9 @@ function rng(seed: number) {
 
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
 
-const stampOf = (ts: number) => {
-  const d = new Date(ts);
-  return `${pad(d.getDate(), 2)}/${pad(d.getMonth() + 1, 2)}/${d.getFullYear()} ${pad(
-    d.getHours(),
-    2,
-  )}:${pad(d.getMinutes(), 2)}`;
-};
+/* `formatStamp` from lib/format, not a local copy — same formula as every
+   other "when" in the app. See the note there. */
+const stampOf = formatStamp;
 
 /* ---------- Ledger state ---------- */
 

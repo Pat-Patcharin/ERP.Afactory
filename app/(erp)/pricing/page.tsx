@@ -12,7 +12,7 @@ import {
   type PriceLine,
 } from "@/lib/domain/pricing";
 import { PRICE_LISTS } from "@/data/price-lists";
-import { daysUntil, money, money0 } from "@/lib/format";
+import { daysUntil, money, money0, today } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/lib/icons";
 import { useUI } from "@/lib/store";
@@ -156,7 +156,7 @@ export default function ProductPricingPage() {
         else
           (PRICING[product.code] ??= []).push({
             id: `PP-${product.code}-${Date.now()}`,
-            eff: new Date().toLocaleDateString("en-GB"),
+            eff: today(),
             exp: "",
             ...patch,
           });

@@ -11,6 +11,7 @@ import type { BadgeTone, RecordBase } from "@/lib/types";
 import { PRODUCTS, stockedProducts } from "./product";
 import { WAREHOUSES, flattenBins, type WarehouseRow } from "./warehouse";
 import { parseStamp } from "./inventory";
+import { formatDate } from "@/lib/format";
 import { GOODS_RECEIPTS, PUTAWAY_TASKS, QC_INSPECTIONS } from "./inbound";
 import { PICKING_TASKS, SALES_ORDERS } from "./outbound";
 import { PURCHASE_ORDERS } from "./purchase";
@@ -260,8 +261,8 @@ function buildLots(rand: () => number): LotRow[] {
     const offset = Math.round((rand() * 640 - 130) / 5) * 5;
     const exp = new Date(Date.now() + offset * 86_400_000);
     const mfg = new Date(exp.getTime() - 720 * 86_400_000);
-    const d = (x: Date) =>
-      `${pad(x.getDate(), 2)}/${pad(x.getMonth() + 1, 2)}/${x.getFullYear()}`;
+    /* `formatDate` from lib/format, not a local copy. See the note there. */
+    const d = formatDate;
     out.push({
       lot: `LOT-26${pad(i + 1, 3)}`,
       product: p.code,

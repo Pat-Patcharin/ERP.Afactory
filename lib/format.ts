@@ -153,13 +153,44 @@ export function dmyToIso(v: string | null | undefined): string {
   return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
-/** "26/07/2025 14:22" — the audit stamp format used across every module. */
-export function stamp(): string {
-  const d = new Date();
-  return `${d.toLocaleDateString("en-GB")} ${d.toTimeString().slice(0, 5)}`;
+/* ------------------------------------------------------------
+   ONE FORMULA FOR "WHEN"
+
+   Four modules each grew their own dd/mm/yyyy builder, for the
+   same reason the era heuristic was in five places before D2:
+   `stamp()` reads the clock itself, and a module that has a
+   timestamp in hand — a ledger row, a lot expiry — cannot use
+   it. So each wrote the padding out again.
+
+   Splitting the formatting from the clock fixes that. The
+   timestamp versions take the moment as an argument; `stamp()`
+   and `today()` are the no-argument cases, defined in terms of
+   them, so there is one formula and not five.
+
+   Gregorian, like everything that is not the printed sheet.
+   ------------------------------------------------------------ */
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+const asDate = (at: number | Date) => (at instanceof Date ? at : new Date(at));
+
+/** "26/07/2025" — a moment as a date. */
+export function formatDate(at: number | Date): string {
+  const d = asDate(at);
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
-export const today = (): string => new Date().toLocaleDateString("en-GB");
+/** "26/07/2025 14:22" — the audit stamp format used across every module. */
+export function formatStamp(at: number | Date): string {
+  const d = asDate(at);
+  return `${formatDate(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** Now, stamped. */
+export const stamp = (): string => formatStamp(new Date());
+
+/** Now, as a date. */
+export const today = (): string => formatDate(new Date());
 
 /** Relative phrasing for the form's autosave clock. */
 export function timeAgo(from: number): string {

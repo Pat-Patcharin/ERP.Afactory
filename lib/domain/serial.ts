@@ -21,6 +21,7 @@ import {
 import type { BadgeTone, RecordBase } from "@/lib/types";
 import { getProduct } from "./product";
 import { parseStamp } from "./inventory";
+import { formatDate } from "@/lib/format";
 import { STOCK_SERIALS } from "./stock";
 import { movementRows } from "./movement";
 import { GOODS_RECEIPTS, PUTAWAY_TASKS, QC_INSPECTIONS } from "./inbound";
@@ -53,10 +54,8 @@ const DAY = 86_400_000;
 /** dd/mm/yyyy → epoch, the format every mock document already uses. */
 export const parseDate = (v: string): number | null => parseStamp(v);
 
-const fmtDate = (t: number): string => {
-  const d = new Date(t);
-  return `${pad(d.getDate(), 2)}/${pad(d.getMonth() + 1, 2)}/${d.getFullYear()}`;
-};
+/* `formatDate` from lib/format, not a local copy. See the note there. */
+const fmtDate = formatDate;
 
 export function addMonths(v: string, months: number): string {
   const t = parseDate(v);
