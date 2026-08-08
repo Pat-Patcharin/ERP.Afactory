@@ -1026,7 +1026,13 @@ describe("BP Master — detail tabs", () => {
 
     const latest = bpLatestSalesYear(bp(BOTH))!;
     expect(latest.year).toBe(years[0].year);
-    expect(latest.year).toBeGreaterThan(2500);
+    /* Gregorian. This asserted `> 2500` — a Buddhist year — until the era
+       rule changed at D4: screens are Gregorian, paper is Buddhist, and a
+       rollup label is a screen. The assertion is inverted because the rule
+       it encoded was deliberately replaced, not because it was in the way.
+       See docs/DATE-ERA.md. */
+    expect(latest.year).toBeLessThan(2400);
+    expect(latest.year).toBeGreaterThan(2000);
     /* Orders and invoices are counted from their own dates — an order and
        its invoice can land either side of a year end. */
     expect(latest.orders).toBeGreaterThan(0);
@@ -1117,8 +1123,9 @@ describe("BP Master — detail tabs", () => {
     const latest = bpLatestPurchaseYear(b)!;
     expect(latest.year).toBe(years[0].year);
     expect(latest.spend).toBeGreaterThan(0);
-    /* Buddhist years, as every document in the app displays them. */
-    expect(latest.year).toBeGreaterThan(2500);
+    /* Gregorian — same rule change as the sales rollup above, D4. */
+    expect(latest.year).toBeLessThan(2400);
+    expect(latest.year).toBeGreaterThan(2000);
   });
 
   it("names who placed each purchase order", () => {

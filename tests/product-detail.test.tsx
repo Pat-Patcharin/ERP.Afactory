@@ -212,11 +212,17 @@ describe("Product detail — purchase history", () => {
     }
   });
 
-  it("groups totals by year, newest first, in Buddhist years", () => {
+  it("groups totals by year, newest first, in Gregorian years", () => {
     const years = productPurchaseByYear(getProduct(ORDERED)!);
     expect(years.length).toBeGreaterThan(0);
     expect(years.map((y) => y.year)).toEqual([...years.map((y) => y.year)].sort((a, b) => b - a));
-    for (const y of years) expect(y.year).toBeGreaterThan(2500);
+    /* Was `> 2500` — Buddhist — until D4 settled the rule the other way:
+       screens are Gregorian, paper is Buddhist, and a rollup label is a
+       screen. Inverted because the rule changed. See docs/DATE-ERA.md. */
+    for (const y of years) {
+      expect(y.year).toBeLessThan(2400);
+      expect(y.year).toBeGreaterThan(2000);
+    }
   });
 
   it("renders the purchase summary and both document tables", () => {

@@ -1,7 +1,7 @@
 import { PURCHASE_ORDERS } from "./purchase";
 import { GOODS_RECEIPTS } from "./inbound";
 import type { ProductRow } from "./product";
-import { beYear, ceYear } from "@/lib/format";
+import { ceYear } from "@/lib/format";
 
 /* ============================================================
    PRODUCT ANALYTICS — what has been bought, of this product.
@@ -153,7 +153,13 @@ export function productPurchaseKpi(p: ProductRow): ProductPurchaseKpi {
 }
 
 export interface ProductPurchaseYear {
-  /** Buddhist year, as every document in the app displays it. */
+  /**
+   * Gregorian year, like every other year on a screen — see docs/DATE-ERA.md.
+   *
+   * This said "Buddhist year, as every document in the app displays it",
+   * which described the app as it was before D3–D5 and stopped being true
+   * when the rule changed.
+   */
   year: number;
   orders: number;
   qty: number;
@@ -167,7 +173,7 @@ export function productPurchaseByYear(p: ProductRow): ProductPurchaseYear[] {
   for (const l of productPurchaseOrders(p)) {
     const raw = Number(String(l.date).split("/")[2]);
     if (!raw) continue;
-    const year = beYear(raw);
+    const year = ceYear(raw);
     const slot = byYear.get(year) ?? { year, orders: 0, qty: 0, spend: 0 };
     slot.orders += 1;
     slot.qty += l.qty;

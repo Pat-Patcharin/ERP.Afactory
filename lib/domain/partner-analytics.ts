@@ -4,7 +4,7 @@ import { PURCHASE_ORDERS } from "./purchase";
 import { GOODS_RECEIPTS } from "./inbound";
 import { bpActiveSupplierItems, bpAverageLeadTime } from "./partner";
 import type { BusinessPartner } from "@/data/partners";
-import { beYear, ceYear } from "@/lib/format";
+import { ceYear } from "@/lib/format";
 
 /* ============================================================
    PARTNER ANALYTICS — the Sales Report and Purchase History tabs.
@@ -314,11 +314,17 @@ export function bpLastPurchase(bp: BusinessPartner): LastPurchase {
 
 /* ---------- Yearly rollups ---------- */
 
-/** The calendar year a dd/mm/yyyy date falls in, normalised to BE. */
+/**
+ * The calendar year a dd/mm/yyyy date falls in, Gregorian.
+ *
+ * `ceYear` rather than a plain parse because a stray Buddhist date reaching
+ * here should be folded onto the same axis as the rest, not opened as its
+ * own bucket 543 rows away from the year it belongs to.
+ */
 function yearOf(v: string): number {
   const y = Number(String(v ?? "").split("/")[2]);
   if (!y) return 0;
-  return beYear(y);
+  return ceYear(y);
 }
 
 /* ---------- Sales by year ---------- */
