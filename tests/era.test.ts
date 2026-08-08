@@ -225,47 +225,107 @@ describe("the screen does not convert to the Buddhist era", () => {
      a decision was ever made. So the rule is enforced where it can be seen,
      rather than remembered.
 
-     What this does NOT cover, said plainly so nobody reads more safety into
-     it than it has: three places in `lib/domain/` still convert to BE and
-     feed the screen — the audit-log timestamp and two yearly rollups. They
-     are outside this scan because removing them changes an existing test's
-     expectation, which is a decision, not a cleanup. BACKLOG N-9.
+     This scans the WHOLE repository. It used to scan three directories and
+     say in this comment that `lib/domain/` was outside it — which was an
+     admission that a hole existed, not a guard against it, and the hole had
+     three things living in it. Everything that may convert is now named
+     below with a reason. A scan with a written-down exception list is
+     honest; a scan with a written-down blind spot is not.
   */
-  const dirs = ["schemas", "components", "app"];
+  const dirs = ["schemas", "components", "app", "lib", "data", "tests", "scripts"];
+
+  /*
+     The Buddhist era has to be produced SOMEWHERE — the printed sheet is in
+     it. These are the places allowed to, each with the reason, and the count
+     of lines that may match. The count is asserted exactly, so adding a
+     conversion to an already-listed file is caught too; a legitimate new one
+     means coming here and writing down why.
+  */
+  const ALLOWED: Record<string, { lines: number; why: string }> = {
+    "lib/format.ts": {
+      lines: 2,
+      why: "the home of the conversion — beYear and toBuddhistText are defined here, plus one comment quoting the old scattered heuristic",
+    },
+    "lib/print/index.ts": {
+      lines: 2,
+      why: "the ONLY place that applies it: normaliseEra puts the sheet into BE, and the printed-at stamp matches it",
+    },
+    "lib/domain/admin.ts": {
+      lines: 1,
+      why: "yearPart() — a document NUMBER, not a date. The series config declares its own era and DATE-ERA.md puts numbers out of scope. Today every series is AD",
+    },
+    "scripts/be-to-ce.js": {
+      lines: 1,
+      why: "the one-off D3 migration, and it runs the other way: BE into CE",
+    },
+    "tests/era.test.ts": {
+      lines: 5,
+      why: "this file — the pattern test below has to spell out the shapes it must catch, and a guard that cannot name what it looks for cannot be checked",
+    },
+  };
 
   function walk(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const full = join(dir, e.name);
       if (e.isDirectory()) return walk(full);
-      return /\.tsx?$/.test(e.name) ? [full] : [];
+      return /\.(tsx?|js)$/.test(e.name) ? [full] : [];
     });
   }
 
-  /* `components/print` renders the sheet, but it renders a PrintJob that
-     `buildPrintJob` has already converted — the conversion lives in
-     lib/print, and no component is entitled to do its own. */
   const files = dirs.flatMap(walk);
 
   /* `beYear` / `toBuddhistText` by name, and a bare 543 in any arithmetic. */
   const BE_CONVERSION = /\b(beYear|toBuddhistText)\s*\(|[+\-]\s*543\b|\b543\s*[+\-]/;
 
-  it("scans a real set of files", () => {
-    expect(files.length).toBeGreaterThan(50);
-  });
-
-  it.each(files)("%s does not convert years for display", (file) => {
-    const src = readFileSync(file, "utf8");
-    const hits = src
+  const hitsIn = (file: string) =>
+    readFileSync(file, "utf8")
       .split("\n")
-      .map((line, i) => ({ line, no: i + 1 }))
+      .map((line, i) => ({ line: line.trim(), no: i + 1 }))
       .filter(({ line }) => BE_CONVERSION.test(line));
 
+  it("scans a real set of files", () => {
+    expect(files.length).toBeGreaterThan(150);
+  });
+
+  it("the pattern matches what it claims to", () => {
+    /* A guard whose regex is subtly wrong reports "no violations" for every
+       file and reads exactly like a guard that works — the mistake this
+       suite has already made once, with a mutation that silently matched
+       nothing. These are the shapes it must catch, checked directly. */
+    for (const s of [
+      "const y = beYear(2026);",
+      "return toBuddhistText(v);",
+      "const y = at.getFullYear() + 543;",
+      "const y = yy - 543;",
+      "543 + y",
+    ]) {
+      expect(BE_CONVERSION.test(s), s).toBe(true);
+    }
+    for (const s of ["const y = ceYear(2569);", "const price = 2543.20;", "// 543 years apart"]) {
+      expect(BE_CONVERSION.test(s), s).toBe(false);
+    }
+  });
+
+  it.each(files.filter((f) => !ALLOWED[f.replace(/\\/g, "/")]))(
+    "%s does not convert to the Buddhist era",
+    (file) => {
+      const hits = hitsIn(file);
+      expect(
+        hits,
+        `screens are Gregorian — see docs/DATE-ERA.md. If this conversion is ` +
+          `genuinely needed, add ${file.replace(/\\/g, "/")} to ALLOWED with a reason:\n` +
+          hits.map((h) => `  ${file}:${h.no}  ${h.line}`).join("\n"),
+      ).toEqual([]);
+    },
+  );
+
+  it.each(Object.entries(ALLOWED))("%s converts only as declared", (file, { lines, why }) => {
+    const hits = hitsIn(file);
     expect(
-      hits,
-      `screens are Gregorian — see docs/DATE-ERA.md:\n${hits
-        .map((h) => `  ${file}:${h.no}  ${h.line.trim()}`)
-        .join("\n")}`,
-    ).toEqual([]);
+      hits.length,
+      `${file} is allowed ${lines} conversion line(s) — ${why}\nfound ${hits.length}:\n` +
+        hits.map((h) => `  ${file}:${h.no}  ${h.line}`).join("\n"),
+    ).toBe(lines);
   });
 });
 

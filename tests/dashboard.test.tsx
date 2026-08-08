@@ -21,6 +21,7 @@ import {
   pendingApprovalCount,
 } from "@/lib/domain/dashboard";
 import { invSnapshot } from "@/lib/domain/inventory";
+import { ceYear } from "@/lib/format";
 import { can, resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 import { SALES_REQUESTS, decorateOutbound } from "@/lib/domain/outbound";
 import { NAV_INDEX } from "@/lib/nav";
@@ -698,9 +699,13 @@ describe("Dashboard — recent documents", () => {
   it("orders each tab by the date column it displays", () => {
     /* The rows are sorted on the date the reader can see, not on a hidden
        audit stamp — otherwise the Date column reads out of order. */
+    /* `ceYear`, not a hand-rolled era guess. D2 collapsed five copies of
+       that heuristic into one helper; this one was in a test and got missed.
+       A test carrying its own copy of a rule can agree with itself while
+       disagreeing with the application. */
     const parse = (d: string) => {
       const [dd, mm, yy] = d.split("/").map(Number);
-      return new Date(yy > 2400 ? yy - 543 : yy, mm - 1, dd).getTime();
+      return new Date(ceYear(yy), mm - 1, dd).getTime();
     };
     const docs = dashRecentDocuments(5);
     for (const tab of DOC_TABS) {
