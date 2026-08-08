@@ -1,11 +1,18 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { QUOTATIONS as RAW_QT } from "@/data/quotations";
+import { PACKING_TASKS as RAW_PACK } from "@/data/packing";
+import { DELIVERY_ORDERS as RAW_DO } from "@/data/delivery-orders";
+import { SHIPMENTS as RAW_SHP } from "@/data/shipments";
 import { SALES_REQUESTS as RAW_SR } from "@/data/sales-requests";
 import { SALES_ORDERS as RAW_SO } from "@/data/sales-orders";
 import { PICKING_TASKS as RAW_PICK } from "@/data/picking";
 import { NOTIFY_ITEMS as RAW_NOTIFY } from "@/data/notifications";
 import { BUSINESS_PARTNERS as RAW_BP } from "@/data/partners";
 import {
+  DELIVERY_ORDERS,
+  PACKING_TASKS,
   PICKING_TASKS,
   QUOTATIONS,
   SALES_ORDERS,
@@ -13,6 +20,15 @@ import {
   decorateOutbound,
   outboundCustomers,
 } from "@/lib/domain/outbound";
+import {
+  SHIPMENTS,
+  decorateShipments,
+  headerFromDO,
+  shippableLinesFrom,
+  traceFromTracking,
+  type ShpRow,
+} from "@/lib/domain/shipment";
+import { SHP_FORM } from "@/schemas/forms/shipment";
 import { BUSINESS_PARTNERS, decorateBPs } from "@/lib/domain/partner";
 import { PRODUCTS, productStock } from "@/lib/domain/product";
 import { priceMasterRows } from "@/lib/domain/price-master";
@@ -27,8 +43,15 @@ import {
   saveQuotationDraft,
 } from "@/lib/domain/quotation-draft";
 import { blankSrDraft, saveSalesRequestDraft } from "@/lib/domain/sales-request-draft";
+import { shpSetTrackingNo } from "@/lib/workflows-shipment";
 import {
+  doConfirmDelivery,
+  packComplete,
+  packConfirmShipQty,
+  packCreateDelivery,
+  packStart,
   pickComplete,
+  pickCreatePack,
   pickStart,
   qtAccept,
   qtApprove,
@@ -46,16 +69,43 @@ import type { ActionCtx } from "@/lib/types";
 import type { ReactNode } from "react";
 
 /* ============================================================
-   THREE PEOPLE, ONE ORDER
+   FOUR PEOPLE, ONE ORDER
 
    Every other suite proves a rule. This one proves the rules
-   join up when three different people take turns at the same
+   join up when four different people take turns at the same
    document — which is the thing that cannot be checked by
    calling functions as one omnipotent user.
 
    The chair is changed with `switchAccount`, the same call the
    topbar menu makes, so what is walked here is what a person
    walking the demo would get.
+
+   The full relay, and why each hand-off is a hand-off:
+
+     rep        raises the quotation, and cannot approve it
+     admin      approves it, and stops there
+     rep        sends it, hears yes, converts it to a request —
+                their customer, so their move
+     admin      signs the request, opens the order, confirms it,
+                and cannot say what came off the shelf
+     warehouse  picks, packs, and states what will actually ship
+     admin      turns that figure into the delivery note, and
+                enters the tracking number
+     rep        learns the goods left, from a notification they
+                did not send themselves
+
+   The rep converting is not a detail. The request's author is
+   who the system treats as the order's owner from there on, so
+   every notification downstream — including the tracking number
+   at the very end — depends on the right person having made
+   that move. Writing this walk with the admin converting made
+   the final notification vanish, which is how the omission was
+   found.
+
+   It was three chairs until N8 gave the warehouse a decision of
+   its own. The file was renamed with it: a test named for the
+   wrong number is the same lie as a comment the code does not
+   follow.
    ============================================================ */
 
 const REP = "EMP004";
@@ -68,6 +118,9 @@ const SNAP = {
   sr: JSON.stringify(RAW_SR),
   so: JSON.stringify(RAW_SO),
   pick: JSON.stringify(RAW_PICK),
+  pack: JSON.stringify(RAW_PACK),
+  do: JSON.stringify(RAW_DO),
+  shp: JSON.stringify(RAW_SHP),
   notify: JSON.stringify(RAW_NOTIFY),
   bp: JSON.stringify(RAW_BP),
 };
@@ -82,10 +135,14 @@ beforeEach(() => {
   restore(SALES_REQUESTS, SNAP.sr);
   restore(SALES_ORDERS, SNAP.so);
   restore(PICKING_TASKS, SNAP.pick);
+  restore(PACKING_TASKS, SNAP.pack);
+  restore(DELIVERY_ORDERS, SNAP.do);
+  restore(SHIPMENTS, SNAP.shp);
   restore(NOTIFY_ITEMS, SNAP.notify);
   restore(BUSINESS_PARTNERS, SNAP.bp);
   decorateBPs();
   decorateOutbound();
+  decorateShipments();
   resetCurrentUser();
 });
 
@@ -99,6 +156,8 @@ function walkCtx() {
     /* The shortage dialog's default answer is a back order, which is what a
        walk-through wants: nothing about the order changes. */
     answerModal: () => modal?.onConfirm?.(),
+    /* For dialogs whose answer has to be typed rather than defaulted. */
+    getModal: () => modal as unknown as { body: () => ReactNode; onConfirm: () => boolean | void },
     ctx: {
       goto: () => {},
       openEntity: () => {},
@@ -151,6 +210,54 @@ function raiseQuote(code: string, qty: number, price: number) {
 /** Titles in the acting user's task box. */
 const myTasks = () => dashPendingTasks().map((t) => t.title);
 const myInbox = () => myNotifications().map((n) => n.title);
+
+/**
+ * Raise the shipment a delivery order hands over to.
+ *
+ * There is no workflow function for this — a shipment is only ever created
+ * through the form — so the walk drives `SHP_FORM.save()`, which is the same
+ * code path the New Shipment screen runs. Worth knowing: that save is also
+ * where the invoice's `shipmentRef` is written, so a shortcut around it would
+ * skip the very link N9 exists to create.
+ */
+function shipFromDelivery(doCode: string, ctx: ActionCtx): ShpRow {
+  const head = headerFromDO(doCode);
+  expect(head, `delivery order ${doCode} must be shippable`).toBeTruthy();
+
+  const state = {
+    ...(SHP_FORM.blank!() as Record<string, unknown>),
+    ...head,
+    doRef: doCode,
+    items: shippableLinesFrom(doCode),
+  };
+  SHP_FORM.save!(state as never, ctx as never);
+  decorateShipments();
+
+  const s = SHIPMENTS.find((x) => x.doRef === doCode);
+  expect(s, "the form must have written a shipment").toBeTruthy();
+  return s!;
+}
+
+/**
+ * Type a tracking number into the dialog the workflow opened.
+ *
+ * The modal seeds its state when it opens, so the value has to arrive through
+ * the field rather than by writing to the shipment afterwards — which is also
+ * the path a real user takes.
+ */
+async function answerTracking(
+  modal: { body: () => ReactNode; onConfirm: () => boolean | void },
+  value: string,
+) {
+  const user = userEvent.setup();
+  const { unmount } = render(<>{modal.body()}</>);
+  const field = screen.getByLabelText("เลขพัสดุ");
+  await user.clear(field);
+  await user.type(field, value);
+  const result = modal.onConfirm();
+  unmount();
+  return result;
+}
 
 describe("Journey — quotation, request, order, all three chairs", () => {
   it("walks an ordinary order from the rep's desk to the warehouse", () => {
@@ -354,5 +461,163 @@ describe("Journey — quotation, request, order, all three chairs", () => {
     expect(admin).toContain("คำขอขายรออนุมัติ");
     expect(admin).not.toContain("คำขอขายราคาต่ำกว่าขั้นต่ำ");
     expect(manager).toContain("คำขอขายรออนุมัติ");
+  });
+});
+
+/* ============================================================
+   THE WHOLE RELAY, END TO END
+
+   Quotation to tracking number, changing chairs at every point
+   where the business changes hands. Nothing below calls a
+   workflow as the wrong person: where a chair cannot do a step,
+   the test proves it is refused before the right chair does it.
+   ============================================================ */
+
+describe("Journey — quotation to tracking, four chairs", () => {
+  it("walks the whole relay and refuses every shortcut on the way", async () => {
+    const { ctx, answerModal, getModal } = walkCtx();
+    const { code: product } = stocked();
+
+    /* ---------- 1. The rep raises it ---------- */
+    sitAs(REP);
+    const qt = raiseQuote(product, 4, 900);
+    qtSubmit(qt, ctx);
+    expect(qt.status, "the rep can ask, not decide").toBe("Pending Approval");
+
+    /* The rep cannot approve their own quotation. */
+    qtApprove(qt, ctx);
+    expect(qt.status, "still waiting — the rep holds no approve right").toBe(
+      "Pending Approval",
+    );
+
+    /* ---------- 2. The admin approves and converts ---------- */
+    sitAs(ADMIN);
+    qtApprove(qt, ctx);
+    expect(qt.status).toBe("Approved");
+
+    /* ---------- 3. Back to the rep, who owns the customer ----------
+       Sending the sheet, hearing yes, and turning it into a request are the
+       salesperson's moves — see §6 of the roles spec. It matters beyond
+       tidiness: the request's author is who the system treats as the order's
+       owner from here on, and it is their customer, so it must be them. */
+    sitAs(REP);
+    qtSend(qt, ctx);
+    qtAccept(qt, ctx);
+    expect(qt.status).toBe("Accepted");
+
+    qtConvert(qt, ctx);
+    decorateOutbound();
+    const sr = SALES_REQUESTS.find((r) => r.code === qt.srRef)!;
+    expect(sr, "a quotation becomes a request, not an order").toBeTruthy();
+    expect(sr.createdBy, "raised by the rep whose customer it is").toBe(actingUserName());
+
+    srSubmit(sr, ctx);
+
+    /* ---------- 4. The admin signs it ---------- */
+    sitAs(ADMIN);
+    srApprove(sr, ctx);
+    expect(sr.status).toBe("Approved");
+
+    srConvert(sr, ctx);
+    decorateOutbound();
+    const so = SALES_ORDERS.find((s) => s.code === sr.soRef)!;
+    expect(so, "and the request becomes the order").toBeTruthy();
+
+    if (so.status === "On Hold") soApproveCredit(so, ctx);
+    soConfirm(so, ctx);
+    if (so.status !== "Confirmed") answerModal();
+    expect(so.status).toBe("Confirmed");
+
+    soCreatePick(so, ctx);
+    decorateOutbound();
+    const pick = PICKING_TASKS.find((p) => p.soRef === so.code)!;
+    expect(pick, "a confirmed order produces warehouse work").toBeTruthy();
+
+    /* The admin may watch the pick and may not close it. */
+    pickComplete(pick, ctx);
+    expect(pick.status, "picking belongs to the floor").not.toBe("Completed");
+
+    /* ---------- 5. The warehouse does the physical work ---------- */
+    sitAs(WAREHOUSE);
+    pickStart(pick, ctx);
+    for (const l of pick.items) l.picked = l.ordered;
+    decorateOutbound();
+    pickComplete(pick, ctx);
+    expect(pick.status).toBe("Completed");
+
+    pickCreatePack(pick, ctx);
+    decorateOutbound();
+    const pack = PACKING_TASKS.find((p) => p.pickRef === pick.code)!;
+    expect(pack, "a completed pick produces a pack").toBeTruthy();
+
+    packStart(pack, ctx);
+    for (const l of pack.items) l.packedQty = l.qty;
+    pack.packages = [
+      { box: "BOX-1", type: "กล่องกระดาษ", weight: 4, dim: "40x30x30", sealNo: "", note: "" },
+    ] as typeof pack.packages;
+    decorateOutbound();
+    packComplete(pack, ctx);
+    expect(pack.status).toBe("Completed");
+
+    /* The step N8 exists for: the floor states what will actually ship. */
+    packConfirmShipQty(pack, ctx);
+    answerModal();
+    decorateOutbound();
+    expect(pack.isConfirmed, "the warehouse has answered every line").toBe(true);
+
+    /* And stops there — raising the customer's paperwork is not its job. */
+    packCreateDelivery(pack, ctx);
+    expect(
+      DELIVERY_ORDERS.some((d) => d.packRef === pack.code),
+      "the warehouse holds no delivery-order rights",
+    ).toBe(false);
+
+    /* ---------- 6. Back to the admin for the paperwork ---------- */
+    sitAs(ADMIN);
+    packCreateDelivery(pack, ctx);
+    decorateOutbound();
+    const dobj = DELIVERY_ORDERS.find((d) => d.packRef === pack.code)!;
+    expect(dobj, "the sales desk raises the delivery note").toBeTruthy();
+    expect(dobj.items[0].qty, "built from what the warehouse confirmed").toBe(
+      pack.items[0].confirmedQty,
+    );
+
+    doConfirmDelivery(dobj, ctx);
+    decorateOutbound();
+    expect(so.status, "delivered in full closes the order").toBe("Completed");
+
+    /* ---------- 7. The parcel, and the number that finds it ---------- */
+    const shipment = shipFromDelivery(dobj.code, ctx);
+    expect(shipment.doRef).toBe(dobj.code);
+
+    shipment.status = "Dispatched";
+    shpSetTrackingNo(shipment, ctx);
+    await answerTracking(getModal(), "RELAY-0001");
+    expect(shipment.trackingNo).toBe("RELAY-0001");
+
+    /* ---------- 8. And it all leads back to the sheet the customer saw ---- */
+    const steps = traceFromTracking("RELAY-0001");
+    expect(steps.map((s) => s.entity)).toEqual([
+      "shipment",
+      "delivery-order",
+      "sales-order",
+      "sales-request",
+      "quotation",
+    ]);
+    expect(steps.at(-1)!.code, "the quotation this all started as").toBe(qt.code);
+
+    /* ---------- 9. The rep hears about it, and never from themselves ---- */
+    sitAs(REP);
+    const inbox = myInbox();
+    expect(
+      inbox.some((t) => t.includes(shipment.code)),
+      "the salesperson is told their customer's goods left",
+    ).toBe(true);
+
+    sitAs(ADMIN);
+    expect(
+      myInbox().some((t) => t.includes(shipment.code)),
+      "and the person who entered it is not told their own news",
+    ).toBe(false);
   });
 });
