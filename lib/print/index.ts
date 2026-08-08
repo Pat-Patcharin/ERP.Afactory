@@ -53,7 +53,7 @@ export function buildPrintJob(
   const allowed = allowedCopyTypes(config);
   const copyType: CopyType = allowed.includes(requested) ? requested : (allowed[0] ?? "ORIGINAL");
 
-  const doc = applyPrintPermissions(mapped, config, copyType);
+  let doc = applyPrintPermissions(mapped, config, copyType);
 
   /* Address overrides, for a partner with more than one on file. */
   if (options.billToAddress) doc.billTo = { ...doc.billTo, address: options.billToAddress };
@@ -75,7 +75,7 @@ export function buildPrintJob(
      this block goes when it does. Until then a sheet is
      internally consistent, which is what the customer sees.
      ---------------------------------------------------------- */
-  normaliseEra(doc);
+  doc = normaliseEra(doc);
 
   const pages = paginate(doc.lines, config);
   const copy = getCopyDef(copyType);
@@ -112,23 +112,34 @@ function stamp(): string {
 }
 
 /**
- * Put every date on the sheet into the Buddhist era, in place.
+ * Put every date on the sheet into the Buddhist era.
  *
- * Walks the display strings rather than naming fields: the mapper sets dates
- * in forty-odd places across ten document types, and a list of field paths
- * would fall behind the first time one was added. `toBuddhistText` only
- * touches dd/mm/yyyy runs, and is idempotent, so a document already in BE is
- * left alone.
+ * This walks the whole document rather than naming fields, and the first
+ * version of it did not — it listed `date`, `meta`, `remarks` and `lines`
+ * while its own comment claimed to walk everything. `tests/era.test.ts` found
+ * the gap the day it was written: `approval.at` is printed in the signature
+ * block, was not on the list, and so a quotation went out reading
+ * "22/06/2569" at the top and "22/06/2026" over the signature.
+ *
+ * A list of field paths cannot hold. The mapper sets dates in forty-odd
+ * places across eleven document types, and the next one added would go
+ * missing the same way. Recursing costs nothing here — a PrintDoc is a few
+ * hundred small strings — and it is the only version whose behaviour matches
+ * the sentence above it.
+ *
+ * Safe to apply to everything: `toBuddhistText` rewrites dd/mm/yyyy runs and
+ * nothing else, so codes (`SO-2569-0184`), tax IDs and prices pass through
+ * untouched. It is idempotent, so a date already in BE is left alone.
  */
-function normaliseEra(doc: PrintDoc): void {
-  doc.date = toBuddhistText(doc.date);
-  doc.meta = doc.meta.map((m) => ({ ...m, value: toBuddhistText(m.value) }));
-  doc.remarks = (doc.remarks ?? []).map(toBuddhistText);
-  doc.lines = doc.lines.map((l) => ({
-    ...l,
-    description: toBuddhistText(l.description),
-    extraLines: (l.extraLines ?? []).map(toBuddhistText),
-  }));
+function normaliseEra<T>(node: T): T {
+  if (typeof node === "string") return toBuddhistText(node) as T;
+  if (Array.isArray(node)) return node.map(normaliseEra) as T;
+  if (node && typeof node === "object") {
+    return Object.fromEntries(
+      Object.entries(node).map(([k, v]) => [k, normaliseEra(v)]),
+    ) as T;
+  }
+  return node;
 }
 
 export const canPrintDocument = canPrint;
