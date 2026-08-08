@@ -1,6 +1,7 @@
 import { PURCHASE_ORDERS } from "./purchase";
 import { GOODS_RECEIPTS } from "./inbound";
 import type { ProductRow } from "./product";
+import { beYear, ceYear } from "@/lib/format";
 
 /* ============================================================
    PRODUCT ANALYTICS — what has been bought, of this product.
@@ -21,7 +22,7 @@ import type { ProductRow } from "./product";
 function dateTs(v: string): number {
   const [d, m, y] = String(v ?? "").split("/").map(Number);
   if (!d || !m || !y) return 0;
-  return new Date(y > 2400 ? y - 543 : y, m - 1, d).getTime();
+  return new Date(ceYear(y), m - 1, d).getTime();
 }
 
 export interface ProductPurchaseLine {
@@ -166,7 +167,7 @@ export function productPurchaseByYear(p: ProductRow): ProductPurchaseYear[] {
   for (const l of productPurchaseOrders(p)) {
     const raw = Number(String(l.date).split("/")[2]);
     if (!raw) continue;
-    const year = raw > 2400 ? raw : raw + 543;
+    const year = beYear(raw);
     const slot = byYear.get(year) ?? { year, orders: 0, qty: 0, spend: 0 };
     slot.orders += 1;
     slot.qty += l.qty;

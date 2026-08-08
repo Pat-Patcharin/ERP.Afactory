@@ -12,7 +12,7 @@ import {
 } from "@/lib/domain/shipment";
 import { SHP_STATUS } from "@/data/shipments";
 import { DLV_TONE, PRIORITY_TONE, SHP_TONE, tone } from "@/lib/badges";
-import { DASH, fmt } from "@/lib/format";
+import { DASH, ceYear, fmt } from "@/lib/format";
 import {
   shpAddTracking,
   shpSetTrackingNo,
@@ -40,13 +40,21 @@ import { SHP_FORM } from "./forms/shipment";
    No pricing, no invoice amounts, no stock writes.
    ============================================================ */
 
+/**
+ * Is this stamp from today?
+ *
+ * It used to build both a BE and a CE string and compare against each,
+ * because it could not tell which era the stamp would arrive in. Comparing
+ * on the normalised year answers the same question without guessing.
+ */
 const isToday = (stampStr: string) => {
-  const d = String(stampStr ?? "").split(" ")[0];
+  const [d, m, y] = String(stampStr ?? "")
+    .split(" ")[0]
+    .split("/")
+    .map(Number);
+  if (!d || !m || !y) return false;
   const now = new Date();
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const yy = now.getFullYear() + 543;
-  return d === `${dd}/${mm}/${yy}` || d === `${dd}/${mm}/${now.getFullYear()}`;
+  return d === now.getDate() && m === now.getMonth() + 1 && ceYear(y) === now.getFullYear();
 };
 
 export const SHP_LIST: ListSchema<ShpRow> = {

@@ -4,6 +4,7 @@ import { PURCHASE_ORDERS } from "./purchase";
 import { GOODS_RECEIPTS } from "./inbound";
 import { bpActiveSupplierItems, bpAverageLeadTime } from "./partner";
 import type { BusinessPartner } from "@/data/partners";
+import { beYear, ceYear } from "@/lib/format";
 
 /* ============================================================
    PARTNER ANALYTICS — the Sales Report and Purchase History tabs.
@@ -269,7 +270,7 @@ const EMPTY_PURCHASE: LastPurchase = { date: "", amount: 0, doc: "", ts: 0 };
 function dateTs(v: string): number {
   const [d, m, y] = String(v ?? "").split("/").map(Number);
   if (!d || !m || !y) return 0;
-  return new Date(y > 2400 ? y - 543 : y, m - 1, d).getTime();
+  return new Date(ceYear(y), m - 1, d).getTime();
 }
 
 /**
@@ -317,7 +318,7 @@ export function bpLastPurchase(bp: BusinessPartner): LastPurchase {
 function yearOf(v: string): number {
   const y = Number(String(v ?? "").split("/")[2]);
   if (!y) return 0;
-  return y > 2400 ? y : y + 543;
+  return beYear(y);
 }
 
 /* ---------- Sales by year ---------- */

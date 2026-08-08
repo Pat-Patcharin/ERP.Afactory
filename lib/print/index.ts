@@ -5,6 +5,7 @@ import { allowedCopyTypes, applyPrintPermissions, canPrint, printedBy } from "./
 import { isReprint, printCount } from "./audit";
 import { validatePrint } from "./validate";
 import type { CopyType, PrintDoc, PrintDocType, PrintJob } from "./types";
+import { beYear, toBuddhistText } from "@/lib/format";
 
 /* ============================================================
    THE ENGINE
@@ -58,6 +59,24 @@ export function buildPrintJob(
   if (options.billToAddress) doc.billTo = { ...doc.billTo, address: options.billToAddress };
   if (options.shipToAddress) doc.shipTo = { ...doc.shipTo, address: options.shipToAddress };
 
+  /* ----------------------------------------------------------
+     ONE ERA PER SHEET.
+
+     Document dates reach here in whatever era their module
+     stores — the sales chain in BE, invoices and shipments in
+     CE — while the printed-at stamp below has always been BE.
+     A quotation raised today therefore printed "08/08/2026" as
+     its document date beside "08/08/2569" as its print time, on
+     the same page, going to a customer.
+
+     Normalising to BE here is the smallest change that stops
+     that leaving the building. It is a stopgap: D4 settles the
+     era for the whole application at the display layer, and
+     this block goes when it does. Until then a sheet is
+     internally consistent, which is what the customer sees.
+     ---------------------------------------------------------- */
+  normaliseEra(doc);
+
   const pages = paginate(doc.lines, config);
   const copy = getCopyDef(copyType);
   const reprintOf = printCount(config.documentType, code);
@@ -79,11 +98,37 @@ export function buildPrintJob(
   };
 }
 
-/** dd/mm/yyyy HH:mm in the Buddhist era every other stamp in the app uses. */
+/**
+ * dd/mm/yyyy HH:mm in the Buddhist era, matching the sheet.
+ *
+ * The comment here used to claim this was "the Buddhist era every other
+ * stamp in the app uses". It is not: `format.stamp()` produces Gregorian,
+ * and that mismatch is half of why a sheet could carry two eras.
+ */
 function stamp(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear() + 543} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${beYear(d.getFullYear())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * Put every date on the sheet into the Buddhist era, in place.
+ *
+ * Walks the display strings rather than naming fields: the mapper sets dates
+ * in forty-odd places across ten document types, and a list of field paths
+ * would fall behind the first time one was added. `toBuddhistText` only
+ * touches dd/mm/yyyy runs, and is idempotent, so a document already in BE is
+ * left alone.
+ */
+function normaliseEra(doc: PrintDoc): void {
+  doc.date = toBuddhistText(doc.date);
+  doc.meta = doc.meta.map((m) => ({ ...m, value: toBuddhistText(m.value) }));
+  doc.remarks = (doc.remarks ?? []).map(toBuddhistText);
+  doc.lines = doc.lines.map((l) => ({
+    ...l,
+    description: toBuddhistText(l.description),
+    extraLines: (l.extraLines ?? []).map(toBuddhistText),
+  }));
 }
 
 export const canPrintDocument = canPrint;

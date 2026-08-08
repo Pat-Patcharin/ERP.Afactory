@@ -8,6 +8,7 @@ import {
   type InvHealthMetric,
 } from "@/data/inventory";
 import type { BadgeTone } from "@/lib/types";
+import { ceYear } from "@/lib/format";
 import { PRODUCTS, productStock, stockedProducts } from "./product";
 import { WAREHOUSES } from "./warehouse";
 import { GOODS_RECEIPTS, QC_INSPECTIONS, PUTAWAY_TASKS } from "./inbound";
@@ -73,7 +74,7 @@ export function parseStamp(v: string | undefined): number {
   const [d, m, y] = date.split("/").map(Number);
   if (!d || !m || !y) return 0;
   const [hh, mm] = time.split(":").map(Number);
-  return new Date(y > 2400 ? y - 543 : y, m - 1, d, hh || 0, mm || 0).getTime();
+  return new Date(ceYear(y), m - 1, d, hh || 0, mm || 0).getTime();
 }
 
 /** Days from today to a dd/mm/yyyy expiry, BE years included. */

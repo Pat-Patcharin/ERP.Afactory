@@ -18,7 +18,7 @@ import {
   type UserDef,
   type WorkflowDef,
 } from "@/data/admin";
-import { DASH } from "@/lib/format";
+import { DASH, beYear } from "@/lib/format";
 
 /* ============================================================
    ADMINISTRATION FRAMEWORK
@@ -436,7 +436,10 @@ export const getSeriesFor = (moduleKey: string): SeriesDef | null =>
  */
 function yearPart(s: SeriesDef, at: Date): string {
   if (s.yearMode === "None") return "";
-  const y = s.yearMode === "BE" ? at.getFullYear() + 543 : at.getFullYear();
+  /* A deliberate choice, not a workaround: the series config says which era
+     its numbers carry. Routed through the shared helper so the offset lives
+     in one place. */
+  const y = s.yearMode === "BE" ? beYear(at.getFullYear()) : at.getFullYear();
   return s.yearDigits === 2 ? String(y).slice(-2) : String(y);
 }
 
@@ -495,7 +498,10 @@ export function audit(
 ): AuditEntry {
   const user = currentUser();
   const now = new Date();
-  const stamp = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear() + 543} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  /* The audit log reads in BE, unlike `format.stamp()` which reads in CE —
+     a difference nobody chose, and one D4 settles for the whole app. Left as
+     it was so this step changes no visible value; only the 543 moved. */
+  const stamp = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${beYear(now.getFullYear())} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
   const entry: AuditEntry = {
     code: `LOG-${String(++auditSeq).padStart(6, "0")}`,

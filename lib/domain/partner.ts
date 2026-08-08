@@ -596,19 +596,14 @@ export function bpRemoveDoc(bp: BusinessPartner, index: number): string | null {
 }
 
 /**
- * Days until a partner date, Buddhist era included.
+ * Days until a partner date.
  *
- * The BP module dates everything in BE — 22/07/2569, not 22/07/2026 — while
- * lib/format's daysUntil reads the year literally. Passing a BE date through
- * it returns ~198,000 days, so the document-expiry warning could never fire.
- * Anything on a partner record that asks "how long left?" goes through here.
+ * Kept as a name the BP module already calls in a dozen places, but it no
+ * longer corrects anything: `daysUntil` reads either era now. The reasoning
+ * that used to live here moved to lib/format.ts beside that function — it
+ * described a problem nine modules shared, so it belongs where the fix is.
  */
-export function bpDaysUntil(v: string | null | undefined): number | null {
-  if (!v || v === DASH) return null;
-  const [d, m, y] = String(v).split("/").map(Number);
-  if (!d || !m || !y) return null;
-  return daysUntil(`${d}/${m}/${y > 2400 ? y - 543 : y}`);
-}
+export const bpDaysUntil = daysUntil;
 
 /** Attachments expiring inside the window, soonest first. Expired ones sort first. */
 export const bpExpiringDocs = (bp: BusinessPartner, withinDays = 90) =>
