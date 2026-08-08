@@ -262,9 +262,8 @@ export function applyCustomerTo<T extends PartyFields & TermFields>(
   if (rep) next.salesRep = rep;
   const list = resolvePriceList(bp.sales?.priceList ?? "");
   if (list) next.priceList = list;
-  if (bp.cls?.channel && QT_CHANNELS.includes(bp.cls.channel as never)) {
-    next.channel = bp.cls.channel;
-  }
+  const channel = resolveChannel(bp.cls?.channel ?? "");
+  if (channel) next.channel = channel;
 
   /**
    * How this customer is billed. Unlike the terms above there is no older
@@ -686,6 +685,42 @@ export function resolveRep(stored: string): string {
  * "Dealer 2569" and "PL-DEALER-2026 Dealer" are the same commercial list under
  * two naming conventions; the group name is the part that carries meaning.
  */
+/**
+ * Match the partner's sales channel to one the document offers.
+ *
+ * The same two-vocabulary problem `resolveRep` and `resolvePriceList` solve,
+ * and it had the same shape of bug: the Business Partner master says
+ * "Direct Sales", "Dealer Network", "Tender", while a quotation's channel is
+ * one of "Direct" · "Dealer" · "Online" · "Government" · "Export". The code
+ * that defaulted the channel tested `QT_CHANNELS.includes(bp.cls.channel)`,
+ * which is false for every partner in the master — so the customer's channel
+ * was never carried, and nobody noticed because the field simply kept its
+ * default of "Direct".
+ *
+ * Matched on the leading word, then by an explicit table for the ones whose
+ * words do not overlap at all. An unmatched value is dropped rather than
+ * written into a picker that cannot show it.
+ */
+const CHANNEL_ALIASES: Record<string, string> = {
+  tender: "Government",
+  government: "Government",
+  export: "Export",
+  online: "Online",
+  ecommerce: "Online",
+};
+
+export function resolveChannel(stored: string): string {
+  const value = str(stored);
+  if (!value) return "";
+  if (QT_CHANNELS.includes(value as never)) return value;
+
+  const first = value.split(/\s+/)[0].toLowerCase();
+  const alias = CHANNEL_ALIASES[first] ?? CHANNEL_ALIASES[value.toLowerCase()];
+  if (alias) return alias;
+
+  return QT_CHANNELS.find((c) => c.toLowerCase() === first) ?? "";
+}
+
 export function resolvePriceList(stored: string): string {
   const value = str(stored);
   if (!value) return "";

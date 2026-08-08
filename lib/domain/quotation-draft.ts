@@ -106,6 +106,16 @@ export interface QuotationDraft {
 
   /* Metadata */
   quoteDate: string;
+  /**
+   * How long the price stands, in days. The thing the salesperson decides.
+   *
+   * `validUntil` is worked out from this and the quote date — see
+   * `validUntilFrom`. Storing the span rather than the date is what lets the
+   * sheet read "ยืนราคา 30 วัน" instead of asking somebody to count forward
+   * on a calendar, and it keeps the two in step when the quote date moves.
+   */
+  validDays: number;
+  /** Derived from `quoteDate + validDays`. Never typed directly. */
   validUntil: string;
   customerRef: string;
   salesRep: string;
@@ -116,8 +126,6 @@ export interface QuotationDraft {
   /** "VAT" or "Non VAT", from the customer. Editable in step 8b, not before. */
   billType: string;
   deliveryDate: string;
-  warehouse: string;
-  internalRef: string;
 
   items: DraftLine[];
 
@@ -141,11 +149,79 @@ export const DEFAULT_REMARKS = [
   `ใบเสนอราคานี้มีอายุ ${QT_VALIDITY_DAYS} วัน นับจากวันที่ออกเอกสาร`,
 ].join("\n");
 
-/** Default validity: today plus the standard window. */
+/**
+ * Default validity: today plus the standard window.
+ *
+ * Delegates rather than counting again. It carried its own copy of the sum
+ * until the span was introduced, and the two disagreed by a day in any
+ * positive UTC offset — see the note in `validUntilFrom` about
+ * `toISOString()`. One formula, called twice.
+ */
 export function defaultValidUntil(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + QT_VALIDITY_DAYS);
-  return d.toISOString().slice(0, 10);
+  return validUntilFrom(toInputDate(today()), QT_VALIDITY_DAYS);
+}
+
+/** The spans a salesperson may pick. Four, so they fit as chips side by side. */
+export const QT_VALID_DAY_OPTIONS = [30, 60, 90, 120] as const;
+
+/**
+ * Keep the derived date in step while somebody is typing.
+ *
+ * `saveQuotationDraft` derives it again on the way to the store — that is the
+ * guarantee. This is only so the screen does not show yesterday's date after
+ * the quote date moves. Two calls to one function, never two formulas.
+ */
+export function applyValidity(draft: QuotationDraft, patch: Partial<QuotationDraft>) {
+  if (!("quoteDate" in patch) && !("validDays" in patch)) return null;
+  const next = { ...draft, ...patch };
+  return { ...next, validUntil: validUntilFrom(next.quoteDate, next.validDays) };
+}
+
+/**
+ * The day the price stops standing.
+ *
+ * Derived, never typed. Called from `saveQuotationDraft` rather than only
+ * from the form, because a quotation can reach the store without a form ever
+ * being opened — a conversion, an import, a duplicate. A value computed only
+ * where somebody is typing is a value that is wrong everywhere else.
+ *
+ * Both arguments come in as `yyyy-mm-dd`; the result is the same shape, so
+ * the caller decides how to display it.
+ */
+export function validUntilFrom(quoteDate: string, validDays: number): string {
+  const base = str(quoteDate);
+  if (!base) return "";
+  const days = Number(validDays);
+  const d = new Date(`${base}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + (Number.isFinite(days) && days > 0 ? days : QT_VALIDITY_DAYS));
+  /* Formatted from the LOCAL parts, never `toISOString()`. The date was
+     parsed as local midnight, and converting it to UTC in a positive offset
+     rolls it back to the previous day — a quotation issued in Bangkok would
+     have stood one day less than the salesperson chose. */
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+/**
+ * Read the span back off a saved quotation.
+ *
+ * Older records carry the two dates and no span, so editing one has to
+ * recover the number to put a chip under. Snapped to the nearest offered
+ * option when it lands between two — a quotation saved at 45 days shows 30
+ * rather than an empty selection, and the salesperson can move it.
+ */
+export function validDaysFrom(quoteDate: string, validUntil: string): number {
+  const a = new Date(`${str(quoteDate)}T00:00:00`);
+  const b = new Date(`${str(validUntil)}T00:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return QT_VALIDITY_DAYS;
+  const days = Math.round((b.getTime() - a.getTime()) / 86_400_000);
+  if (days <= 0) return QT_VALIDITY_DAYS;
+  if (QT_VALID_DAY_OPTIONS.includes(days as never)) return days;
+  return [...QT_VALID_DAY_OPTIONS].reduce((best, o) =>
+    Math.abs(o - days) < Math.abs(best - days) ? o : best,
+  );
 }
 
 export function blankDraft(): QuotationDraft {
@@ -168,6 +244,7 @@ export function blankDraft(): QuotationDraft {
     shipPhone: "",
     shipInstruction: "",
     quoteDate: toInputDate(today()),
+    validDays: QT_VALIDITY_DAYS,
     validUntil: defaultValidUntil(),
     customerRef: "",
     salesRep: "",
@@ -178,8 +255,6 @@ export function blankDraft(): QuotationDraft {
     /* Replaced by the customer's own billType as soon as one is picked. */
     billType: "VAT",
     deliveryDate: "",
-    warehouse: "",
-    internalRef: "",
     items: [blankLine()],
     headerDisc: 0,
     freight: 0,
@@ -208,6 +283,9 @@ export function draftFromQuotation(q: Quotation): QuotationDraft {
     customerCode: q.customerCode,
     customer: q.customer,
     quoteDate: toInputDate(q.quoteDate),
+    /* The record keeps the date; the editor works in spans. Recovered rather
+       than defaulted, so reopening a 90-day quotation shows 90. */
+    validDays: validDaysFrom(toInputDate(q.quoteDate), toInputDate(q.validUntil)),
     validUntil: toInputDate(q.validUntil),
     customerRef: q.customerRef,
     salesRep: q.salesRep,
@@ -337,9 +415,11 @@ export function draftPrintDoc(draft: QuotationDraft, config: PrintConfig): Print
             salesRep: draft.salesRep,
             payTerm: draft.payTerm,
             currency: draft.currency,
+            /* The customer's own PO or RFQ number. It stays on the printed
+               sheet even though the input moved off the paper: this is the
+               number their accounts team matches our invoice against. */
             reference: draft.customerRef,
             deliveryDate: toDisplayDate(draft.deliveryDate),
-            warehouse: draft.warehouse,
           } as Record<string, string>
         )[field],
       ),
@@ -498,7 +578,10 @@ export function saveQuotationDraft(
     customerCode: str(draft.customerCode),
     salesRep: str(draft.salesRep),
     quoteDate: toDisplayDate(draft.quoteDate),
-    validUntil: toDisplayDate(draft.validUntil),
+    /* Derived here, not copied from the draft. This is the one place every
+       quotation passes through — the editor, a conversion, an import — so it
+       is the only place the date and the span cannot drift apart. */
+    validUntil: toDisplayDate(validUntilFrom(draft.quoteDate, draft.validDays)),
     currency: str(draft.currency) || "THB",
     payTerm: str(draft.payTerm),
     priceList: str(draft.priceList),

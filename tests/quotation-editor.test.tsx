@@ -13,11 +13,15 @@ import { PRODUCTS } from "@/lib/domain/product";
 import { QUOTATIONS, getCustomer } from "@/lib/domain/outbound";
 import { qtRequestEdit } from "@/lib/workflows-outbound";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
+import { toDisplayDate } from "@/lib/format";
 import {
   applyCustomer,
   applyProduct,
   applyProductForCustomer,
   applyShipTo,
+  applyValidity,
+  validDaysFrom,
+  validUntilFrom,
   blankDraft,
   detailLines,
   joinDetails,
@@ -1480,5 +1484,165 @@ describe("Quotation print — an earlier revision", () => {
     const config = getPrintConfig("quotation")!;
     expect(mapQuotationRevision(CODE, 9, config)).toBeNull();
     expect(mapQuotationRevision("QT-NOPE", 1, config)).toBeNull();
+  });
+});
+
+/* ============================================================
+   HOW LONG THE PRICE STANDS
+
+   The salesperson picks a span, not a date. `validUntil` is
+   still what the record keeps and what every downstream reader
+   uses — the Expired status, the expiring filter, the list
+   column — so the change is in how it is decided, not in what
+   exists.
+
+   The derivation lives at the WRITE point rather than in the
+   form, because a quotation reaches the store by routes that
+   never open a form: a conversion, an import, a duplicate. A
+   date computed only where somebody is typing is wrong
+   everywhere else.
+   ============================================================ */
+
+describe("Quotation — validity as a span", () => {
+  it("opens at thirty days", () => {
+    const d = blankDraft();
+    expect(d.validDays).toBe(30);
+    expect(d.validUntil).toBe(validUntilFrom(d.quoteDate, 30));
+  });
+
+  it("moves the date when the span changes", () => {
+    const d = blankDraft();
+    const next = applyValidity(d, { validDays: 60 })!;
+    expect(next.validDays).toBe(60);
+    expect(next.validUntil).toBe(validUntilFrom(d.quoteDate, 60));
+    /* Sixty days is thirty more than thirty — the arithmetic, not a literal. */
+    const a = new Date(`${d.validUntil}T00:00:00`).getTime();
+    const b = new Date(`${next.validUntil}T00:00:00`).getTime();
+    expect((b - a) / 86_400_000).toBe(30);
+  });
+
+  it("moves the date when the quote date changes", () => {
+    const d = { ...blankDraft(), quoteDate: "2026-03-01", validDays: 90 };
+    const next = applyValidity(d, { quoteDate: "2026-04-01" })!;
+    expect(next.validUntil).toBe("2026-06-30");
+  });
+
+  it("writes the derived date even when the draft carries a stale one", () => {
+    /* The property the write point exists for. A draft that never passed
+       through the form — a conversion, an import — may hold anything here;
+       the store must not take its word for it. */
+    const d = readyDraft({ quoteDate: "2026-05-01", validDays: 60 });
+    const res = saveQuotationDraft({ ...d, validUntil: "1999-01-01" }, { issue: true });
+    const saved = QUOTATIONS.find((q) => q.code === res.code)!;
+    expect(saved.validUntil).toBe(toDisplayDate(validUntilFrom("2026-05-01", 60)));
+    expect(saved.validUntil).not.toContain("1999");
+  });
+
+  it("recovers the span when a saved quotation is reopened", () => {
+    const d = readyDraft({ quoteDate: "2026-05-01", validDays: 90 });
+    const res = saveQuotationDraft(d, { issue: true });
+    const back = draftFromQuotation(QUOTATIONS.find((q) => q.code === res.code)!);
+    expect(back.validDays).toBe(90);
+  });
+
+  it("snaps an odd span from an older record onto an offered option", () => {
+    /* Records written before the chips existed carry arbitrary gaps. An
+       empty selection would be worse than the nearest one. */
+    expect(validDaysFrom("2026-05-01", "2026-06-15")).toBe(30);
+    expect(validDaysFrom("2026-05-01", "2026-07-20")).toBe(90);
+  });
+
+  it("still refuses a validity that ends before it begins", () => {
+    /* The rule the date field used to guard is unchanged. */
+    const d = readyDraft({ quoteDate: "2026-08-04" });
+    const broken = { ...d, validUntil: "2026-08-04" };
+    expect(blockingIssues(validateDraft(broken)).some((i) => i.field === "validUntil")).toBe(
+      true,
+    );
+  });
+});
+
+describe("Quotation — the header carries only the document", () => {
+  it("offers the four spans as chips, with the one in force pressed", async () => {
+    const user = userEvent.setup();
+    render(<QuotationEditor />);
+
+    const chips = screen.getByTestId("validity-chips");
+    for (const d of [30, 60, 90, 120]) {
+      expect(within(chips).getByRole("button", { name: `ยืนราคา ${d} วัน` })).toBeInTheDocument();
+    }
+    expect(within(chips).getByRole("button", { name: "ยืนราคา 30 วัน" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(within(chips).getByRole("button", { name: "ยืนราคา 90 วัน" }));
+    expect(screen.getByRole("button", { name: "ยืนราคา 90 วัน" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("has no Valid Until date box on the paper any more", () => {
+    render(<QuotationEditor />);
+    expect(screen.queryByLabelText("Valid Until")).toBeNull();
+  });
+
+  it("drops the two fields that were never written to the record", () => {
+    /* `warehouse` and `internalRef` sat in the draft and in the header, and
+       `saveQuotationDraft` wrote neither. Every keystroke into them was
+       thrown away on save. */
+    render(<QuotationEditor />);
+    expect(screen.queryByLabelText("Warehouse")).toBeNull();
+    expect(screen.queryByLabelText("Internal Reference")).toBeNull();
+    expect(Object.keys(blankDraft())).not.toContain("warehouse");
+    expect(Object.keys(blankDraft())).not.toContain("internalRef");
+  });
+
+  it("keeps six rows on the paper", () => {
+    render(<QuotationEditor />);
+    for (const label of [
+      "Quotation Date",
+      "Sales Representative",
+      "Price List",
+      "Currency",
+      "Payment Term",
+      "Delivery Date",
+    ]) {
+      expect(screen.getByLabelText(label), label).toBeInTheDocument();
+    }
+  });
+});
+
+describe("Quotation — settings that are not the document", () => {
+  it("puts bill type, channel and customer reference in one strip off the paper", () => {
+    render(<QuotationEditor />);
+    const strip = screen.getByTestId("doc-settings");
+
+    expect(within(strip).getByLabelText("Bill Type")).toBeInTheDocument();
+    expect(within(strip).getByLabelText("Sales Channel")).toBeInTheDocument();
+    expect(within(strip).getByLabelText("Customer Reference")).toBeInTheDocument();
+
+    /* Outside the sheet, which is the whole point. */
+    const paper = screen.getByTestId("quotation-document");
+    expect(paper.contains(strip)).toBe(false);
+  });
+
+  it("still carries the customer's reference to the record", () => {
+    /* The number their accounts team matches our invoice against. Moving the
+       input off the paper must not break the chain that ends at
+       SalesOrder.customerPo. */
+    const d = readyDraft({ customerRef: "PO-OFFPAPER-1" });
+    const res = saveQuotationDraft(d, { issue: true });
+    expect(QUOTATIONS.find((q) => q.code === res.code)!.customerRef).toBe("PO-OFFPAPER-1");
+  });
+
+  it("still prints the customer's reference on the sheet", () => {
+    /* Off the screen's paper, still on the printed one — the customer needs
+       to see their own number. */
+    const d = readyDraft({ customerRef: "PO-PRINTED-9" });
+    const config = getPrintConfig("quotation")!;
+    const doc = draftPrintDoc(d, config);
+    expect(doc.meta.some((m) => m.value === "PO-PRINTED-9")).toBe(true);
   });
 });

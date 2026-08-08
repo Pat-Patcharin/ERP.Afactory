@@ -2,6 +2,8 @@
 
 import { useCallback, useMemo } from "react";
 import {
+  QT_VALID_DAY_OPTIONS,
+  applyValidity,
   blankDraft,
   draftFromQuotation,
   draftInsight,
@@ -34,8 +36,10 @@ import {
   type ItemTableLayout,
   MetaPanel,
   MetaSelect,
+  MetaText,
   metaControls,
   RemarksPanel,
+  ValidityChips,
   ShipToPanel,
   SignatureRow,
   TotalsPanel,
@@ -124,8 +128,9 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
     totals: draftTotals,
 
     validate: validateDraft,
-    /* A quotation has no patch of its own beyond the sell-side three. */
-    onPatch: sellSidePatch,
+    /* The validity span first — it owns two fields that derive a third —
+       then the sell-side three. */
+    onPatch: (d, patch) => applyValidity(d, patch) ?? sellSidePatch(d, patch),
     applyProduct: applyLineProduct,
     save: (d, { finalise, user }) => saveQuotationDraft(d, { issue: finalise, user }),
   });
@@ -269,38 +274,69 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
   const metaRows: MetaRow[] = useMemo(() => {
     const { txt, sel } = metaControls(draft, set);
 
+    /* Six rows and the validity line beneath them. What is NOT here is as
+       deliberate as what is:
+
+         customerRef · channel · billType   moved off the paper — see the
+                                            settings strip above the sheet
+         warehouse · internalRef            deleted; neither was ever written
+                                            to the record, so both had been
+                                            collecting typing and dropping it
+                                            since the day they were added
+         validUntil                         now derived from a span, shown
+                                            under the panel rather than as a
+                                            date somebody counts out */
     return [
       { field: "quoteDate", label: "Quotation Date", required: true, control: txt("quoteDate", "Quotation Date", "date"), read: toDisplayDate(draft.quoteDate) },
-      { field: "validUntil", label: "Valid Until", required: true, control: txt("validUntil", "Valid Until", "date"), read: toDisplayDate(draft.validUntil) },
-      { field: "customerRef", label: "Customer Reference", control: txt("customerRef", "Customer Reference"), read: draft.customerRef },
       { field: "salesRep", label: "Sales Representative", required: true, control: sel("salesRep", "Sales Representative", salesRepOptions(), "— เลือกพนักงานขาย —"), read: draft.salesRep },
       { field: "priceList", label: "Price List", required: true, control: sel("priceList", "Price List", QT_PRICE_LISTS), read: draft.priceList },
       { field: "currency", label: "Currency", required: true, control: sel("currency", "Currency", PO_CURRENCIES), read: draft.currency },
       { field: "payTerm", label: "Payment Term", control: sel("payTerm", "Payment Term", PAY_TERMS), read: draft.payTerm },
-      { field: "channel", label: "Sales Channel", control: sel("channel", "Sales Channel", QT_CHANNELS), read: draft.channel },
-      {
-        field: "billType",
-        label: "Bill Type",
-        /* Not `sel()`: this one asks before it writes. See askBillType. */
-        control: (
-          <MetaSelect
-            label="Bill Type"
-            value={draft.billType}
-            options={BILL_TYPES}
-            onChange={askBillType}
-          />
-        ),
-        read: draft.billType,
-      },
       { field: "deliveryDate", label: "Delivery Date", control: txt("deliveryDate", "Delivery Date", "date"), read: toDisplayDate(draft.deliveryDate) },
-      { field: "warehouse", label: "Warehouse", control: sel("warehouse", "Warehouse", warehouseOptions(), "— ยังไม่ระบุ —"), read: draft.warehouse },
-      { field: "internalRef", label: "Internal Reference", control: txt("internalRef", "Internal Reference"), read: draft.internalRef },
     ];
-  }, [askBillType, draft, set]);
+  }, [draft, set]);
+
+  /* Off the paper, in one place. See the strip's note in the shell. */
+  const settings = (
+    <>
+      <label className="flex flex-col gap-1">
+        <span className="text-cap text-ink-2">Bill Type</span>
+        <MetaSelect
+          label="Bill Type"
+          value={draft.billType}
+          options={BILL_TYPES}
+          /* Asks before it writes — retaxing every line is not a silent
+             change. See askBillType. */
+          onChange={askBillType}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-cap text-ink-2">Sales Channel</span>
+        <MetaSelect
+          label="Sales Channel"
+          value={draft.channel}
+          options={QT_CHANNELS}
+          onChange={(channel) => set({ channel })}
+        />
+      </label>
+      <label className="flex min-w-[190px] flex-1 flex-col gap-1">
+        <span className="text-cap text-ink-2">
+          Customer Reference
+          <span className="ml-1 text-ink-3">— เลข PO ของลูกค้า</span>
+        </span>
+        <MetaText
+          label="Customer Reference"
+          value={draft.customerRef}
+          onChange={(customerRef) => set({ customerRef })}
+        />
+      </label>
+    </>
+  );
 
   return (
     <DocumentEditorShell
       api={api}
+      settings={settings}
       labels={{
         entityName: "Quotation",
         primaryAction: "Save Quotation",
@@ -336,7 +372,18 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
       <div className="mt-5 grid grid-cols-[1fr_1fr_minmax(300px,340px)] items-start gap-4 max-[1100px]:grid-cols-1">
         <BillToPanel draft={draft} mode={docMode} set={set} invalid={invalid} />
         <ShipToPanel draft={draft} mode={docMode} set={set} invalid={invalid} />
-        <MetaPanel rows={metaRows} mode={docMode} invalid={invalid} />
+        <div>
+          <MetaPanel rows={metaRows} mode={docMode} invalid={invalid} />
+          {/* Under the panel rather than inside it: the span is one line of
+              prose on the finished sheet, not a labelled field. */}
+          <ValidityChips
+            days={draft.validDays}
+            until={toDisplayDate(draft.validUntil)}
+            options={QT_VALID_DAY_OPTIONS}
+            mode={docMode}
+            onChange={(validDays) => set({ validDays })}
+          />
+        </div>
       </div>
 
       {docMode === "edit" && (

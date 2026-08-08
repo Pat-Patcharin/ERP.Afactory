@@ -571,6 +571,63 @@ export function MetaPanel({
   );
 }
 
+/**
+ * How long the price stands, as chips rather than a date.
+ *
+ * Four options fit side by side, so all of them are visible at once and
+ * choosing takes one click — a dropdown would hide three of the four behind
+ * an interaction to save no space. The resulting date is shown underneath
+ * because the customer will read it on the sheet, but nobody has to type it.
+ *
+ * In read mode this collapses to the sentence that actually prints.
+ */
+export function ValidityChips({
+  days,
+  until,
+  options,
+  mode,
+  onChange,
+}: {
+  days: number;
+  until: string;
+  options: readonly number[];
+  mode: DocMode;
+  onChange: (days: number) => void;
+}) {
+  if (mode !== "edit") {
+    return (
+      <p className="mt-2 text-cap text-ink-2" data-testid="validity-read">
+        ยืนราคา <span className="font-semibold text-ink">{days}</span> วัน
+        {until ? ` — ถึง ${until}` : ""}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="validity-chips">
+      <span className="text-cap text-ink-2">ยืนราคา</span>
+      {options.map((o) => (
+        <button
+          key={o}
+          type="button"
+          aria-label={`ยืนราคา ${o} วัน`}
+          aria-pressed={o === days}
+          onClick={() => onChange(o)}
+          className={cn(
+            "rounded-pill border px-3 py-1 text-cap font-medium transition-colors duration-fast",
+            o === days
+              ? "border-doc-accent bg-doc-accent text-white"
+              : "border-line bg-card text-ink-2 hover:border-doc-accent hover:text-ink",
+          )}
+        >
+          {o} วัน
+        </button>
+      ))}
+      {until && <span className="text-cap text-ink-3">ถึง {until}</span>}
+    </div>
+  );
+}
+
 /** Controls a document builds its metadata rows from. */
 /**
  * The two controls every document's metadata panel is built from, bound to

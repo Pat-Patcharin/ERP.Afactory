@@ -70,6 +70,7 @@ export function DocumentEditorShell<TDraft extends EditableDraft>({
   testIds,
   printJob,
   progress,
+  settings,
   onSaveDraft,
   onSave,
   onCancel,
@@ -85,6 +86,13 @@ export function DocumentEditorShell<TDraft extends EditableDraft>({
   printJob: PrintJob | null;
   /** Omit for a document that has never shown a completion count. */
   progress?: DocumentProgress;
+  /**
+   * Controls that belong to the document but not on its paper.
+   *
+   * Rendered above the sheet and never printed. A document with nothing of
+   * this kind omits it and the strip does not appear.
+   */
+  settings?: ReactNode;
   onSaveDraft: () => void;
   onSave: () => void;
   onCancel: () => void;
@@ -255,6 +263,27 @@ export function DocumentEditorShell<TDraft extends EditableDraft>({
           <Button size="sm" variant="ghost" onClick={discardRecovered}>
             ทิ้งไป
           </Button>
+        </div>
+      )}
+
+      {/* ---------- Settings that are not the document ----------
+          Fields the document must carry and pass on, but which are not part
+          of what the customer reads: how it is billed, which channel it came
+          through, the customer's own reference number.
+
+          Deliberately ONE strip rather than three homes. They belong together
+          because they answer one question — "what kind of quotation is this"
+          — and scattering them would leave a salesperson hunting three
+          places for three settings of the same kind. */}
+      {settings && docMode === "edit" && (
+        <div
+          data-testid="doc-settings"
+          className="mx-auto mt-4 flex max-w-[1180px] flex-wrap items-end gap-4 rounded-card border border-line bg-card px-4 py-3 max-md:mx-4"
+        >
+          <span className="text-cap font-semibold uppercase tracking-[0.06em] text-ink-3">
+            ตั้งค่าเอกสาร
+          </span>
+          {settings}
         </div>
       )}
 
