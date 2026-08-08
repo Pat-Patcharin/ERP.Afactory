@@ -327,18 +327,18 @@ export const PRODUCTS: Product[] = [
     reg: {
       no: "ผ.1234/2567",
       status: "Active",
-      issue: "15/01/2567",
+      issue: "15/01/2024",
       expiry: "31/12/2026",
       warranty: "12 เดือน (ผู้ผลิต)",
       custWarranty: "6 เดือน (ลูกค้าปลายทาง)",
       docs: [
         {
           name: "ใบจดทะเบียน อย.pdf",
-          meta: "PDF · 1.2 MB · อัปโหลด 15/01/2567",
+          meta: "PDF · 1.2 MB · อัปโหลด 15/01/2024",
         },
         {
           name: "Certificate of Analysis.pdf",
-          meta: "PDF · 480 KB · อัปโหลด 02/02/2567",
+          meta: "PDF · 480 KB · อัปโหลด 02/02/2024",
         },
       ],
     },
@@ -458,14 +458,14 @@ export const PRODUCTS: Product[] = [
     reg: {
       no: "ผ.1234/2567",
       status: "Active",
-      issue: "15/01/2567",
+      issue: "15/01/2024",
       expiry: "31/12/2026",
       warranty: "12 เดือน (ผู้ผลิต)",
       custWarranty: "6 เดือน (ลูกค้าปลายทาง)",
       docs: [
         {
           name: "ใบจดทะเบียน อย.pdf",
-          meta: "PDF · 1.2 MB · อัปโหลด 15/01/2567",
+          meta: "PDF · 1.2 MB · อัปโหลด 15/01/2024",
         },
       ],
     },
@@ -643,14 +643,14 @@ export const PRODUCTS: Product[] = [
     reg: {
       no: "ผ.5678/2566",
       status: "Expiring",
-      issue: "15/09/2566",
+      issue: "15/09/2023",
       expiry: "15/09/2026",
       warranty: "6 เดือน (ผู้ผลิต)",
       custWarranty: "3 เดือน (ลูกค้าปลายทาง)",
       docs: [
         {
           name: "ใบจดทะเบียน อย.pdf",
-          meta: "PDF · 980 KB · อัปโหลด 15/09/2566",
+          meta: "PDF · 980 KB · อัปโหลด 15/09/2023",
         },
       ],
     },
@@ -741,7 +741,7 @@ export const PRODUCTS: Product[] = [
     reg: {
       no: "ผ.9012/2565",
       status: "Expired",
-      issue: "01/03/2565",
+      issue: "01/03/2022",
       expiry: "01/03/2026",
       warranty: "—",
       custWarranty: "—",
@@ -845,14 +845,14 @@ export const PRODUCTS: Product[] = [
     reg: {
       no: "ผ.3344/2566",
       status: "Active",
-      issue: "10/01/2566",
+      issue: "10/01/2023",
       expiry: "10/01/2028",
       warranty: "—",
       custWarranty: "—",
       docs: [
         {
           name: "ใบจดทะเบียน อย.pdf",
-          meta: "PDF · 1.1 MB · อัปโหลด 10/01/2566",
+          meta: "PDF · 1.1 MB · อัปโหลด 10/01/2023",
         },
       ],
     },
@@ -936,14 +936,14 @@ export const PRODUCTS: Product[] = [
     reg: {
       no: "ผ.3345/2566",
       status: "Active",
-      issue: "10/01/2566",
+      issue: "10/01/2023",
       expiry: "10/01/2028",
       warranty: "—",
       custWarranty: "—",
       docs: [
         {
           name: "ใบรับรอง มอก..pdf",
-          meta: "PDF · 720 KB · อัปโหลด 10/01/2566",
+          meta: "PDF · 720 KB · อัปโหลด 10/01/2023",
         },
       ],
     },
@@ -1035,14 +1035,14 @@ export const PRODUCTS: Product[] = [
     reg: {
       no: "ผ.7788/2567",
       status: "Active",
-      issue: "20/02/2567",
+      issue: "20/02/2024",
       expiry: "20/02/2027",
       warranty: "6 เดือน (ผู้ผลิต)",
       custWarranty: "3 เดือน (ลูกค้าปลายทาง)",
       docs: [
         {
           name: "ใบจดทะเบียน อย.pdf",
-          meta: "PDF · 840 KB · อัปโหลด 20/02/2567",
+          meta: "PDF · 840 KB · อัปโหลด 20/02/2024",
         },
       ],
     },
