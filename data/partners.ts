@@ -425,7 +425,27 @@ export const CREDIT_STATUS = ["Normal", "Near Limit", "Over Limit", "Credit Hold
  * status existed — a tone with no status, the mirror of the problem fixed in
  * QT_STATUS. The two are edited together from here on.
  */
-export const BP_STATUS = ["Draft", "Active", "Inactive", "On Hold", "Blocked"] as const;
+/*
+   `Unverified` is not a worse `Draft` — it is a different job.
+
+   Draft means a person started filling this in and has not finished, so it
+   belongs in the queue an administrator works through. Unverified means the
+   system created the record from a name in the price list master and nobody
+   has ever looked at the company: no tax ID, no address, no contact.
+
+   They were one status for about an hour, and the administrator's
+   "waiting to be confirmed" queue went from one item to twenty-four. Work
+   nobody chose to start, filed beside work somebody did, is how a queue
+   stops being read.
+*/
+export const BP_STATUS = [
+  "Draft",
+  "Unverified",
+  "Active",
+  "Inactive",
+  "On Hold",
+  "Blocked",
+] as const;
 
 /** Statuses a partner can be sold to. Everything else stops a Sales Order. */
 export const BP_SELLABLE_STATUS: readonly string[] = ["Active"];

@@ -21,6 +21,12 @@ export const BP_TONE: Record<string, BadgeTone> = {
   "On Hold": "warning",
   Blocked: "danger",
   Draft: "warning",
+  /* Neutral, not warning. Draft is amber because somebody started a record
+     and left it unfinished — a person is mid-task. Unverified is a company
+     the price list master names that nobody has onboarded yet: a fact about
+     the world rather than an unfinished job, and colouring twenty-three of
+     them amber would drown the handful that really are waiting on someone. */
+  Unverified: "neutral",
 };
 
 export const CREDIT_TONE: Record<string, BadgeTone> = {

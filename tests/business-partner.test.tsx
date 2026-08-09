@@ -15,6 +15,7 @@ import {
 } from "@/data/partners";
 import {
   BUSINESS_PARTNERS,
+  onboardedPartners,
   addressLine,
   bpAddAddress,
   bpAddBank,
@@ -168,7 +169,7 @@ const SUPPLIER = "BP000121";
 
 describe("BP Master — records written before the schema", () => {
   it("resolves a billing address for every seeded partner", () => {
-    for (const b of BUSINESS_PARTNERS) {
+    for (const b of onboardedPartners()) {
       expect(bpBillingAddress(b), `${b.code} billing`).not.toBeNull();
     }
   });
@@ -177,7 +178,7 @@ describe("BP Master — records written before the schema", () => {
     /* "Registered Address" cannot bill under the new list, so without the
        migration every seeded partner would fail validation on load. */
     expect(LEGACY_ADDRESS_TYPES["Registered Address"]).toBe("Head Office");
-    for (const b of BUSINESS_PARTNERS) {
+    for (const b of onboardedPartners()) {
       for (const a of b.addresses) {
         expect(BP_ADDRESS_TYPES, `${b.code} · ${a.type}`).toContain(a.type);
       }
@@ -185,14 +186,14 @@ describe("BP Master — records written before the schema", () => {
   });
 
   it("leaves no seeded partner with a blocking validation issue", () => {
-    for (const b of BUSINESS_PARTNERS) {
+    for (const b of onboardedPartners()) {
       const blocking = bpValidate(b).filter((i) => i.blocking);
       expect(blocking, `${b.code}: ${blocking.map((i) => i.message).join(", ")}`).toHaveLength(0);
     }
   });
 
   it("fills the new fields on every partner without touching the old ones", () => {
-    for (const b of BUSINESS_PARTNERS) {
+    for (const b of onboardedPartners()) {
       expect(b.billType === "VAT" || b.billType === "Non VAT").toBe(true);
       expect(b.creditTerm).toBeTruthy();
       expect(b.since).toBeTruthy();
@@ -418,7 +419,7 @@ describe("BP Master — bank account CRUD", () => {
 
 describe("BP Master — attachments", () => {
   it("gives every partner at least one attachment", () => {
-    for (const b of BUSINESS_PARTNERS) {
+    for (const b of onboardedPartners()) {
       expect(b.docs.length, `${b.code} attachments`).toBeGreaterThan(0);
     }
   });
@@ -435,7 +436,7 @@ describe("BP Master — attachments", () => {
       );
     }
     /* Everyone else holds documents the seed never supplied. */
-    for (const b of BUSINESS_PARTNERS.filter((x) => !seeded.includes(x.code))) {
+    for (const b of onboardedPartners().filter((x) => !seeded.includes(x.code))) {
       expect(b.docs.length, `${b.code}`).toBeGreaterThan(0);
       const seedNames = Object.values(ATTACHMENT_SEED).flat().map((d) => d.name);
       for (const d of b.docs) expect(seedNames).not.toContain(d.name);
@@ -1839,7 +1840,7 @@ describe("BP Master — form revisions", () => {
   });
 
   it("treats every account written before the split as domestic", () => {
-    for (const b of BUSINESS_PARTNERS) {
+    for (const b of onboardedPartners()) {
       for (const k of b.banks) {
         expect(k.scope, `${b.code} · ${k.accNo}`).toBeTruthy();
       }

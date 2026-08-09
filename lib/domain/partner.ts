@@ -21,7 +21,7 @@ import { resolveSalesArea } from "@/data/sales-areas";
 /* The decorated master, not the raw file: the price list master folds in
    there, so a supplier item naming a catalogue product still finds its unit. */
 import { PRODUCTS } from "./product";
-import { DASH, daysUntil } from "@/lib/format";
+import { DASH, daysUntil, today } from "@/lib/format";
 
 /* ============================================================
    BUSINESS PARTNER — one legal entity, many roles.
@@ -313,6 +313,192 @@ function normalise(bp: BusinessPartner) {
     bp.supplier = null;
   }
 }
+
+/* ============================================================
+   VENDORS THE PRODUCT MASTER NAMES BUT NOBODY HAS ONBOARDED
+
+   The product master records who a product is bought from as a
+   NAME — 23 of them across 757 products — and the partner master
+   knows nothing about any of them. Nothing joined the two, so
+   every question of the form "is this partner the supplier of
+   that product" had no answer, and the eight prototype products
+   carried a third spelling of the same idea (`sup.code`, the
+   `SUP-0012` series) that matched neither.
+
+   Three ways to name a supplier, none of them meeting. This
+   closes it by making the names real: one stub partner per
+   distinct vendor, generated from the same file the products
+   were, so regenerating the price master keeps them in step.
+   The same reasoning as `mergeCatalog` in product.ts, and the
+   same rule — a generated record NEVER overwrites a hand-written
+   one, so a vendor whose name matches a partner already on file
+   is left alone and simply resolves to it.
+
+   These are STUBS and say so: no tax ID, no address, no contact,
+   status "Draft". That is the truth about them — nobody has
+   onboarded these companies — and it is deliberately visible
+   rather than papered over with invented detail. A Draft partner
+   already cannot open a sales order, and opening one in the form
+   will demand a contact with a telephone before it can be saved,
+   which is exactly the prompt somebody needs.
+   ============================================================ */
+
+/** Comparable form of a company name — case and spacing are not identity. */
+const vendorKey = (name: string) =>
+  String(name ?? "")
+    .toLowerCase()
+    .replace(/[.,]/g, " ")
+    .replace(/\b(co|ltd|inc|corp|corporaion|corporation|company|limited|intl|international)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** Every name a partner already answers to. */
+const partnerNameKeys = (bp: BusinessPartner) =>
+  [bp.nameTh, bp.nameEn, bp.trade].filter(Boolean).map(vendorKey);
+
+function vendorStub(name: string, code: string): BusinessPartner {
+  return {
+    code,
+    /* The vendor master is written in English; there is no Thai name to
+       invent, and inventing one would be worse than leaving it to whoever
+       onboards the company properly. */
+    nameTh: name,
+    nameEn: name,
+    trade: name,
+    type: "Company",
+    logo: "🏭",
+    website: "",
+    /* Unverified, not Draft — see the note on BP_STATUS. Nobody started
+       this record, so it does not belong in the queue of records somebody
+       started. Not Active either: nothing about this company is checked. */
+    status: "Unverified",
+    notes: "สร้างอัตโนมัติจากชื่อผู้ขายในราคากลาง — ยังไม่ได้ตรวจสอบข้อมูลบริษัท",
+    roles: { customer: false, supplier: true, dealer: false, prospect: false, other: false },
+    cls: {
+      custGroup: "",
+      supGroup: "",
+      industry: "",
+      bizType: "",
+      custLevel: "",
+      priceGroup: "",
+      territory: "",
+      channel: "",
+    },
+    tax: {
+      entity: "",
+      taxId: "",
+      branchType: "",
+      branchNo: "",
+      regName: "",
+      vatReg: false,
+      vatDate: "",
+      wht: false,
+      regNo: "",
+      country: "",
+    },
+    contacts: [],
+    addresses: [],
+    sales: null,
+    purchasing: null,
+    credit: {
+      payTerm: "",
+      limit: 0,
+      days: 0,
+      outstanding: 0,
+      openSO: 0,
+      openInv: 0,
+      available: 0,
+      status: "Not Applicable",
+      holdReason: "",
+      holdDate: "",
+      approvedBy: "",
+      approvalDate: "",
+    },
+    banks: [],
+    docs: [],
+    txn: { so: [], po: [], inv: [] },
+    history: [],
+    created: today(),
+    createdBy: VENDOR_STUB_AUTHOR,
+    updated: today(),
+    updatedBy: VENDOR_STUB_AUTHOR,
+  };
+}
+
+/**
+ * Give every vendor named by the product master a partner record.
+ *
+ * Deterministic: the names are sorted before codes are handed out, so the
+ * same vendor keeps the same code across reloads and between runs. Codes
+ * continue the one BP sequence rather than starting a block of their own —
+ * a separate range would be a fourth way of saying "supplier", which is the
+ * thing this is here to stop.
+ */
+function mergeVendors() {
+  const taken = new Map<string, string>();
+  for (const bp of RAW) for (const k of partnerNameKeys(bp)) taken.set(k, bp.code);
+
+  const names = [...new Set(PRODUCTS.map((p) => String(p.supplier ?? "").trim()))]
+    .filter((n) => n && n !== DASH)
+    .filter((n) => !taken.has(vendorKey(n)))
+    .sort();
+
+  let seq = RAW.reduce(
+    (m, b) => Math.max(m, parseInt(b.code.replace(/\D/g, ""), 10) || 0),
+    0,
+  );
+
+  for (const name of names) {
+    const code = `BP${String(++seq).padStart(6, "0")}`;
+    RAW.push(vendorStub(name, code));
+    taken.set(vendorKey(name), code);
+  }
+
+  vendorIndex = taken;
+}
+
+/** vendor-name key → partner code. Built by mergeVendors. */
+let vendorIndex = new Map<string, string>();
+
+/**
+ * The partner a product is bought from.
+ *
+ * This is the join that did not exist. Every caller that used to compare
+ * supplier NAMES should come through here instead — matching on a name is
+ * what left purchase history unable to find its own supplier.
+ */
+export function vendorPartner(name: string | null | undefined): BpRow | null {
+  const code = vendorIndex.get(vendorKey(String(name ?? "")));
+  return code ? (BUSINESS_PARTNERS.find((b) => b.code === code) ?? null) : null;
+}
+
+/** Is this partner the supplier the product master names for that product? */
+export const isDefaultSupplierOf = (partnerCode: string, product: { supplier?: string }) =>
+  Boolean(partnerCode) && vendorPartner(product.supplier)?.code === partnerCode;
+
+/** Who wrote a generated vendor stub. One spelling, checked in one place. */
+export const VENDOR_STUB_AUTHOR = "Price List Master";
+
+/**
+ * A record the system created from a vendor name, that nobody has onboarded.
+ *
+ * Exported because the invariants the seeded partners hold — every one has a
+ * billing address, a delivery address, a territory, an attachment — are
+ * properties of a partner somebody FILLED IN, and a stub has by definition
+ * had nothing filled in. Tests and code check the same predicate rather than
+ * each deciding for itself what "a real partner" means.
+ *
+ * Provenance, not status: an administrator part-way through onboarding one of
+ * these will move it off `Unverified` long before it is complete, and it
+ * should stop being exempt at exactly that moment.
+ */
+export const isVendorStub = (bp: BusinessPartner) =>
+  bp.createdBy === VENDOR_STUB_AUTHOR && bp.status === "Unverified";
+
+/** The partners somebody has actually taken responsibility for. */
+export const onboardedPartners = () => BUSINESS_PARTNERS.filter((b) => !isVendorStub(b));
+
+mergeVendors();
 
 /* ---------- Decoration ---------- */
 

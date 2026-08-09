@@ -443,6 +443,15 @@ export const BP_LIST: ListSchema<BpRow> = {
     /* First, and named for what has to happen rather than for the status:
        a partner waiting here is a salesperson blocked from raising an order. */
     { key: "draft", label: "รอยืนยัน", test: (b) => b.status === "Draft" },
+    /* Its own queue, not mixed into the one above. These are companies the
+       price list master names as suppliers that nobody has onboarded — real
+       work, but work nobody started, and filing it beside half-finished
+       records somebody DID start is how both queues stop being read. */
+    {
+      key: "unverified",
+      label: "ยังไม่ตรวจสอบ",
+      test: (b) => b.status === "Unverified",
+    },
     { key: "cust", label: "Customers", test: (b) => b.roles.customer },
     { key: "sup", label: "Suppliers", test: (b) => b.roles.supplier },
     {

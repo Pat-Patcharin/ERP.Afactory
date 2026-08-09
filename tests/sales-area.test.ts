@@ -15,7 +15,7 @@ import {
   salesArea,
 } from "@/data/sales-areas";
 import { SALES_REPRESENTATIVES } from "@/lib/domain/sales";
-import { BUSINESS_PARTNERS } from "@/lib/domain/partner";
+import { BUSINESS_PARTNERS, onboardedPartners } from "@/lib/domain/partner";
 import { DASH } from "@/lib/format";
 
 /* ============================================================
@@ -149,7 +149,12 @@ describe("Sales Area master — what the other modules read", () => {
 
   it("files every partner under a territory that exists and matches its address", () => {
     const names = new Set(SALES_AREAS.map((a) => a.name));
-    for (const b of BUSINESS_PARTNERS) {
+    /* Onboarded partners only. A sales territory is read off the billing
+       address, and a generated vendor stub has no address at all — it is a
+       supplier name the price list master knows and nobody has onboarded.
+       Asserting it falls in a territory would be asserting something about
+       a record that has had nothing filled in. */
+    for (const b of onboardedPartners()) {
       expect(names.has(b.salesArea), `${b.code} territory ${b.salesArea}`).toBe(true);
       expect(b.salesAreaFromAddress, b.code).not.toBe(DASH);
       expect(b.salesAreaMismatch, `${b.code} vs ${b.salesAreaFromAddress}`).toBe(false);
