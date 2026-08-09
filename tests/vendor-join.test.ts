@@ -5,6 +5,8 @@ import {
   isDefaultSupplierOf,
   isVendorStub,
   onboardedPartners,
+  leadingNumber,
+  supplyTermsFor,
   vendorPartner,
 } from "@/lib/domain/partner";
 import { PRODUCTS, getProduct } from "@/lib/domain/product";
@@ -127,5 +129,79 @@ describe("a generated vendor is honest about being one", () => {
        that has nothing to do with what they are checking. */
     expect(onboardedPartners().some(isVendorStub)).toBe(false);
     expect(onboardedPartners().length).toBeLessThan(BUSINESS_PARTNERS.length);
+  });
+});
+
+/* ============================================================
+   ONE HOME FOR THE BUYING TERMS
+
+   Minimum order, lead time, quoted price and the vendor's own
+   item code were kept twice — formatted for reading on the
+   product, as numbers on the partner — with nothing keeping them
+   in step. They had drifted before anybody noticed: AA-TH003-WL
+   read "240 Tube / 21 วัน" on the product while a supplier item
+   said 24 and 14.
+
+   The supplier item is now the only home, because it is keyed by
+   (partner, product) — the grain these facts have. `product.sup`
+   renders that row rather than storing its own answer.
+   ============================================================ */
+
+describe("the buying terms have one home", () => {
+  it("gives the supplier of a product a row for it", () => {
+    const withTerms = PRODUCTS.filter((p) => supplyTermsFor(p.code));
+    expect(withTerms.length).toBeGreaterThan(500);
+  });
+
+  it("shows the product exactly what the supplier item says", () => {
+    /* The two used to disagree. They cannot now, because there is only one
+       of them: `sup` is rendered from the row. */
+    for (const p of PRODUCTS.slice(0, 60)) {
+      const terms = supplyTermsFor(p.code);
+      if (!terms) continue;
+      const sup = (p as unknown as { sup?: Record<string, string> }).sup;
+      if (!sup) continue;
+
+      expect(sup.code, `${p.code} supplier code`).toBe(terms.partner.code);
+      expect(sup.itemCode, `${p.code} vendor item code`).toBe(terms.row.sku);
+      if (terms.row.moq > 0) expect(sup.moq, `${p.code} moq`).toContain(String(terms.row.moq));
+      if (terms.row.lead > 0) expect(sup.lead, `${p.code} lead`).toContain(String(terms.row.lead));
+    }
+  });
+
+  it("prefers the supplier the product master names over any other source", () => {
+    /* A product with two sources must not resolve by array order. */
+    const twoSources = PRODUCTS.find((p) => {
+      const holders = BUSINESS_PARTNERS.filter((b) =>
+        (b.supplierItems ?? []).some((i) => i.product === p.code),
+      );
+      return holders.length > 1;
+    });
+    expect(twoSources, "the fixture needs a product with two suppliers").toBeTruthy();
+
+    const named = vendorPartner(twoSources!.supplier)!;
+    expect(supplyTermsFor(twoSources!.code)!.partner.code).toBe(named.code);
+  });
+
+  it("never lets a generated row replace one somebody typed", () => {
+    /* BP000121's rows are hand-written seeds. A derived row for the same
+       product on the same partner would be data loss, quietly. */
+    const bp = BUSINESS_PARTNERS.find((b) => b.code === "BP000121")!;
+    const codes = (bp.supplierItems ?? []).map((i) => i.product);
+    expect(codes.length, "duplicate rows for one product").toBe(new Set(codes).size);
+
+    const seeded = (bp.supplierItems ?? []).find((i) => i.product === "AA-TH003-WL")!;
+    expect(seeded.moq).toBe(24);
+    expect(seeded.sku).toBe("DNT-CR-A2-4G");
+  });
+
+  it("reads a legacy display string only once, into a number", () => {
+    expect(leadingNumber("240 Tube")).toBe(240);
+    expect(leadingNumber("21 วัน")).toBe(21);
+    expect(leadingNumber("68.50 THB")).toBe(68.5);
+    /* Not stated is 0, not NaN — the figure has to stay addable. */
+    expect(leadingNumber("")).toBe(0);
+    expect(leadingNumber("—")).toBe(0);
+    expect(leadingNumber(undefined)).toBe(0);
   });
 });

@@ -500,6 +500,172 @@ export const onboardedPartners = () => BUSINESS_PARTNERS.filter((b) => !isVendor
 
 mergeVendors();
 
+/* ============================================================
+   ONE HOME FOR WHAT IT COSTS TO BUY SOMETHING
+
+   The terms of a purchase — minimum order, lead time, the price
+   quoted, the vendor's own code for our item — were kept twice.
+   On the product as `sup`, formatted for reading; on the partner
+   as a `supplierItems` row, as numbers. Nothing kept them in
+   step, and they had already drifted. For AA-TH003-WL:
+
+     product.sup     moq "240 Tube"  lead "21 วัน"  price "68.50 THB"
+     BP000121 item   moq 24          lead 14        price 420
+
+   Two answers to one question, and they even name different
+   suppliers. Whoever read one was wrong half the time.
+
+   The supplier item wins, for a reason that is not a preference:
+   it is keyed by (partner, product), which is the grain these
+   facts actually have. The same item from a second source has
+   its own minimum and its own wait, and `altSuppliers` on the
+   product says second sources already exist. A figure kept on
+   the product alone has to be wrong for one of them.
+
+   So: every product whose vendor resolves to a partner gets a
+   row on that partner, and `product.sup` becomes a view of it.
+   ============================================================ */
+
+/**
+ * The leading number in a legacy display string — "240 Tube" → 240.
+ *
+ * Used ONCE, here, to carry the old strings across. Not a reading-time
+ * parser: the value it produces is stored as a number and the string is
+ * never consulted again. Returns 0 for "not stated", which is what an
+ * unparseable or absent value honestly means.
+ */
+export function leadingNumber(v: unknown): number {
+  const m = /-?\d+(?:\.\d+)?/.exec(String(v ?? ""));
+  return m ? Number(m[0]) : 0;
+}
+
+/**
+ * Give every partner the rows for the products the master says they supply.
+ *
+ * Never overwrites a row that already exists: the hand-written seeds in
+ * `SUPPLIER_ITEMS` are what somebody actually agreed, and a figure derived
+ * from the product master must not silently replace one a buyer typed.
+ */
+function mergeSupplierItems() {
+  const byPartner = new Map<string, typeof PRODUCTS>();
+  for (const p of PRODUCTS) {
+    const owner = vendorPartner(p.supplier);
+    if (!owner) continue;
+    const list = byPartner.get(owner.code) ?? [];
+    list.push(p);
+    byPartner.set(owner.code, list);
+  }
+
+  /* Adopt the hand-written seeds FIRST, for every partner — not only the
+     ones the product master points at. Skipping a partner with no products
+     left its seeded rows invisible while the generated ones were being
+     written, so a row somebody typed lost to a row derived from a stale
+     string. Generated data never beats hand-written data; that only holds if
+     the hand-written data is in place before the generating starts. */
+  for (const bp of BUSINESS_PARTNERS) bp.supplierItems ??= SUPPLIER_ITEMS[bp.code] ?? [];
+
+  for (const bp of BUSINESS_PARTNERS) {
+    const mine = byPartner.get(bp.code);
+    if (!mine?.length) continue;
+    const held = new Set(bp.supplierItems!.map((i) => i.product));
+
+    for (const p of mine) {
+      if (held.has(p.code)) continue;
+      const legacy = (p as { sup?: Record<string, unknown> }).sup;
+      bp.supplierItems!.push({
+        product: p.code,
+        productName: p.name,
+        /* The vendor's own code, where the product carried one. */
+        sku: String(legacy?.itemCode ?? ""),
+        supName: p.name,
+        punit: p.unit,
+        /* 0 means "not stated", and for the catalogue products that is the
+           truth — the price list master records a vendor and a cost, and
+           has never held a minimum or a lead time. */
+        moq: leadingNumber(legacy?.moq),
+        lead: leadingNumber(legacy?.lead),
+        currency: p.pricing?.currency || "THB",
+        /* The last cost actually paid, which the pricing block does know. */
+        price: p.pricing?.lastCost ?? 0,
+        preferred: true,
+        status: p.status === "Active" ? "Active" : "Draft",
+        effective: p.pricing?.effective ?? "",
+        expiry: "",
+      });
+      held.add(p.code);
+    }
+  }
+}
+
+mergeSupplierItems();
+
+/**
+ * Render the agreed terms back onto `product.sup`, so the Product master
+ * shows what the supplier item says rather than its own stale copy.
+ *
+ * A view, not a second home: only the four fields that ARE the terms are
+ * written. `sup.country` and `sup.warranty` are facts about the product and
+ * its regulatory paperwork, not about a purchase, and they stay where they
+ * are and stay editable.
+ *
+ * Done here rather than in `decorateProducts` because the supplier items do
+ * not exist until this module has run — product.ts cannot import partner.ts
+ * without closing a loop, and the loop is what left `recordTotals` undefined
+ * the last time somebody tried.
+ */
+function syncProductSupplyView() {
+  for (const p of PRODUCTS) {
+    const found = supplyTermsFor(p.code);
+    if (!found) continue;
+    const { partner, row } = found;
+    const sup = (p as unknown as { sup: Record<string, unknown> }).sup;
+    if (!sup) continue;
+
+    sup.code = partner.code;
+    sup.itemCode = row.sku;
+    sup.punit = row.punit || p.unit;
+    sup.moq = row.moq > 0 ? `${row.moq} ${row.punit || p.unit}`.trim() : DASH;
+    sup.lead = row.lead > 0 ? `${row.lead} วัน` : DASH;
+    sup.lastPrice = row.price > 0 ? `${row.price.toFixed(2)} ${row.currency}` : DASH;
+  }
+}
+
+syncProductSupplyView();
+
+/**
+ * The buying terms for a product, from the one place they live.
+ *
+ * `product.sup` is rendered from this rather than stored, so the Product
+ * master and the partner's supplier item cannot say different things.
+ */
+export function supplyTermsFor(productCode: string) {
+  const rows: { partner: BpRow; row: BpSupplierItem }[] = [];
+  for (const bp of BUSINESS_PARTNERS) {
+    const row = (bp.supplierItems ?? []).find((i) => i.product === productCode);
+    if (row) rows.push({ partner: bp, row });
+  }
+  if (!rows.length) return null;
+
+  /*
+     "Whichever partner came first in the array" is not a rule, and it gave
+     the wrong answer the moment a product had two sources: a generated row
+     on the vendor the master names, and a row somebody had typed on another
+     partner who also supplies it. `altSuppliers` says second sources are
+     normal, so this has to be decided rather than stumbled into.
+
+     The default supplier is the one the product master names. Failing that,
+     the row marked preferred. Failing that, the only one there is.
+  */
+  const product = PRODUCTS.find((p) => p.code === productCode);
+  const named = product ? vendorPartner(product.supplier)?.code : undefined;
+
+  return (
+    rows.find((r) => r.partner.code === named) ??
+    rows.find((r) => r.row.preferred) ??
+    rows[0]
+  );
+}
+
 /* ---------- Decoration ---------- */
 
 export function decorateBPs() {

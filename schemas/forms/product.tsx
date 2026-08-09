@@ -530,19 +530,35 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
               label: "Supplier",
               options: opts(OPT.supplier),
             },
-            { type: "text", path: "sup.code", label: "Supplier Code", placeholder: "SUP-001" },
+            /*
+               Read-only, and this is the point rather than a limitation.
+
+               These five were text boxes, and the same five facts were also
+               a row on the supplier's own record. Nothing kept the two in
+               step and they had drifted: this product read "240 Tube / 21
+               วัน" here while the supplier's row said 24 and 14. Whoever
+               read one of them was wrong half the time.
+
+               The purchase terms now have one home — the supplier item on
+               the Business Partner, which is keyed by (partner, product),
+               the grain these facts actually have. What shows here is that
+               row, rendered. Editing it belongs where it lives, so the hint
+               says so rather than the field silently discarding what
+               somebody types.
+            */
+            { type: "static", path: "sup.code", label: "Supplier Code" },
+            { type: "static", path: "sup.itemCode", label: "Supplier Item Code" },
+            { type: "static", path: "sup.punit", label: "Purchase Unit" },
             {
-              type: "text",
-              path: "sup.itemCode",
-              label: "Supplier Item Code",
-              placeholder: "PU40-2ML",
+              type: "static",
+              path: "sup.moq",
+              label: "MOQ",
+              hint: "แก้ที่ Business Partner → ข้อมูลผู้ขาย → Supplier Items",
             },
-            { type: "text", path: "sup.punit", label: "Purchase Unit", placeholder: "Carton (12 Box)" },
-            { type: "text", path: "sup.moq", label: "MOQ", placeholder: "5 Carton" },
-            { type: "text", path: "sup.lead", label: "Lead Time", placeholder: "14 วัน" },
+            { type: "static", path: "sup.lead", label: "Lead Time" },
             {
               type: "secure",
-              as: "text",
+              as: "static",
               permission: "canViewCost",
               path: "sup.lastPrice",
               label: "Latest Purchase Price",
