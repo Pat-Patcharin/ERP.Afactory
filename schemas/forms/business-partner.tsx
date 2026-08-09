@@ -430,13 +430,6 @@ export const BP_FORM: FormSchema<BpRow> = {
             },
             { type: "text", path: "nameEn", label: "English Name" },
             { type: "text", path: "trade", label: "Trade Name", placeholder: "Dental Smile" },
-            {
-              type: "select",
-              path: "type",
-              label: "Categories",
-              required: true,
-              options: opts(BP_TYPES),
-            },
             { type: "text", path: "website", label: "Website", placeholder: "www.example.co.th" },
             { type: "date", path: "since", label: "Starting Date" },
             {
@@ -672,6 +665,17 @@ export const BP_FORM: FormSchema<BpRow> = {
               label: "Customer Type",
               required: true,
               options: opts(CUSTOMER_TYPES),
+            },
+            /* Moved here from the Organisation step, where it sat between the
+               trade name and the website with nothing around it to say what
+               kind of answer it wanted. It belongs beside Customer Type: both
+               say what sort of party this is. */
+            {
+              type: "select",
+              path: "type",
+              label: "Categories",
+              required: true,
+              options: opts(BP_TYPES),
             },
             {
               type: "select",
@@ -1195,7 +1199,7 @@ export const BP_FORM: FormSchema<BpRow> = {
   required: [
     { path: "code", label: "Partner Code", step: "identity" },
     { path: "nameTh", label: "ชื่อภาษาไทย", step: "identity" },
-    { path: "type", label: "Partner Type", step: "identity" },
+    { path: "type", label: "Partner Type", step: "customer" },
     { path: "status", label: "Status", step: "identity" },
     {
       path: "roles",
