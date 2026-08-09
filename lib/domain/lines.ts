@@ -120,6 +120,26 @@ export interface ChargeFields {
 }
 
 /**
+ * The rate freight and other charges are taxed at.
+ *
+ * Read off the document's first priced line rather than stored, so a Non VAT
+ * document charges no tax on its freight without anybody having to remember.
+ * The fallback only applies to a document with no lines at all, which cannot
+ * be billed anyway.
+ *
+ * It lives here because the invoice engine has always done exactly this
+ * (`invoiceTotals`, lib/domain/invoice.ts) and the quotation used to do
+ * something else — see the note in `docTotals`. Two rules for one number is
+ * what A1 was about; this is the same fix one document further down.
+ */
+export const chargeTaxRate = (lines: { tax?: number | "" }[]): number =>
+  lines.length ? num(lines[0].tax) : 7;
+
+/** Tax on the header charges, at the document's own rate. */
+export const chargeTaxOn = (charges: number, rate: number): number =>
+  Math.round(((charges * rate) / 100) * 100) / 100;
+
+/**
  * Every figure a document shows, from the shared line maths.
  *
  * The header discount is applied after the line discounts and before VAT, so a
@@ -160,13 +180,26 @@ export function docTotals(items: TotalsLine[], charges: ChargeFields): DocTotals
   const headerDiscount = Math.min(num(charges.headerDisc), afterLine);
   const netAmount = afterLine - headerDiscount;
 
-  /* VAT follows the goods, so a header discount reduces it proportionally.
-     Freight and other charges are quoted VAT-inclusive in this prototype. */
+  /* VAT follows the goods, so a header discount reduces it proportionally. */
   const lineTax = docTaxTotal({ items: lines });
-  const vat = afterLine > 0 ? lineTax * (netAmount / afterLine) : 0;
+  const goodsVat = afterLine > 0 ? lineTax * (netAmount / afterLine) : 0;
 
   const freight = num(charges.freight);
   const otherCharges = num(charges.otherCharges);
+
+  /* Freight and other charges are taxed at the document's own rate.
+
+     They used to be treated as VAT-inclusive here and added straight to the
+     total, while the invoice — the document with legal weight — taxed them.
+     Quote freight 500 on a VAT quotation and the invoice for the same order
+     asked for 535. The customer agreed to one figure and was billed another,
+     which is the A1 bug exactly, one document further down the chain.
+
+     The invoice's rule wins, because it is the one the Revenue Department
+     reads: freight billed by a VAT registrant is part of the value of the
+     supply. So the quotation now says 535 too, and says it first. */
+  const vat = goodsVat + chargeTaxOn(freight + otherCharges, chargeTaxRate(lines));
+
   const beforeRounding = netAmount + vat + freight + otherCharges;
   const grandTotal = Math.round(beforeRounding * 100) / 100;
 

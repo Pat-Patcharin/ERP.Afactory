@@ -484,16 +484,12 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
           currency: d.currency,
         }),
         lines: (d.items ?? []).map((it, i) => priceLine(it, i + 1)),
-        totals: makeTotals(
-          {
-            subtotal: docSubtotal(d),
-            lineDiscount: docDiscTotal(d),
-            netAmount: docSubtotal(d) - docDiscTotal(d),
-            vat: docTaxTotal(d),
-            grandTotal: d.total,
-          },
-          d.currency,
-        ),
+        /* The same one function as the quotation, the request and the editor
+           preview. This listed the figures out by hand and reached for
+           `d.total` at the end, so the order sheet printed a grand total that
+           did not add up from the rows above it the moment the order carried
+           any freight. */
+        totals: makeTotals(recordTotals(d), d.currency),
         bank: defaultBank(d.code),
         remarks: [...config.remarks, ...(d.remark ? [d.remark] : [])],
       };
@@ -635,18 +631,9 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
           currency: so?.currency,
         }),
         lines,
-        totals: priced
-          ? makeTotals(
-              {
-                subtotal: docSubtotal(so!),
-                lineDiscount: docDiscTotal(so!),
-                netAmount: docSubtotal(so!) - docDiscTotal(so!),
-                vat: docTaxTotal(so!),
-                grandTotal: so!.total,
-              },
-              so!.currency,
-            )
-          : null,
+        /* A priced delivery note quotes the order's figures, so it quotes them
+           through the order's own function — not a second copy of the sum. */
+        totals: priced ? makeTotals(recordTotals(so!), so!.currency) : null,
         bank: defaultBank(d.code),
         remarks: [...config.remarks, ...(d.remark ? [d.remark] : [])],
       };

@@ -519,7 +519,9 @@ export const INV_FORM: FormSchema<InvRow> = {
           title: "Charges & Rounding",
           cols: "3",
           fields: [
-            { type: "number", path: "headerDisc", label: "Header Discount (%)", min: 0, max: 100, step: "0.01" },
+            /* An amount, not a percentage — the same baht the quotation, the
+               request and the order all store. See `invoiceTotals`. */
+            { type: "number", path: "headerDisc", label: "Header Discount", min: 0, step: "0.01" },
             { type: "number", path: "freight", label: "Freight", min: 0, step: "0.01" },
             { type: "number", path: "otherCharges", label: "Other Charges", min: 0, step: "0.01" },
             { type: "select", path: "rounding", label: "Rounding Method", options: opts(INV_ROUNDING) },
@@ -806,6 +808,12 @@ export const INV_FORM: FormSchema<InvRow> = {
         s.salesRep = head.salesRep;
         s.currency = head.currency;
         s.channel = head.channel;
+        /* What the customer agreed to on top of the goods. The order has
+           carried these since the quotation; this is the last hop, and the
+           one where dropping them means the money is never asked for. */
+        s.headerDisc = head.headerDisc;
+        s.freight = head.freight;
+        s.otherCharges = head.otherCharges;
 
         const profile = getBillingProfile(head.customerCode);
         if (profile) {

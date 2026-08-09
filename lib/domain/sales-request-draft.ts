@@ -254,6 +254,13 @@ export function applyQuotation(draft: SalesRequestDraft, quotationRef: string): 
        than re-deriving from the customer, who may have changed since. */
     billType: qt.billType,
     customerRef: qt.customerRef,
+    /* The charges are part of what was agreed, not decoration on the sheet.
+       A1 gave all three documents somewhere to keep them and this conversion
+       still built the request without them, so a quotation for 5,834 became a
+       request for 5,350 and nothing on either screen looked wrong. */
+    headerDisc: qt.headerDisc,
+    freight: qt.freight,
+    otherCharges: qt.otherCharges,
     /* The customer wanted the goods by the day the price stops standing. */
     requiredDate: dmyToIso(qt.validUntil),
     items: (qt.items ?? []).map((it) => ({

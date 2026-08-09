@@ -2,7 +2,14 @@ import { SO_CHANNELS, SO_INCOTERMS, SO_PRIORITY } from "@/data/sales-orders";
 import { BILL_TYPES, PAY_TERMS } from "@/data/partners";
 import { PO_CURRENCIES } from "@/data/purchase-orders";
 import { PRODUCTS, productStock } from "@/lib/domain/product";
-import { docGrandTotal, docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
+import {
+  docGrandTotal,
+  docDiscTotal,
+  docSubtotal,
+  docTaxTotal,
+  lineNet,
+  recordTotals,
+} from "@/lib/domain/lines";
 import { STANDARD_VAT_RATE, planBillTypeChange, priceApproval } from "@/lib/domain/doc-draft";
 import { PriceApprovalNotice } from "@/components/document/PriceApprovalNotice";
 import {
@@ -26,7 +33,7 @@ import {
   type SoRow,
 } from "@/lib/domain/outbound";
 import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
-import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
+import type { FormSchema, FormState, GridRow, LookupHit } from "@/lib/types";
 import {
   FORM_USER,
   RailCard,
@@ -48,7 +55,23 @@ import {
 
 const num = (v: unknown) => Number(v) || 0;
 
-const draftTotal = (rows: GridRow[]) => docGrandTotal({ items: rows });
+/** The three header charges as the state holds them. */
+const chargesOf = (s: FormState) => ({
+  headerDisc: num(s.headerDisc),
+  freight: num(s.freight),
+  otherCharges: num(s.otherCharges),
+});
+
+/**
+ * What the order comes to, charges and all.
+ *
+ * `docGrandTotal` — lines only — used to be the figure on the rail, on the
+ * credit check and on the saved record. Once an order can carry freight, that
+ * is no longer the amount the customer is asked for, and the rail quoting one
+ * number while the sheet beside it quotes another is the fault A1 was about.
+ */
+const draftTotal = (s: FormState) =>
+  recordTotals({ items: (s.items ?? []) as GridRow[], ...chargesOf(s) }).grandTotal;
 
 /** Approved sales requests that have not become an order yet. */
 const approvedRequests = () =>
@@ -90,6 +113,9 @@ export const SO_FORM: FormSchema<SoRow> = {
     srRef: "",
     customerPo: "",
     remark: "",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     items: [],
   }),
 
@@ -115,6 +141,9 @@ export const SO_FORM: FormSchema<SoRow> = {
     srRef: so.srRef,
     customerPo: so.customerPo,
     remark: so.remark,
+    headerDisc: so.headerDisc,
+    freight: so.freight,
+    otherCharges: so.otherCharges,
     items: (so.items ?? []).map((it) => ({ ...it })),
   }),
 
@@ -279,6 +308,20 @@ export const SO_FORM: FormSchema<SoRow> = {
               align: "right",
               get: (r) => money(lineNet(r)),
             },
+          ],
+        },
+        {
+          /* Amounts in baht, matching the quotation and the request the order
+             came from. The discount applies after the line discounts and
+             before VAT; freight and other charges are taxed at the document's
+             own rate. One formula for all of it — `docTotals` in lines.ts. */
+          type: "card",
+          title: "Charges",
+          cols: "3",
+          fields: [
+            { type: "number", path: "headerDisc", label: "Header Discount", min: 0, step: "0.01" },
+            { type: "number", path: "freight", label: "Freight", min: 0, step: "0.01" },
+            { type: "number", path: "otherCharges", label: "Other Charges", min: 0, step: "0.01" },
           ],
         },
         {
@@ -460,6 +503,11 @@ export const SO_FORM: FormSchema<SoRow> = {
       s.priority = sr.priority;
       s.customerPo = sr.customerRef;
       s.deliveryDate = dmyToIso(sr.requiredDate);
+      /* The charges come across with the lines. They are part of what the
+         customer agreed to, not decoration on the request. */
+      s.headerDisc = sr.headerDisc;
+      s.freight = sr.freight;
+      s.otherCharges = sr.otherCharges;
       const addresses = shipToOptions(s.customerPick);
       s.shipTo = addresses[0] ?? "";
       s.items = (sr.items ?? []).map((it) => ({
@@ -492,23 +540,25 @@ export const SO_FORM: FormSchema<SoRow> = {
 
   previewCard: (s) => {
     const rows = (s.items ?? []) as GridRow[];
-    const doc = { items: rows };
+    const t = recordTotals({ items: rows, ...chargesOf(s) });
     const cur = String(s.currency ?? "THB");
     return (
       <RailCard icon="salesOrder" title="Order Preview" tone="accent">
         <RailRow label="เลขที่" value={String(s.code ?? "")} />
         <RailRow label="ลูกค้า" value={String(s.customer ?? "") || "ยังไม่ได้เลือก"} />
-        <RailRow label="ยอดก่อนส่วนลด" value={money0(docSubtotal(doc))} />
-        <RailRow label="ส่วนลดรวม" value={`− ${money0(docDiscTotal(doc))}`} />
-        <RailRow label="ภาษีรวม" value={money0(docTaxTotal(doc))} />
-        <RailTotal label={`ยอดรวมสุทธิ (${cur})`} value={money0(draftTotal(rows))} />
+        <RailRow label="ยอดก่อนส่วนลด" value={money0(t.subtotal)} />
+        <RailRow label="ส่วนลดรวม" value={`− ${money0(t.lineDiscount + t.headerDiscount)}`} />
+        {t.freight > 0 && <RailRow label="ค่าขนส่ง" value={money0(t.freight)} />}
+        {t.otherCharges > 0 && <RailRow label="ค่าใช้จ่ายอื่น" value={money0(t.otherCharges)} />}
+        <RailRow label="ภาษีรวม" value={money0(t.vat)} />
+        <RailTotal label={`ยอดรวมสุทธิ (${cur})`} value={money0(t.grandTotal)} />
       </RailCard>
     );
   },
 
   sidePanel: (s) => {
     const rows = (s.items ?? []) as GridRow[];
-    const total = draftTotal(rows);
+    const total = draftTotal(s);
     const credit = creditCheck(String(s.customerPick ?? ""), total);
     const short = rows
       .map((r) => ({ row: r, a: availabilityFor(String(r.code ?? ""), num(r.qty)) }))
@@ -534,7 +584,13 @@ export const SO_FORM: FormSchema<SoRow> = {
     const billPlan =
       original && String(s.billType ?? "") !== original.billType
         ? planBillTypeChange(
-            { items: original.items ?? [], billType: original.billType, headerDisc: 0, freight: 0, otherCharges: 0 },
+            {
+              items: original.items ?? [],
+              billType: original.billType,
+              headerDisc: original.headerDisc,
+              freight: original.freight,
+              otherCharges: original.otherCharges,
+            },
             String(s.billType ?? ""),
           )
         : null;
@@ -629,7 +685,7 @@ export const SO_FORM: FormSchema<SoRow> = {
           ))}
           <div className="flex items-baseline gap-3 pt-3">
             <span className="text-[13px] font-semibold">ยอดรวมสุทธิ</span>
-            <span className="ml-auto text-lg font-semibold tnum">{money(draftTotal(rows))}</span>
+            <span className="ml-auto text-lg font-semibold tnum">{money(draftTotal(s))}</span>
           </div>
         </ReviewCard>
       </>
@@ -660,9 +716,12 @@ export const SO_FORM: FormSchema<SoRow> = {
           {
             items: existing.items ?? [],
             billType: existing.billType,
-            headerDisc: 0,
-            freight: 0,
-            otherCharges: 0,
+            /* The order's own charges, not zeros. The dialog quotes a before
+               and an after figure, and quoting either without the freight the
+               order carries is the same lie the sheet used to tell. */
+            headerDisc: existing.headerDisc,
+            freight: existing.freight,
+            otherCharges: existing.otherCharges,
           },
           String(s.billType ?? ""),
         )
@@ -707,7 +766,11 @@ export const SO_FORM: FormSchema<SoRow> = {
       }));
 
     const bp = getCustomer(String(s.customerPick ?? ""));
-    const total = docGrandTotal({ items });
+
+    /* The credit check is asked about the amount the customer will be billed,
+       which includes the freight. */
+    const charges = chargesOf(s);
+    const total = recordTotals({ items, ...charges }).grandTotal;
     const credit = creditCheck(String(s.customerPick ?? ""), total);
 
     const patch = {
@@ -728,6 +791,7 @@ export const SO_FORM: FormSchema<SoRow> = {
       srRef: String(s.srRef ?? ""),
       customerPo: String(s.customerPo ?? ""),
       remark: String(s.remark ?? ""),
+      ...charges,
       creditApproved: credit.withinLimit,
       creditNote: credit.withinLimit
         ? credit.cashOnly

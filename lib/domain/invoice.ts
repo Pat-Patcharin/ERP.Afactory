@@ -12,7 +12,7 @@ import {
   type BillTypeDrift,
 } from "./outbound";
 import { BUSINESS_PARTNERS } from "./partner";
-import { lineBase } from "./lines";
+import { chargeTaxOn, chargeTaxRate, lineBase } from "./lines";
 import { DASH, daysUntil, isoToDmy, dmyToIso } from "@/lib/format";
 
 /* ============================================================
@@ -107,8 +107,13 @@ export function invoiceTotals(inv: TotalsInput): InvoiceTotals {
   const lineDisc = round2(items.reduce((t, it) => t + lineDiscount(it), 0));
   const afterLine = round2(gross - lineDisc);
 
-  /* Header discount is a percentage applied after line discounts. */
-  const headerDisc = round2(afterLine * (num(inv.headerDisc) / 100));
+  /* Header discount is an AMOUNT off, applied after the line discounts.
+     It was a percentage here and an amount on every document upstream — the
+     quotation, the request and the order all store baht. One field name with
+     two meanings across one chain: carry 137 baht of discount down from the
+     quotation and the invoice reads it as 137%, which is not a rounding error,
+     it is the whole bill. Capped at the line total, same as `docTotals`. */
+  const headerDisc = Math.min(num(inv.headerDisc), afterLine);
   const afterHeader = round2(afterLine - headerDisc);
 
   /* Charges are taxable in this phase; a real engine would let each carry
@@ -124,11 +129,13 @@ export function invoiceTotals(inv: TotalsInput): InvoiceTotals {
     items.reduce((t, it) => t + lineTaxable(it, mode) * scale, 0),
   );
 
-  const chargeRate = items.length ? num(items[0].taxRate) : 7;
+  /* One rule for what rate a charge is taxed at, shared with `docTotals` so
+     the order and the invoice raised from it cannot disagree. */
+  const chargeRate = chargeTaxRate(items.map((it) => ({ tax: it.taxRate })));
   const chargeTax =
     mode === "Tax Inclusive"
       ? round2(((freight + other) * chargeRate) / (100 + chargeRate))
-      : round2(((freight + other) * chargeRate) / 100);
+      : chargeTaxOn(freight + other, chargeRate);
   const chargeTaxable =
     mode === "Tax Inclusive" ? round2(freight + other - chargeTax) : round2(freight + other);
 
@@ -466,12 +473,67 @@ export function billableLinesFrom(sourceType: string, sourceDoc: string): InvLin
   return base.map((b, i) => ({ ...b, line: i + 1, sourceLine: i + 1 }));
 }
 
+/* ---------- Header charges ---------- */
+
+/**
+ * The order behind an invoice source, whichever route it took.
+ *
+ * A Delivery Order has no charges of its own; the freight was agreed on the
+ * order, so both routes have to arrive at the same record or the two would
+ * bill differently for the same goods.
+ */
+function orderBehind(sourceType: string, sourceDoc: string) {
+  if (sourceType === "Sales Order") return SALES_ORDERS.find((s) => s.code === sourceDoc) ?? null;
+  if (sourceType === "Delivery Order") {
+    const d = DELIVERY_ORDERS.find((x) => x.code === sourceDoc);
+    return d ? (SALES_ORDERS.find((s) => s.code === d.soRef) ?? null) : null;
+  }
+  return null;
+}
+
+/** Every live invoice already raised against one sales order, by either route. */
+function invoicesForOrder(soCode: string) {
+  return SALES_INVOICES.filter(
+    (i) =>
+      !["Cancelled", "Void"].includes(i.status) &&
+      orderBehind(i.sourceType, i.sourceDoc)?.code === soCode,
+  );
+}
+
+/**
+ * The header charges a new invoice inherits from the order.
+ *
+ * Charged ONCE per order, not once per invoice. An order delivered in two
+ * drops is billed twice, and freight agreed once must not arrive on both
+ * bills — that would collect 1,000 baht of delivery on a 500 baht agreement,
+ * which is the mirror image of the bug this chain was joined up to fix.
+ *
+ * Whoever bills second gets zeros and can still type a figure in if a second
+ * delivery genuinely cost something; what they cannot do is have it appear
+ * by itself.
+ */
+export function chargesFromSource(
+  sourceType: string,
+  sourceDoc: string,
+): { headerDisc: number; freight: number; otherCharges: number } {
+  const none = { headerDisc: 0, freight: 0, otherCharges: 0 };
+  const so = orderBehind(sourceType, sourceDoc);
+  if (!so) return none;
+  if (invoicesForOrder(so.code).length) return none;
+  return {
+    headerDisc: num(so.headerDisc),
+    freight: num(so.freight),
+    otherCharges: num(so.otherCharges),
+  };
+}
+
 /** Header defaults a source document hands to a new invoice. */
 export function headerFromSource(sourceType: string, sourceDoc: string) {
   if (sourceType === "Sales Order") {
     const so = SALES_ORDERS.find((s) => s.code === sourceDoc);
     if (!so) return null;
     return {
+      ...chargesFromSource(sourceType, sourceDoc),
       customer: so.customer,
       customerCode: so.customerCode,
       customerPo: so.customerPo,
@@ -493,6 +555,7 @@ export function headerFromSource(sourceType: string, sourceDoc: string) {
     if (!d) return null;
     const so = SALES_ORDERS.find((s) => s.code === d.soRef);
     return {
+      ...chargesFromSource(sourceType, sourceDoc),
       customer: d.customer,
       customerCode: d.customerCode,
       customerPo: so?.customerPo ?? "",

@@ -673,9 +673,39 @@ describe("Quotation editor — live calculation", () => {
     expect(t.grandTotal).toBeCloseTo(963, 2);
   });
 
-  it("adds freight and other charges after tax", () => {
+  /**
+   * This asserted 1,320 — freight and other charges added after the tax and
+   * never taxed themselves. The rule was CHANGED at A1b, deliberately, not
+   * bent to make anything pass.
+   *
+   * The invoice engine has always taxed the charges, and the invoice is the
+   * document the Revenue Department reads: freight billed by a VAT registrant
+   * is part of the value of the supply. So a quotation saying 1,320 was
+   * quoting a figure the invoice for the same goods would never charge. One
+   * of the two had to move, and it was not going to be the tax invoice.
+   *
+   *   goods 1,000 + VAT 70 + charges 250 + VAT on charges 17.50 = 1,337.50
+   */
+  it("taxes freight and other charges at the document's own rate", () => {
     const t = draftTotals(readyDraft({ freight: 200, otherCharges: 50 }));
-    expect(t.grandTotal).toBeCloseTo(1320, 2);
+    expect(t.grandTotal).toBeCloseTo(1337.5, 2);
+    /* And the 17.50 shows up as tax, not as a bigger charge. */
+    expect(t.vat).toBeCloseTo(87.5, 2);
+    expect(t.freight + t.otherCharges).toBe(250);
+  });
+
+  /* A Non VAT quotation charges no tax on its freight either — the rate comes
+     off the lines, so nobody has to remember to zero it. */
+  it("leaves the charges untaxed on a Non VAT document", () => {
+    const t = draftTotals(
+      readyDraft({
+        items: [{ ...blankLine(), code: PRODUCT, qty: 10, price: 100, disc: 0, tax: 0 }],
+        freight: 200,
+        otherCharges: 50,
+      }),
+    );
+    expect(t.vat).toBe(0);
+    expect(t.grandTotal).toBeCloseTo(1250, 2);
   });
 
   it("recalculates the document as the user types", async () => {

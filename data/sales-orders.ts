@@ -68,6 +68,26 @@ export interface SalesOrder {
   quotationRef?: string;
   customerPo: string;
   remark: string;
+
+  /* ----------------------------------------------------------
+     HEADER CHARGES — see the long note on `Quotation`.
+
+     Required, not optional, for the same reason they are there:
+     nothing anywhere insisted, and that is how they went missing
+     in the first place.
+
+     The order is the hop that matters most. A quotation that
+     keeps its freight and an invoice with a field ready for it
+     are no use if the document in between drops the number: the
+     customer agrees to 21,400, the invoice asks for 20,900, and
+     the difference is never collected. Same bug as A1, one
+     document further along, which is exactly how it would have
+     come back.
+     ---------------------------------------------------------- */
+  headerDisc: number;
+  freight: number;
+  otherCharges: number;
+
   /** Cleared by sales admin when the order exceeds the credit limit. */
   creditApproved: boolean;
   creditNote: string;
@@ -116,6 +136,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     srRef: "SR2506-0001",
     customerPo: "PO-DS-69-0331",
     remark: "ส่งของช่วงเช้าเท่านั้น ลูกค้ารับของ 09:00–11:00",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     creditApproved: true,
     creditNote: "อยู่ในวงเงิน",
     items: [
@@ -154,6 +177,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     srRef: "SR2506-0003",
     customerPo: "DMD-PO-0912",
     remark: "แบ่งกล่องตามสาขาปลายทาง",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     creditApproved: true,
     creditNote: "อยู่ในวงเงิน",
     items: [
@@ -191,6 +217,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     srRef: "SR2506-0006",
     customerPo: "HOSP-PO-2569-0771",
     remark: "รอฝ่ายบัญชีอนุมัติวงเงินก่อนจึงจะยืนยันได้",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     creditApproved: false,
     creditNote: "ยอดสั่งซื้อทำให้เกินวงเงินเครดิตที่อนุมัติไว้",
     items: [
@@ -226,6 +255,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     srRef: "SR2506-0007",
     customerPo: "",
     remark: "ลูกค้ามารับเองที่คลัง",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     creditApproved: true,
     creditNote: "ชำระเงินสด",
     items: [
@@ -264,6 +296,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     quotationRef: "QT2507-0007",
     customerPo: "KWN-0088",
     remark: "สร้างจากใบเสนอราคา QT2507-0007",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     creditApproved: true,
     creditNote: "อยู่ในวงเงิน",
     items: [
@@ -302,6 +337,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     srRef: "SR2506-0008",
     customerPo: "DMX-PO-2569-0442",
     remark: "คำสั่งซื้อประจำไตรมาส ขอให้ส่งครบทุกรายการในรอบเดียว",
+    headerDisc: 0,
+    freight: 0,
+    otherCharges: 0,
     creditApproved: true,
     creditNote: "อนุมัติเกินวงเงินชั่วคราวโดยผู้จัดการฝ่ายขาย",
     items: BULK_ORDER_ITEMS.map((it) => ({

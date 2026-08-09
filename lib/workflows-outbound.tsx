@@ -901,6 +901,15 @@ interface SoDraft {
   customerPo: string;
   /** "VAT" or "Non VAT" — carried from the document that produced the order. */
   billType: string;
+  /**
+   * The header charges agreed on the document upstream, in baht.
+   *
+   * Carried, never recomputed. The figure the customer agreed to is the one
+   * the order has to commit us to, and the one the invoice then collects.
+   */
+  headerDisc: number;
+  freight: number;
+  otherCharges: number;
   items: readonly {
     code: string;
     name: string;
@@ -994,6 +1003,9 @@ function createSalesOrderFrom(
     quotationRef: origin.field === "quotationRef" ? origin.code : "",
     customerPo: draft.customerPo,
     remark: `สร้างจาก${origin.noun} ${origin.code}`,
+    headerDisc: draft.headerDisc,
+    freight: draft.freight,
+    otherCharges: draft.otherCharges,
     creditApproved: credit.withinLimit,
     creditNote: credit.withinLimit
       ? "อยู่ในวงเงิน"
@@ -1106,6 +1118,9 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
           channel: sr.channel,
           customerPo: sr.customerRef,
           billType: sr.billType,
+          headerDisc: sr.headerDisc,
+          freight: sr.freight,
+          otherCharges: sr.otherCharges,
           items: sr.items ?? [],
         },
         { code: sr.code, field: "srRef", noun: "คำขอขาย" },

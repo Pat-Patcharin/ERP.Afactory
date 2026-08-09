@@ -302,7 +302,8 @@ export function billTypeDrift(
 
 export const SALES_ORDERS = RAW_SO as SoRow[];
 
-export const soTotal = (so: { items?: SalesOrder["items"] }) => docGrandTotal(so);
+/** Same one figure as the sheet — see qtTotal. */
+export const soTotal = (so: Parameters<typeof recordTotals>[0]) => recordTotals(so).grandTotal;
 
 const sumBy = (items: SalesOrder["items"] | undefined, pick: (it: SalesOrder["items"][number]) => number) =>
   (items ?? []).reduce((t, it) => t + pick(it), 0);
