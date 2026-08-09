@@ -566,6 +566,20 @@ export const BP_FORM: FormSchema<BpRow> = {
             { key: "dept", label: "แผนก", type: "text", muted: true },
             { key: "phone", label: "โทรศัพท์", type: "text", width: "130px" },
             { key: "method", label: "ช่องทางหลัก", type: "select", options: CONTACT_METHODS },
+            /*
+               `line` has been on the contact record all along, and both the
+               contacts table and the detail panel print it as "Line ID" — but
+               there has never been an input for it. Eight seeded contacts
+               carry a value nobody using the app could have typed.
+
+               Shown for every row rather than only when LINE is the primary
+               channel, which `when` would allow: one seeded contact
+               (@waraporn) keeps a LINE ID while preferring the telephone, and
+               a conditional column would leave that value on the screen and
+               out of reach. Required only when LINE IS the primary channel —
+               see the rule in `required`.
+            */
+            { key: "line", label: "LINE ID", type: "text", placeholder: "@dentalsmile" },
             { key: "remark", label: "หมายเหตุ", type: "text", muted: true, span: true },
             { key: "primary", label: "หลัก", type: "radio", width: "56px" },
             { key: "active", label: "ใช้งาน", type: "check", width: "56px" },
@@ -677,20 +691,13 @@ export const BP_FORM: FormSchema<BpRow> = {
               required: true,
               options: opts(BP_TYPES),
             },
-            {
-              type: "select",
-              path: "customer.bizType",
-              label: "Business Type",
-              required: true,
-              options: opts(CUSTOMER_BIZ_TYPES),
-            },
-            /* Moved off the old Grouping card — see the note on the Roles step. */
-            {
-              type: "select",
-              path: "cls.custGroup",
-              label: "Customer Group",
-              options: CUST_GROUPS,
-            },
+            /*
+               Business Type and Customer Group used to sit here and were
+               taken off the form deliberately. Both are still on the RECORD
+               and still read — see the note in `required` about what that
+               costs — so nothing was deleted from the data, only from the
+               questions a person is asked while creating a partner.
+            */
             {
               type: "select",
               path: "customer.size",
@@ -713,33 +720,6 @@ export const BP_FORM: FormSchema<BpRow> = {
               step: "0.5",
               when: (st) => st.customer?.benefit === "Custom",
               hint: "ส่วนลดที่ตกลงเป็นรายสัญญา",
-            },
-          ],
-        },
-        {
-          type: "card",
-          title: "Credit Control",
-          cols: "2",
-          fields: [
-            {
-              type: "toggle",
-              path: "customer.creditHold",
-              label: "Credit Hold",
-              onText: "ระงับการขายเชื่อ",
-              offText: "ปกติ",
-            },
-            {
-              type: "text",
-              path: "customer.holdReason",
-              label: "Credit Hold Reason",
-              when: (st) => Boolean(st.customer?.creditHold),
-              placeholder: "เหตุผลที่ระงับ",
-            },
-            {
-              type: "static",
-              label: "Available Credit",
-              value: (st) =>
-                `${money0(Math.max(0, num(st.credit?.limit) - num(st.credit?.outstanding)))} THB`,
             },
           ],
         },
@@ -807,62 +787,6 @@ export const BP_FORM: FormSchema<BpRow> = {
             { key: "currency", label: "Currency", type: "select", options: [...PO_CURRENCIES] },
             { key: "price", label: "Cost", type: "number", align: "right", width: "120px" },
             { key: "status", label: "Status", type: "select", options: [...SUPPLIER_ITEM_STATUS] },
-          ],
-        },
-      ],
-    },
-
-    /* ---------- 6d. ATTACHMENTS & IMAGES ---------- */
-    {
-      key: "attachments",
-      label: "Attachments",
-      railLabel: "เอกสารและรูปภาพ",
-      labelTh: "เอกสารแนบและแกลเลอรี",
-      blocks: () => [
-        {
-          type: "grid",
-          path: "docs",
-          label: "Attachments",
-          addLabel: "เพิ่มเอกสาร",
-          empty: "ยังไม่มีเอกสารแนบ",
-          hint: "รองรับ PDF, Word, Excel และรูปภาพ — ชนิดไฟล์อ่านจากนามสกุลอัตโนมัติ",
-          cols: [
-            {
-              key: "type",
-              label: "ประเภทเอกสาร",
-              type: "select",
-              options: [...ATTACHMENT_TYPES],
-              required: true,
-            },
-            { key: "name", label: "ชื่อไฟล์", type: "text", required: true, width: "220px" },
-            { key: "issue", label: "วันที่ออก", type: "date", width: "130px" },
-            { key: "expiry", label: "วันหมดอายุ", type: "date", width: "130px" },
-            { key: "by", label: "ผู้อัปโหลด", type: "text" },
-            { key: "date", label: "วันที่อัปโหลด", type: "date", width: "130px" },
-            { key: "remark", label: "หมายเหตุ", type: "text", muted: true, span: true },
-            {
-              key: "status",
-              label: "สถานะ",
-              type: "select",
-              options: ["Active", "Expired", "Superseded"],
-            },
-          ],
-        },
-        {
-          type: "grid",
-          path: "images",
-          label: "Image Gallery",
-          addLabel: "เพิ่มรูปภาพ",
-          empty: "ยังไม่มีรูปภาพ",
-          hint: "ตั้งรูปหน้าปกได้ 1 รูป — จะใช้เป็นรูปประจำคู่ค้า",
-          cols: [
-            { key: "src", label: "รูป", type: "text", width: "80px", placeholder: "🏥" },
-            { key: "name", label: "ชื่อรูป", type: "text", required: true, width: "200px" },
-            { key: "kind", label: "ประเภท", type: "select", options: [...IMAGE_KINDS] },
-            { key: "by", label: "ผู้อัปโหลด", type: "text" },
-            { key: "date", label: "วันที่", type: "date", width: "130px" },
-            { key: "remark", label: "หมายเหตุ", type: "text", muted: true, span: true },
-            { key: "cover", label: "หน้าปก", type: "radio", width: "70px" },
           ],
         },
       ],
@@ -945,6 +869,65 @@ export const BP_FORM: FormSchema<BpRow> = {
             },
           ],
         },
+        {
+          /*
+             Moved here from the Customer Info step, where it sat two steps
+             away from the payment terms it belongs with. Everything about
+             what this customer may owe now reads in one place.
+
+             `Available Credit` used to be a computed line — limit minus
+             outstanding — which is a fact about today, not something anyone
+             fills in, and it read as an input because it sat among inputs.
+             The limit itself is what a person decides, so that is what is
+             asked for; the derived figure is on the partner's detail page
+             where the rest of the position already is.
+
+             `secure` is carried over from the Finance step, not dropped:
+             `canViewCredit` gates the limit, and moving a field must not
+             quietly move it out from behind its permission.
+          */
+          type: "card",
+          title: "Credit Control",
+          cols: "2",
+          fields: [
+            {
+              type: "secure",
+              as: "number",
+              permission: "canViewCredit",
+              path: "credit.limit",
+              label: "Credit Limit",
+              min: 0,
+              hint: "0 = ไม่ให้เครดิต",
+            },
+            {
+              /* Not a duplicate of the payment term above it: the invoice
+                 reads this as `creditDays` and has no other source. It came
+                 off the Finance step with the limit rather than being
+                 dropped with the two answers that really were duplicates. */
+              type: "secure",
+              as: "number",
+              permission: "canViewCredit",
+              path: "credit.days",
+              label: "Credit Days",
+              min: 0,
+              max: 180,
+            },
+            {
+              type: "toggle",
+              path: "customer.creditHold",
+              label: "Credit Hold",
+              onText: "ระงับการขายเชื่อ",
+              offText: "ปกติ",
+            },
+            {
+              type: "text",
+              path: "customer.holdReason",
+              label: "Credit Hold Reason",
+              when: (st) => Boolean(st.customer?.creditHold),
+              placeholder: "เหตุผลที่ระงับ",
+            },
+          ],
+        },
       ],
     },
 
@@ -1002,39 +985,27 @@ export const BP_FORM: FormSchema<BpRow> = {
       key: "finance",
       label: "Finance",
       railLabel: "การเงิน",
-      labelTh: "วงเงินและบัญชีธนาคาร",
+      /* Was "วงเงินและบัญชีธนาคาร". The credit limit is on Sales Terms now,
+         and a step label promising something it no longer asks for is the
+         same lie as a comment that outlives its code. */
+      labelTh: "บัญชีธนาคาร",
       blocks: () => [
-        {
-          type: "card",
-          title: "Credit",
-          cols: "3",
-          fields: [
-            {
-              type: "secure",
-              as: "number",
-              permission: "canViewCredit",
-              path: "credit.limit",
-              label: "Credit Limit",
-              min: 0,
-              hint: "0 = ไม่ให้เครดิต",
-            },
-            {
-              type: "secure",
-              as: "number",
-              permission: "canViewCredit",
-              path: "credit.days",
-              label: "Credit Days",
-              min: 0,
-              max: 180,
-            },
-            {
-              type: "select",
-              path: "credit.payTerm",
-              label: "Payment Term",
-              options: opts(PAY_TERMS),
-            },
-          ],
-        },
+        /*
+           This step is bank accounts now. The Credit card that stood here
+           asked three questions that were already answered elsewhere:
+
+             Credit Limit   moved to Sales Terms, beside the credit hold
+             Payment Term   `sales.payTerm` is the one every document reads
+                            (doc-draft.ts:271) and it is required on the
+                            Sales Terms step. `credit.payTerm` had no reader
+                            at all — a third copy of the same answer, gone.
+
+           `credit.days` did NOT move and was not removed, because it is not
+           a duplicate: `invoice.ts:639` reads it as `creditDays` with no
+           other source. It now sits with the term it belongs to, on Sales
+           Terms — deleting the only input for a field the invoice still
+           reads would have been the trade this project keeps undoing.
+        */
         {
           type: "grid",
           path: "banks",
@@ -1186,6 +1157,62 @@ export const BP_FORM: FormSchema<BpRow> = {
       ],
     },
 
+    /* ---------- 6d. ATTACHMENTS & IMAGES ---------- */
+    {
+      key: "attachments",
+      label: "Attachments",
+      railLabel: "เอกสารและรูปภาพ",
+      labelTh: "เอกสารแนบและแกลเลอรี",
+      blocks: () => [
+        {
+          type: "grid",
+          path: "docs",
+          label: "Attachments",
+          addLabel: "เพิ่มเอกสาร",
+          empty: "ยังไม่มีเอกสารแนบ",
+          hint: "รองรับ PDF, Word, Excel และรูปภาพ — ชนิดไฟล์อ่านจากนามสกุลอัตโนมัติ",
+          cols: [
+            {
+              key: "type",
+              label: "ประเภทเอกสาร",
+              type: "select",
+              options: [...ATTACHMENT_TYPES],
+              required: true,
+            },
+            { key: "name", label: "ชื่อไฟล์", type: "text", required: true, width: "220px" },
+            { key: "issue", label: "วันที่ออก", type: "date", width: "130px" },
+            { key: "expiry", label: "วันหมดอายุ", type: "date", width: "130px" },
+            { key: "by", label: "ผู้อัปโหลด", type: "text" },
+            { key: "date", label: "วันที่อัปโหลด", type: "date", width: "130px" },
+            { key: "remark", label: "หมายเหตุ", type: "text", muted: true, span: true },
+            {
+              key: "status",
+              label: "สถานะ",
+              type: "select",
+              options: ["Active", "Expired", "Superseded"],
+            },
+          ],
+        },
+        {
+          type: "grid",
+          path: "images",
+          label: "Image Gallery",
+          addLabel: "เพิ่มรูปภาพ",
+          empty: "ยังไม่มีรูปภาพ",
+          hint: "ตั้งรูปหน้าปกได้ 1 รูป — จะใช้เป็นรูปประจำคู่ค้า",
+          cols: [
+            { key: "src", label: "รูป", type: "text", width: "80px", placeholder: "🏥" },
+            { key: "name", label: "ชื่อรูป", type: "text", required: true, width: "200px" },
+            { key: "kind", label: "ประเภท", type: "select", options: [...IMAGE_KINDS] },
+            { key: "by", label: "ผู้อัปโหลด", type: "text" },
+            { key: "date", label: "วันที่", type: "date", width: "130px" },
+            { key: "remark", label: "หมายเหตุ", type: "text", muted: true, span: true },
+            { key: "cover", label: "หน้าปก", type: "radio", width: "70px" },
+          ],
+        },
+      ],
+    },
+
     {
       key: "review",
       label: "Review",
@@ -1238,7 +1265,24 @@ export const BP_FORM: FormSchema<BpRow> = {
     { path: "billType", label: "Bill Type", step: "identity" },
     { path: "creditTerm", label: "Credit Term", step: "identity" },
     { path: "customer.custType", label: "Customer Type", step: "customer" },
-    { path: "customer.bizType", label: "Business Type", step: "customer" },
+    /*
+       `customer.bizType` was required here and is no longer asked for.
+
+       Worth knowing what it still does, because it is not decorative:
+       `price-tier.ts` reads `bp.customer?.bizType === "Dealer"` when deciding
+       which tier a customer is priced at. That path stays reachable — the
+       same line starts `Boolean(bp.roles?.dealer) ||`, and the Dealer role is
+       a tick box on the Roles step — so dealer pricing is still settable, by
+       the field that was always the clearer way to say it.
+
+       What it does mean: `businessType` on the detail page now shows a value
+       nobody can edit, defaulting to "Company" for partners created from
+       here. Same for `cls.custGroup`, which the invoice copies as `group`.
+       Both are stored-and-shown-but-not-fillable, which is the shape this
+       project has been removing everywhere else. Left as the owner asked,
+       recorded here so the next person finds a reason rather than a gap.
+    */
+
     { path: "supplier.supType", label: "Supplier Type", step: "supplier" },
     { path: "sales.rep", label: "Sales Representative", step: "sales" },
     { path: "sales.payTerm", label: "Payment Term (ขาย)", step: "sales" },
@@ -1277,6 +1321,45 @@ export const BP_FORM: FormSchema<BpRow> = {
       label: "เบอร์โทรผู้ติดต่อต้องอยู่ในรูปแบบที่ถูกต้อง",
       step: "contacts",
       test: (s) => ((s.contacts ?? []) as GridRow[]).every((c) => validPhone(String(c.mobile ?? ""))),
+    },
+    {
+      /*
+         A contact nobody can ring is not a contact. The rule above only
+         checked the SHAPE of a mobile number and passed an empty one, so a
+         partner could be approved with a name, an email and no way to reach
+         anybody by phone.
+
+         Either number satisfies it. Refusing somebody who gave an office
+         line and no mobile would be inventing a requirement the business
+         does not have; what it needs is a telephone, not that particular one.
+
+         Applies to rows carrying a name, which is this form's existing
+         definition of a contact that exists — the same test the "at least
+         one contact" rule uses. A half-added blank row is not yet a person
+         and should not be reported as one missing a phone number.
+      */
+      label: "ผู้ติดต่อทุกคนต้องมีเบอร์โทรอย่างน้อย 1 เบอร์ (มือถือ หรือ โทรศัพท์)",
+      step: "contacts",
+      test: (s) =>
+        ((s.contacts ?? []) as GridRow[])
+          .filter((c) => String(c.first ?? "").trim())
+          .every((c) => String(c.mobile ?? "").trim() || String(c.phone ?? "").trim()),
+    },
+    {
+      /*
+         Naming LINE as the way to reach somebody, and then not saying which
+         LINE account, leaves the field filled in and the person unreachable
+         — the form would have collected a preference instead of an address.
+
+         Only when LINE is the PRIMARY channel. A contact may keep a LINE ID
+         beside a telephone they prefer, and that is not incomplete.
+      */
+      label: "ผู้ติดต่อที่เลือกช่องทางหลักเป็น LINE ต้องระบุ LINE ID",
+      step: "contacts",
+      test: (s) =>
+        ((s.contacts ?? []) as GridRow[]).every(
+          (c) => c.method !== "LINE" || Boolean(String(c.line ?? "").trim()),
+        ),
     },
     {
       label: "ต้องเลือกที่อยู่ออกบิล 1 แห่ง",

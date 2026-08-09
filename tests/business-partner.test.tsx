@@ -1526,8 +1526,14 @@ describe("BP Master — form revisions", () => {
 
     const both = { roles: { customer: true, supplier: true } };
     expect(fieldsOf("roles", both).map((f) => f.path)).toContain("roles");
-    expect(fieldsOf("customer", both).map((f) => f.path)).toContain("cls.custGroup");
     expect(fieldsOf("supplier", both).map((f) => f.path)).toContain("cls.supGroup");
+    /* `cls.custGroup` was asserted here beside the supplier group until the
+       owner took Customer Group off the form. The rule this test is about —
+       a group is asked on the step for the role it belongs to — is unchanged
+       and still proven by the supplier half; there is simply no customer
+       group question left to place. The field is still on the record and
+       still read by the invoice. */
+    expect(fieldsOf("customer", both).map((f) => f.path)).not.toContain("cls.custGroup");
 
     /* Asked once, on Sales Terms. */
     const sales = fieldsOf("sales", both).map((f) => f.path);

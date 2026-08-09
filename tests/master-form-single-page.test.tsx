@@ -31,10 +31,16 @@ describe("MasterForm — ทุกหัวข้ออยู่ในหน้�
   it("แสดงช่องกรอกของหัวข้อแรกและหัวข้อท้าย ๆ พร้อมกัน", () => {
     render(<MasterForm schema={BP_FORM} />);
 
-    /* Identity is the first section and Finance the second to last — under the
-       old wizard only one of these could be in the document at a time. */
+    /* Identity is the first section and Finance one of the last — under the
+       old wizard only one of these could be in the document at a time.
+
+       The anchor here used to be "Credit Limit", which moved to Sales Terms
+       when the credit questions were gathered into one place. Nothing about
+       this test changed: it asks whether a far-apart pair of sections render
+       together, and the field it points at is only a handle. Bank Accounts
+       is what Finance asks for now. */
     expect(within(section("identity")).getByPlaceholderText("Dental Smile")).toBeInTheDocument();
-    expect(within(section("finance")).getByText("Credit Limit")).toBeInTheDocument();
+    expect(within(section("finance")).getByText("Bank Accounts")).toBeInTheDocument();
     expect(within(section("finance")).getByText("Bank Accounts")).toBeInTheDocument();
   });
 
