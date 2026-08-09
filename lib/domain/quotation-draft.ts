@@ -136,7 +136,7 @@ export interface QuotationDraft {
 
   /** Printed under the item table. */
   remarks: string;
-  /** Never printed — see draftToQuotation and the print mapper. */
+  /** Stored as of A2b, and never printed — held by tests/internal-note.test.ts. */
   internalNote: string;
 }
 
@@ -301,7 +301,10 @@ export function draftFromQuotation(q: Quotation): QuotationDraft {
     channel: q.channel,
     billType: q.billType,
     remarks: q.note || DEFAULT_REMARKS,
-    internalNote: "",
+    deliveryDate: dmyToIso(q.deliveryDate),
+    /* Recovered like everything else. A note the salesperson wrote to their
+       own side is no use if reopening the document loses it. */
+    internalNote: q.internalNote,
     items: (q.items ?? []).map((it) => ({
       ...blankLine(),
       code: it.code,
@@ -626,6 +629,11 @@ export function saveQuotationDraft(
     shipContact: str(draft.shipContact),
     shipPhone: str(draft.shipPhone),
     shipInstruction: str(draft.shipInstruction),
+    /* When the customer was told they would get it. A different question from
+       `validUntil`, and answered by it for want of anywhere to put this. */
+    deliveryDate: isoToDmy(draft.deliveryDate),
+    /* Stored, and stays off the paper — see the note on the record. */
+    internalNote: str(draft.internalNote),
     items,
     updated: now,
     updatedBy: user,

@@ -414,12 +414,15 @@ describe("Sales Request editor — saving", () => {
     expect(saved.amount).toBeCloseTo(srTotals(d).grandTotal, 2);
   });
 
-  it("keeps the internal note out of the saved record", () => {
+  /* Rule changed at A2b — see the same test on the quotation for why. The
+     promise is "never printed", not "never stored", and it is now held by
+     tests/internal-note.test.ts. */
+  it("keeps the internal note on the record, for the salesperson's own side", () => {
     const d = readyDraft({ internalNote: "ลูกค้ารายนี้จ่ายช้าประจำ" });
     saveSalesRequestDraft(d, { submit: true });
-    expect(JSON.stringify(SALES_REQUESTS.find((r) => r.code === d.code))).not.toContain(
-      "จ่ายช้าประจำ",
-    );
+    const saved = SALES_REQUESTS.find((r) => r.code === d.code)!;
+    expect(saved.internalNote).toBe("ลูกค้ารายนี้จ่ายช้าประจำ");
+    expect(saved.note).not.toContain("จ่ายช้าประจำ");
   });
 
   it("saves a draft from the toolbar without validating", async () => {

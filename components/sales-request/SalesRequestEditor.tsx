@@ -320,7 +320,6 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
         ),
         read: draft.billType,
       },
-      { field: "internalRef", label: "Internal Reference", control: txt("internalRef", "Internal Reference"), read: draft.internalRef },
     ];
   }, [askBillType, draft, set]);
 

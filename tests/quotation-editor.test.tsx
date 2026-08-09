@@ -911,11 +911,26 @@ describe("Quotation editor — saving", () => {
     expect(saved.amount).toBeCloseTo(draftTotals(d).grandTotal, 2);
   });
 
-  it("keeps the internal note out of the saved record", () => {
+  /**
+   * This asserted the opposite — that the note never reached the record. The
+   * rule was CHANGED at A2b, deliberately.
+   *
+   * "Not stored" was never the promise. The promise is the line printed under
+   * the box: ไม่พิมพ์ลงเอกสาร และไม่ถูกส่งให้ลูกค้า. Throwing the note away at
+   * every save kept that promise by having nothing to keep, and cost the
+   * salesperson the note itself — reopen the quotation tomorrow and their own
+   * reminder is gone. Storing it is the point of the field.
+   *
+   * What replaces this assertion is `tests/internal-note.test.ts`, which
+   * searches every printed document for the text rather than the record.
+   */
+  it("keeps the internal note on the record, for the salesperson's own side", () => {
     const d = readyDraft({ internalNote: "ลูกค้าต่อราคาหนัก อย่าลดเกิน 10%" });
     saveQuotationDraft(d, { issue: true });
     const saved = QUOTATIONS.find((q) => q.code === d.code)!;
-    expect(JSON.stringify(saved)).not.toContain("ต่อราคาหนัก");
+    expect(saved.internalNote).toBe("ลูกค้าต่อราคาหนัก อย่าลดเกิน 10%");
+    /* And it is not hiding in the customer-facing note. */
+    expect(saved.note).not.toContain("ต่อราคาหนัก");
   });
 
   it("saves a draft from the toolbar without validating", async () => {

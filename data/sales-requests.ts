@@ -90,6 +90,13 @@ export interface SalesRequest {
   shipPhone: string;
   shipInstruction: string;
 
+  /**
+   * The salesperson's note to their own side. NEVER PRINTED — see the long
+   * note on `Quotation`, and `tests/internal-note.test.ts`, which is what
+   * actually holds the promise.
+   */
+  internalNote: string;
+
   items: SrLine[];
   /** Internal approval trail. */
   approvedBy: string;
@@ -188,6 +195,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "ส่งเช้าเท่านั้น ลูกค้ารับของ 09:00–11:00",
+    internalNote: "",
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 120, price: 120, disc: 5, tax: 7, note: "" },
       { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
@@ -237,6 +245,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    internalNote: "",
     items: [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "ราคาประมูล" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
@@ -283,6 +292,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    internalNote: "",
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 240, price: 120, disc: 18, tax: 7, note: "ราคาดีลเลอร์" },
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 120, price: 150, disc: 18, tax: 7, note: "" },
@@ -333,6 +343,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    internalNote: "",
     items: [
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 24, price: 95, disc: 0, tax: 7, note: "" },
     ],
@@ -377,6 +388,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    internalNote: "",
     items: [
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 25, tax: 0, note: "ขอส่วนลด 25%" },
     ],
@@ -437,6 +449,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    internalNote: "",
     items: [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
@@ -485,6 +498,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    internalNote: "",
     items: [
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 24, price: 95, disc: 0, tax: 7, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 12, price: 110, disc: 0, tax: 7, note: "" },
@@ -534,6 +548,7 @@ export const SALES_REQUESTS: SalesRequest[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    internalNote: "",
     items: BULK_ORDER_ITEMS.map((it) => ({
       code: it.code,
       name: it.name,

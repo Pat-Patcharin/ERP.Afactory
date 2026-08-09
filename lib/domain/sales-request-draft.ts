@@ -103,7 +103,11 @@ export interface SalesRequestDraft extends PartyFields, TermFields {
 
   customerRef: string;
   currency: string;
-  internalRef: string;
+  /* `internalRef` was here. Removed at A2b: the editor collected it and
+     no save path ever wrote it, so it had been taking typing and dropping
+     it since the day it was added — the same reason `warehouse` and this
+     field were already dropped from the quotation's meta rows. Do not add
+     it back without a record field and something that reads it. */
 
   items: DraftLine[];
 
@@ -113,7 +117,7 @@ export interface SalesRequestDraft extends PartyFields, TermFields {
 
   /** Printed under the item table. */
   remarks: string;
-  /** Never saved and never printed. */
+  /** Saved as of A2b, and still never printed — held by tests/internal-note.test.ts. */
   internalNote: string;
 }
 
@@ -152,7 +156,6 @@ export function blankSrDraft(): SalesRequestDraft {
     channel: "Direct",
     /* Replaced by the customer's own billType as soon as one is picked. */
     billType: "VAT",
-    internalRef: "",
     items: [blankLine()],
     headerDisc: 0,
     freight: 0,
@@ -225,6 +228,7 @@ export function draftFromSalesRequest(r: SalesRequest): SalesRequestDraft {
     shipContact: r.shipContact,
     shipPhone: r.shipPhone,
     shipInstruction: r.shipInstruction,
+    internalNote: r.internalNote,
   };
 }
 
@@ -282,8 +286,20 @@ export function applyQuotation(draft: SalesRequestDraft, quotationRef: string): 
     shipContact: qt.shipContact,
     shipPhone: qt.shipPhone,
     shipInstruction: qt.shipInstruction,
-    /* The customer wanted the goods by the day the price stops standing. */
-    requiredDate: dmyToIso(qt.validUntil),
+    /* The internal note is the salesperson's own working memory about this
+       deal — "ลูกค้าต่อราคาหนัก อย่าลดเกิน 10%" — and the request is where
+       the deal continues. It goes across; it still never prints. */
+    internalNote: qt.internalNote,
+    /**
+     * The date the customer was promised, when the quotation promised one.
+     *
+     * The fallback is the day the price stops standing, which is what this
+     * always used — a reasonable stand-in while the quotation had nowhere to
+     * record a delivery date, and wrong whenever the two differ. A quote
+     * valid for 30 days that promised delivery next Tuesday produced a
+     * request due in 30 days.
+     */
+    requiredDate: dmyToIso(qt.deliveryDate || qt.validUntil),
     items: (qt.items ?? []).map((it) => ({
       ...blankLine(),
       code: it.code,
@@ -561,6 +577,8 @@ export function saveSalesRequestDraft(
     shipContact: str(draft.shipContact),
     shipPhone: str(draft.shipPhone),
     shipInstruction: str(draft.shipInstruction),
+    /* Stored, and stays off the paper — see the note on the record. */
+    internalNote: str(draft.internalNote),
     items,
     updated: now,
     updatedBy: user,

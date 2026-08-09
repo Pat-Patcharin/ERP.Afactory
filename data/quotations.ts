@@ -179,6 +179,29 @@ export interface Quotation {
   shipPhone: string;
   shipInstruction: string;
 
+  /**
+   * When the customer was told they would get the goods.
+   *
+   * Not the same question as `validUntil`, which is how long the PRICE
+   * stands. Both were being answered by `validUntil` because this had nowhere
+   * to live: the editor asked for a delivery date, dropped it at the save,
+   * and the request raised from the quotation then took the price-expiry date
+   * as its required date. Empty means no date was promised.
+   */
+  deliveryDate: string;
+
+  /**
+   * The salesperson's note to their own side. NEVER PRINTED.
+   *
+   * The editor says so on screen — "ไม่พิมพ์ลงเอกสาร และไม่ถูกส่งให้ลูกค้า" —
+   * and that promise is why this is a separate field from `note` rather than
+   * a convention about how to write in one. It held true trivially while the
+   * field was thrown away at every save; now that it is stored, the promise
+   * is kept by `tests/internal-note.test.ts`, which walks every printable
+   * document and fails if the text ever reaches paper.
+   */
+  internalNote: string;
+
   /** Why the customer said no — kept for win/loss reporting later. */
   rejectReason: string;
   note: string;
@@ -325,6 +348,8 @@ export const QUOTATIONS: Quotation[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "ส่งเช้าเท่านั้น ลูกค้ารับของ 09:00–11:00",
+    deliveryDate: "",
+    internalNote: "",
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 120, price: 120, disc: 5, tax: 7, note: "" },
       { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
@@ -378,6 +403,8 @@ export const QUOTATIONS: Quotation[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    deliveryDate: "",
+    internalNote: "",
     items: [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "ราคาประมูล" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
@@ -430,6 +457,8 @@ export const QUOTATIONS: Quotation[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    deliveryDate: "",
+    internalNote: "",
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 240, price: 120, disc: 18, tax: 7, note: "ราคาดีลเลอร์" },
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 120, price: 150, disc: 18, tax: 7, note: "" },
@@ -483,6 +512,8 @@ export const QUOTATIONS: Quotation[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    deliveryDate: "",
+    internalNote: "",
     items: [
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 0, tax: 0, note: "" },
     ],
@@ -533,6 +564,8 @@ export const QUOTATIONS: Quotation[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    deliveryDate: "",
+    internalNote: "",
     items: [
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 48, price: 95, disc: 3, tax: 7, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 24, price: 110, disc: 3, tax: 7, note: "" },
@@ -583,6 +616,8 @@ export const QUOTATIONS: Quotation[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    deliveryDate: "",
+    internalNote: "",
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
     ],
@@ -634,6 +669,8 @@ export const QUOTATIONS: Quotation[] = [
     shipContact: "",
     shipPhone: "",
     shipInstruction: "",
+    deliveryDate: "",
+    internalNote: "",
     items: [
       { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 48, price: 120, disc: 3, tax: 0, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 3, tax: 0, note: "" },
