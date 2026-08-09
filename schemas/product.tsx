@@ -155,7 +155,7 @@ export const PRODUCT_LIST: ListSchema<ProductRow> = {
   ],
 
   rowActions: (p, ctx) => [
-    { label: "View", icon: "eye", run: (r) => ctx.quickView("product", r) },
+    { label: "View", icon: "eye", run: (r) => ctx.openEntity("product", r.code) },
     {
       label: "Edit",
       icon: "edit",

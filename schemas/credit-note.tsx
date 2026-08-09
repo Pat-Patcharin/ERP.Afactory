@@ -278,7 +278,7 @@ export const CN_LIST: ListSchema<CnRow> = {
 
   rowActions: (c, ctx) => {
     const acts: RowAction<CnRow>[] = [
-      { label: "View", icon: "eye", run: (x) => ctx.quickView("credit-note", x) },
+      { label: "View", icon: "eye", run: (x) => ctx.openEntity("credit-note", x.code) },
       { label: "Open Full Detail", icon: "external", run: (x) => ctx.goto(`/m/credit-note/${x.code}`) },
     ];
 

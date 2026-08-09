@@ -174,7 +174,7 @@ const USER_LIST: ListSchema<UserRow> = {
   ],
 
   rowActions: (_u, ctx) => [
-    { label: "View", icon: "eye", run: (r) => ctx.quickView("admin-user", r) },
+    { label: "View", icon: "eye", run: (r) => ctx.openEntity("admin-user", r.code) },
     {
       label: "Reset Password",
       icon: "lock",
@@ -432,7 +432,7 @@ const ROLE_LIST: ListSchema<RoleRow> = {
   ],
 
   rowActions: (role, ctx) => [
-    { label: "View", icon: "eye", run: (r) => ctx.quickView("admin-role", r) },
+    { label: "View", icon: "eye", run: (r) => ctx.openEntity("admin-role", r.code) },
     {
       label: "Duplicate",
       icon: "copy",
@@ -669,7 +669,7 @@ const SCOPE_LIST: ListSchema<ScopeRow> = {
   ],
 
   rowActions: (_s, ctx) => [
-    { label: "View", icon: "eye", run: (r) => ctx.quickView("admin-scope", r) },
+    { label: "View", icon: "eye", run: (r) => ctx.openEntity("admin-scope", r.code) },
   ],
 };
 
@@ -809,7 +809,7 @@ const WORKFLOW_LIST: ListSchema<WorkflowRow> = {
   ],
 
   rowActions: (wf, ctx) => [
-    { label: "View", icon: "eye", run: (r) => ctx.quickView("admin-workflow", r) },
+    { label: "View", icon: "eye", run: (r) => ctx.openEntity("admin-workflow", r.code) },
     {
       label: wf.status === "Active" ? "Deactivate" : "Activate",
       icon: wf.status === "Active" ? "circleSlash" : "checkCircle",
@@ -978,7 +978,7 @@ const SERIES_LIST: ListSchema<SeriesRow> = {
   ],
 
   rowActions: (_s, ctx) => [
-    { label: "View", icon: "eye", run: (r) => ctx.quickView("admin-series", r) },
+    { label: "View", icon: "eye", run: (r) => ctx.openEntity("admin-series", r.code) },
     {
       label: "Copy Preview",
       icon: "copy",
@@ -1131,7 +1131,7 @@ const AUDIT_LIST: ListSchema<AuditRow> = {
   ],
 
   rowActions: (_l, ctx) => [
-    { label: "View", icon: "eye", run: (r) => ctx.quickView("admin-audit", r) },
+    { label: "View", icon: "eye", run: (r) => ctx.openEntity("admin-audit", r.code) },
   ],
 };
 

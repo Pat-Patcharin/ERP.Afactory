@@ -160,7 +160,7 @@ export const DO_LIST: ListSchema<DoRow> = {
 
   rowActions: (d, ctx) => {
     const acts: RowAction<DoRow>[] = [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("delivery-order", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("delivery-order", r.code) },
       { label: "Open Full Detail", icon: "external", run: (r) => ctx.goto(`/m/delivery-order/${r.code}`) },
     ];
 

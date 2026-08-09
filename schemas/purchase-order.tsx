@@ -142,7 +142,7 @@ export const PO_LIST: ListSchema<PoRow> = {
 
   rowActions: (po, ctx) => {
     const acts: RowAction<PoRow>[] = [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("purchase-order", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("purchase-order", r.code) },
       {
         label: "Open Full Detail",
         icon: "external",

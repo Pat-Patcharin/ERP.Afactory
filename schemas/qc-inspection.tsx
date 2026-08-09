@@ -145,7 +145,7 @@ export const QC_LIST: ListSchema<QcRow> = {
 
   rowActions: (qc, ctx) => {
     const acts: RowAction<QcRow>[] = [
-      { label: "Open Detail", icon: "eye", run: (r) => ctx.quickView("qc-inspection", r) },
+      { label: "Open Detail", icon: "eye", run: (r) => ctx.openEntity("qc-inspection", r.code) },
       {
         label: "Open Full Detail",
         icon: "external",

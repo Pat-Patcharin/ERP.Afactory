@@ -614,15 +614,22 @@ describe("Stock Transfer — drawer and detail", () => {
     expect(detail.kpis(rec).map((k) => k.label)).toContain("In Transit");
   });
 
-  it("opens when a row is clicked", async () => {
+  /**
+   * Was "opens when a row is clicked" and asserted a side drawer.
+   *
+   * The drawer is gone: a row now opens the record itself. It only ever held
+   * a summary, so anyone who wanted the whole thing read it and clicked
+   * again — a stop on the way to the page rather than a destination.
+   */
+  it("opens the record when a row is clicked", async () => {
     const user = userEvent.setup();
     renderList();
     const rec = transferRows()[0];
     await user.type(screen.getByPlaceholderText(list.searchPlaceholder!), rec.code);
+    routerPush.mockClear();
     await user.click(screen.getAllByText(rec.code)[0]);
 
-    const drawer = await screen.findByRole("dialog", { name: new RegExp(rec.srcWarehouse) });
-    expect(within(drawer).getByRole("tab", { name: "Transfer Items" })).toBeInTheDocument();
+    expect(routerPush).toHaveBeenCalledWith(`/m/stock-transfer/${encodeURIComponent(rec.code)}`);
   });
 
   it("opens the full detail page", () => {

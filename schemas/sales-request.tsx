@@ -159,7 +159,7 @@ export const SR_LIST: ListSchema<SrRow> = {
 
   rowActions: (sr, ctx) => {
     const acts: RowAction<SrRow>[] = [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("sales-request", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("sales-request", r.code) },
       {
         label: "Open Full Detail",
         icon: "external",

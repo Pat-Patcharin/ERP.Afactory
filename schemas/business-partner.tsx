@@ -720,7 +720,7 @@ export const BP_LIST: ListSchema<BpRow> = {
       {
         label: "View",
         icon: "eye",
-        run: (r) => ctx.quickView("business-partner", r),
+        run: (r) => ctx.openEntity("business-partner", r.code),
       },
       {
         label: "Edit",

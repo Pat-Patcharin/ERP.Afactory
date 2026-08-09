@@ -250,7 +250,7 @@ export const SR_LIST: ListSchema<SalesRepRow> = {
   ],
 
   rowActions: (rep, ctx) => [
-    { label: "View", icon: "eye", run: (r) => ctx.quickView("sales-rep", r) },
+    { label: "View", icon: "eye", run: (r) => ctx.openEntity("sales-rep", r.code) },
     { label: "Edit", icon: "edit", run: (r) => ctx.goto(`/m/sales-rep/${r.code}/edit`) },
     {
       label: "Assign Customers",

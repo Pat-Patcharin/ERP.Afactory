@@ -202,7 +202,7 @@ export const GR_LIST: ListSchema<GrRow> = {
 
   rowActions: (gr, ctx) => {
     const acts: RowAction<GrRow>[] = [
-      { label: "Open Detail", icon: "eye", run: (r) => ctx.quickView("goods-receipt", r) },
+      { label: "Open Detail", icon: "eye", run: (r) => ctx.openEntity("goods-receipt", r.code) },
       {
         label: "Open Full Detail",
         icon: "external",

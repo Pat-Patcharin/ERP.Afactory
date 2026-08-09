@@ -344,7 +344,7 @@ export const SHP_LIST: ListSchema<ShpRow> = {
 
   rowActions: (s, ctx) => {
     const acts: RowAction<ShpRow>[] = [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("shipment", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("shipment", r.code) },
       { label: "Open Full Detail", icon: "external", run: (r) => ctx.goto(`/m/shipment/${r.code}`) },
     ];
 

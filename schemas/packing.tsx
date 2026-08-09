@@ -125,7 +125,7 @@ export const PACK_LIST: ListSchema<PackRow> = {
 
   rowActions: (task, ctx) => {
     const acts: RowAction<PackRow>[] = [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("packing", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("packing", r.code) },
       { label: "Open Full Detail", icon: "external", run: (r) => ctx.goto(`/m/packing/${r.code}`) },
     ];
 

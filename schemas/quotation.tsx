@@ -261,7 +261,7 @@ export const QT_LIST: ListSchema<QtRow> = {
 
   rowActions: (qt, ctx) => {
     const acts: RowAction<QtRow>[] = [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("quotation", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("quotation", r.code) },
       { label: "Open Full Detail", icon: "external", run: (r) => ctx.goto(`/m/quotation/${r.code}`) },
     ];
 

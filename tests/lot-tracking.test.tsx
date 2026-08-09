@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ListView } from "@/components/engine/ListView";
+import { routerPush } from "./setup";
 import { FullDetail } from "@/components/engine/FullDetail";
 import { QuickViewHost } from "@/components/engine/QuickViewHost";
 import {
@@ -649,15 +650,22 @@ describe("Lot Tracking — drawer and detail", () => {
     expect(detail.kpis(rec).map((k) => k.label)).toContain("Days to Expiry");
   });
 
-  it("opens when a row is clicked", async () => {
+  /**
+   * Was "opens when a row is clicked" and asserted a side drawer.
+   *
+   * The drawer is gone: a row now opens the record itself. It only ever held
+   * a summary, so anyone who wanted the whole thing read it and clicked
+   * again — a stop on the way to the page rather than a destination.
+   */
+  it("opens the record when a row is clicked", async () => {
     const user = userEvent.setup();
     renderList();
     const rec = lotRows()[0];
     await user.type(screen.getByPlaceholderText(list.searchPlaceholder!), rec.lot);
+    routerPush.mockClear();
     await user.click(screen.getAllByText(rec.lot)[0]);
 
-    const drawer = await screen.findByRole("dialog", { name: new RegExp(rec.productName) });
-    expect(within(drawer).getByRole("tab", { name: "Inventory" })).toBeInTheDocument();
+    expect(routerPush).toHaveBeenCalledWith(`/m/lot-tracking/${encodeURIComponent(rec.code)}`);
   });
 
   it("opens the full traceability page", () => {

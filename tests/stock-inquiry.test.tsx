@@ -377,17 +377,21 @@ describe("Stock Inquiry — quick drawer", () => {
     ]);
   });
 
-  it("opens when a row is clicked", async () => {
+  /**
+   * Was "opens when a row is clicked" and asserted a side drawer. The drawer
+   * is gone — a row opens the record itself. It only ever held a summary, so
+   * anyone who wanted the whole thing read it and clicked again.
+   */
+  it("opens the record when a row is clicked", async () => {
     const user = userEvent.setup();
     renderList();
     await user.type(screen.getByPlaceholderText(list.searchPlaceholder!), richRow.code);
+    routerPush.mockClear();
     await user.click(screen.getAllByText(richRow.product)[0]);
 
-    const drawer = await screen.findByRole("dialog", { name: richRow.productName });
-    /* The name appears in the header and again in the Overview fields. */
-    expect(within(drawer).getAllByText(richRow.productName).length).toBeGreaterThan(0);
-    expect(within(drawer).getByRole("tab", { name: "Overview" })).toBeInTheDocument();
-    expect(within(drawer).getAllByText(richRow.whLabel).length).toBeGreaterThan(0);
+    expect(routerPush).toHaveBeenCalledWith(
+      `/m/stock-inquiry/${encodeURIComponent(richRow.code)}`,
+    );
   });
 
   it("shows only the tracking tab the product actually uses", () => {

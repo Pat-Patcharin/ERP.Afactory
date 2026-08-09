@@ -100,7 +100,7 @@ export const PR_LIST: ListSchema<PrRow> = {
 
   rowActions: (pr, ctx) => {
     const acts: RowAction<PrRow>[] = [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("purchase-request", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("purchase-request", r.code) },
       {
         label: "Open Full Detail",
         icon: "external",

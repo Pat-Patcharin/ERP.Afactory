@@ -370,7 +370,7 @@ export const RTN_LIST: ListSchema<RtnRow> = {
 
   rowActions: (r, ctx) => {
     const acts: RowAction<RtnRow>[] = [
-      { label: "View", icon: "eye", run: (x) => ctx.quickView("sales-return", x) },
+      { label: "View", icon: "eye", run: (x) => ctx.openEntity("sales-return", x.code) },
       { label: "Open Full Detail", icon: "external", run: (x) => ctx.goto(`/m/sales-return/${x.code}`) },
     ];
 

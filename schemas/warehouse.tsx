@@ -170,7 +170,7 @@ export const WAREHOUSE_LIST: ListSchema<WarehouseRow> = {
       ctx.toast(msg, `${r.code} — ${r.name}`, t);
     };
     return [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("warehouse", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("warehouse", r.code) },
       { label: "Edit", icon: "edit", run: (r) => ctx.goto(`/m/warehouse/${r.code}/edit`) },
       {
         label: "Duplicate",

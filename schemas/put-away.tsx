@@ -177,7 +177,7 @@ export const PA_LIST: ListSchema<PaRow> = {
 
   rowActions: (task, ctx) => {
     const acts: RowAction<PaRow>[] = [
-      { label: "Open Detail", icon: "eye", run: (r) => ctx.quickView("put-away", r) },
+      { label: "Open Detail", icon: "eye", run: (r) => ctx.openEntity("put-away", r.code) },
       { label: "Open Full Detail", icon: "external", run: (r) => ctx.goto(`/m/put-away/${r.code}`) },
     ];
 

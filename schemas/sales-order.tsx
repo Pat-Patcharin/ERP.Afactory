@@ -162,7 +162,7 @@ export const SO_LIST: ListSchema<SoRow> = {
 
   rowActions: (so, ctx) => {
     const acts: RowAction<SoRow>[] = [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("sales-order", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("sales-order", r.code) },
       { label: "Open Full Detail", icon: "external", run: (r) => ctx.goto(`/m/sales-order/${r.code}`) },
     ];
 

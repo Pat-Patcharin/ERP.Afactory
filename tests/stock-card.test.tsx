@@ -425,16 +425,22 @@ describe("Stock Card — drawer and movement detail", () => {
     ]);
   });
 
-  it("opens the quick drawer when a row is clicked", async () => {
+  /**
+   * Was "opens when a row is clicked" and asserted a side drawer.
+   *
+   * The drawer is gone: a row now opens the record itself. It only ever held
+   * a summary, so anyone who wanted the whole thing read it and clicked
+   * again — a stop on the way to the page rather than a destination.
+   */
+  it("opens the record when a row is clicked", async () => {
     const user = userEvent.setup();
     renderList();
     /* Narrowing the table is arrangement; the click is the test. */
     search(screen.getByPlaceholderText(list.searchPlaceholder!), sample.code);
+    routerPush.mockClear();
     await user.click(screen.getAllByText(sample.code)[0]);
 
-    const drawer = await screen.findByRole("dialog", { name: new RegExp(sample.type) });
-    expect(within(drawer).getByRole("tab", { name: "Stock Impact" })).toBeInTheDocument();
-    expect(within(drawer).getAllByText(sample.code).length).toBeGreaterThan(0);
+    expect(routerPush).toHaveBeenCalledWith(`/m/stock-card/${encodeURIComponent(sample.code)}`);
   });
 
   it("heads the movement with number, type, direction and status", () => {

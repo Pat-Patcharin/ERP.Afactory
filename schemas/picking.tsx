@@ -167,7 +167,7 @@ export const PICK_LIST: ListSchema<PickRow> = {
 
   rowActions: (task, ctx) => {
     const acts: RowAction<PickRow>[] = [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("picking", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("picking", r.code) },
       { label: "Open Full Detail", icon: "external", run: (r) => ctx.goto(`/m/picking/${r.code}`) },
     ];
 

@@ -618,7 +618,7 @@ const list: ListSchema<StockRow> = {
     {
       label: "ดูรายละเอียดสต๊อก",
       icon: "eye",
-      run: () => ctx.quickView("stock-inquiry", rec),
+      run: () => ctx.openEntity("stock-inquiry", rec.code),
     },
     {
       label: "เปิดข้อมูลสินค้า",

@@ -512,7 +512,12 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
                       // Let the checkbox and the row menu win over the row.
                       if ((e.target as HTMLElement).closest("input,button,a")) return;
                       if (schema.onRowClick) schema.onRowClick(rec, ctx);
-                      else ctx.quickView(schema.key, rec);
+                      /* Straight to the record. Clicking a row used to open a
+                         side panel holding a summary of it, so anybody who
+                         wanted the whole thing read the summary and then
+                         clicked again — the panel was a stop on the way to
+                         the page, never a destination. */
+                      else ctx.openEntity(schema.key, rec.code);
                     }}
                   >
                     <Td className="w-11 pl-5">

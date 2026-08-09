@@ -329,7 +329,7 @@ export const INV_LIST: ListSchema<InvRow> = {
 
   rowActions: (inv, ctx) => {
     const acts: RowAction<InvRow>[] = [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("sales-invoice", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("sales-invoice", r.code) },
       { label: "Open Full Detail", icon: "external", run: (r) => ctx.goto(`/m/sales-invoice/${r.code}`) },
     ];
 

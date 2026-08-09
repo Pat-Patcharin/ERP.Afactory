@@ -130,7 +130,7 @@ export const PL_LIST: ListSchema<PriceListRow> = {
       ctx.toast(msg, r.code, t);
     };
     return [
-      { label: "View", icon: "eye", run: (r) => ctx.quickView("price-list", r) },
+      { label: "View", icon: "eye", run: (r) => ctx.openEntity("price-list", r.code) },
       { label: "Edit", icon: "edit", run: (r) => ctx.goto(`/m/price-list/${r.code}/edit`) },
       { sep: true },
       ...(pl.status === "Draft"
