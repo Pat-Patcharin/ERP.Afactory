@@ -326,7 +326,46 @@ export const BP_FORM: FormSchema<BpRow> = {
   }),
 
   steps: [
-    /* ---------- 1. IDENTITY ---------- */
+    /* ---------- 1. ROLES — asked first, because it decides the rest ----------
+
+       The roles used to sit behind the organisation details, which meant
+       filling in a page and a half before the form would say which of the
+       later sections applied to you. Asking first turns the rest of the form
+       into an answer: pick Customer and the customer sections appear, pick
+       Supplier and the supplier ones do. */
+    {
+      key: "roles",
+      label: "Roles",
+      railLabel: "บทบาท",
+      labelTh: "บทบาทและการจัดกลุ่ม",
+      blocks: () => [
+        {
+          type: "note",
+          label: "หนึ่งนิติบุคคล = หนึ่งระเบียน",
+          text: "บทบาทเป็นแฟล็กบนคู่ค้ารายเดียว ไม่ใช่ระเบียนลูกค้าและผู้ขายแยกกัน — บทบาทที่เลือกจะกำหนดว่าขั้นตอนถัดไปมีอะไรบ้าง",
+        },
+        {
+          type: "cards",
+          path: "roles",
+          label: "Partner Roles",
+          required: true,
+          hint: "เลือกได้มากกว่าหนึ่งบทบาท",
+          cardOptions: BP_ROLE_DEFS.map((r) => ({
+            key: r.key,
+            label: r.label,
+            desc: r.desc,
+          })),
+        },
+        /* The Grouping card stood here. Its two group pickers now sit with the
+           role they belong to — Customer Group on Customer Info, Supplier
+           Group on Supplier Info — because a group is a fact about being a
+           customer or a supplier, not a separate subject. Sales Area and
+           Sales Channel were asked twice, here and on Sales Terms; only the
+           Sales Terms copy is left. */
+      ],
+    },
+
+    /* ---------- IDENTITY ---------- */
     {
       key: "identity",
       label: "Identity",
@@ -421,38 +460,6 @@ export const BP_FORM: FormSchema<BpRow> = {
       ],
     },
 
-    /* ---------- 2. ROLES AND GROUPING ---------- */
-    {
-      key: "roles",
-      label: "Roles",
-      railLabel: "บทบาท",
-      labelTh: "บทบาทและการจัดกลุ่ม",
-      blocks: () => [
-        {
-          type: "note",
-          label: "หนึ่งนิติบุคคล = หนึ่งระเบียน",
-          text: "บทบาทเป็นแฟล็กบนคู่ค้ารายเดียว ไม่ใช่ระเบียนลูกค้าและผู้ขายแยกกัน — บทบาทที่เลือกจะกำหนดว่าขั้นตอนถัดไปมีอะไรบ้าง",
-        },
-        {
-          type: "cards",
-          path: "roles",
-          label: "Partner Roles",
-          required: true,
-          hint: "เลือกได้มากกว่าหนึ่งบทบาท",
-          cardOptions: BP_ROLE_DEFS.map((r) => ({
-            key: r.key,
-            label: r.label,
-            desc: r.desc,
-          })),
-        },
-        /* The Grouping card stood here. Its two group pickers now sit with the
-           role they belong to — Customer Group on Customer Info, Supplier
-           Group on Supplier Info — because a group is a fact about being a
-           customer or a supplier, not a separate subject. Sales Area and
-           Sales Channel were asked twice, here and on Sales Terms; only the
-           Sales Terms copy is left. */
-      ],
-    },
 
     /* ---------- 3. TAX ---------- */
     {
@@ -648,6 +655,7 @@ export const BP_FORM: FormSchema<BpRow> = {
     /* ---------- 6b. CUSTOMER INFORMATION (customers and dealers only) ---------- */
     {
       key: "customer",
+      side: "customer",
       label: "Customer Info",
       railLabel: "ข้อมูลลูกค้า",
       labelTh: "ประเภทลูกค้าและส่วนลด",
@@ -737,6 +745,7 @@ export const BP_FORM: FormSchema<BpRow> = {
     /* ---------- 6c. SUPPLIER INFORMATION (suppliers only) ---------- */
     {
       key: "supplier",
+      side: "supplier",
       label: "Supplier Info",
       railLabel: "ข้อมูลผู้ขาย",
       labelTh: "ประเภทผู้ขายและสินค้าที่เสนอ",
@@ -858,6 +867,7 @@ export const BP_FORM: FormSchema<BpRow> = {
     /* ---------- 7. SALES TERMS (customers and dealers only) ---------- */
     {
       key: "sales",
+      side: "customer",
       label: "Sales Terms",
       railLabel: "เงื่อนไขการขาย",
       labelTh: "ผู้ดูแลและเครดิต",
@@ -937,6 +947,7 @@ export const BP_FORM: FormSchema<BpRow> = {
     /* ---------- 8. PURCHASING TERMS (suppliers only) ---------- */
     {
       key: "purchasing",
+      side: "supplier",
       label: "Purchasing Terms",
       railLabel: "เงื่อนไขการซื้อ",
       labelTh: "ผู้จัดซื้อและ Incoterm",

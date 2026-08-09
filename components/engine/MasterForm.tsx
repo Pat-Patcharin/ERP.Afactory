@@ -545,9 +545,22 @@ export function MasterForm<T extends RecordBase>({
                 key={step.key}
                 id={sectionDomId(schema.key, step.key)}
                 aria-labelledby={`${sectionDomId(schema.key, step.key)}-h`}
+                data-side={step.side}
                 /* Clears the sticky topbar, so a jump does not land with the
-                   heading tucked underneath it. */
-                className="flex scroll-mt-[84px] flex-col gap-4"
+                   heading tucked underneath it.
+
+                   A one-sided section is tinted and inset: customer work in
+                   info blue, supplier work in success green, with a rule down
+                   the left so the block reads as one region rather than as
+                   cards that happen to share a colour. Neutral sections are
+                   left alone — a tint everywhere would say nothing. */
+                className={cn(
+                  "flex scroll-mt-[84px] flex-col gap-4",
+                  step.side &&
+                    "rounded-card border-l-2 py-4 pl-4 pr-4 max-md:pl-3 max-md:pr-3",
+                  step.side === "customer" && "border-l-info bg-info-soft/40",
+                  step.side === "supplier" && "border-l-success bg-success-soft/40",
+                )}
               >
                 <header className="flex items-center gap-2.5 pt-2 first:pt-0">
                   <span
@@ -570,6 +583,14 @@ export function MasterForm<T extends RecordBase>({
                   </h2>
                   {step.labelTh && (
                     <span className="truncate text-cap text-ink-3">{step.labelTh}</span>
+                  )}
+                  {/* Said in words as well as in colour: colour alone is not
+                      a label, and roughly one man in twelve cannot read this
+                      particular pair of tints apart. */}
+                  {step.side && (
+                    <Badge tone={step.side === "customer" ? "info" : "success"}>
+                      {step.side === "customer" ? "ฝั่งลูกค้า" : "ฝั่งผู้ขาย"}
+                    </Badge>
                   )}
                 </header>
 

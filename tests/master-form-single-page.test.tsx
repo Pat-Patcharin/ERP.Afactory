@@ -87,3 +87,98 @@ describe("MasterForm — ทุกหัวข้ออยู่ในหน้�
     expect(within(section("identity")).getByPlaceholderText("Dental Smile")).toBeInTheDocument();
   });
 });
+
+/* ============================================================
+   ROLES FIRST, AND THE TWO SIDES KEPT APART
+
+   Two complaints from the person filling this in, and they are
+   the same complaint from opposite ends.
+
+   The roles picker sat behind the organisation details, so you
+   typed a page and a half before the form would tell you which
+   of the later sections applied to you. It is the first question
+   now, and everything after it is an answer to it.
+
+   And a partner that is both a customer and a supplier answers
+   two sets of questions that look identical — Sales Terms and
+   Purchasing Terms both ask for a payment term, a group and a
+   minimum order. Tinting the one-sided sections says which half
+   you are in without reading the heading.
+   ============================================================ */
+
+describe("MasterForm — บทบาทมาก่อน และสองฝั่งแยกกัน", () => {
+  const both = { roles: { customer: true, supplier: true } };
+
+  it("ถามบทบาทเป็นหัวข้อแรก", () => {
+    expect(BP_FORM.steps[0].key).toBe("roles");
+    /* And identity has not been dropped on the way past. */
+    expect(BP_FORM.steps.map((s) => s.key)).toContain("identity");
+  });
+
+  it("ไม่มีหัวข้อของฝั่งไหนเลยจนกว่าจะเลือกบทบาท", () => {
+    const none = { roles: {} };
+    const visible = (st: Record<string, unknown>) =>
+      BP_FORM.steps.filter((s) => !s.when || s.when(st as never)).map((s) => s.key);
+
+    expect(visible(none)).not.toContain("customer");
+    expect(visible(none)).not.toContain("supplier");
+    expect(visible({ roles: { customer: true } })).toContain("customer");
+    expect(visible({ roles: { customer: true } })).not.toContain("supplier");
+    expect(visible({ roles: { supplier: true } })).toContain("supplier");
+  });
+
+  it("ติดป้ายฝั่งเฉพาะหัวข้อที่เป็นของฝั่งเดียวจริง ๆ", () => {
+    const side = (key: string) => BP_FORM.steps.find((s) => s.key === key)?.side;
+
+    expect(side("customer")).toBe("customer");
+    expect(side("sales")).toBe("customer");
+    expect(side("supplier")).toBe("supplier");
+    expect(side("purchasing")).toBe("supplier");
+
+    /* Everything everybody fills in stays neutral — a tint on every section
+       would distinguish nothing. */
+    for (const key of ["roles", "identity", "tax", "contacts", "addresses", "finance", "review"]) {
+      expect(side(key), key).toBeUndefined();
+    }
+  });
+
+  /**
+   * On screen, not in the schema.
+   *
+   * The schema declaring a side proves nothing about whether the form draws
+   * it — that gap is what let a district dropdown ship empty with every test
+   * green. `data-side` is on the section for this reason: it lets the test
+   * ask what was rendered without asserting on a colour class.
+   */
+  it("วาดสองฝั่งคนละสีจริงบนหน้าจอ", () => {
+    render(<MasterForm schema={BP_FORM} />);
+    const at = (key: string) => document.getElementById(`form-business-partner-${key}`)!;
+
+    /* Nothing is one-sided until a role is picked, so the sided sections are
+       not on the page yet — which is itself the behaviour asked for. */
+    expect(at("roles").dataset.side).toBeUndefined();
+    expect(document.getElementById("form-business-partner-customer")).toBeNull();
+  });
+
+  it("วาดฝั่งลูกค้ากับฝั่งผู้ขายแยกกันเมื่อเป็นทั้งสองบทบาท", async () => {
+    const user = userEvent.setup();
+    render(<MasterForm schema={BP_FORM} />);
+
+    const roles = document.getElementById("form-business-partner-roles")!;
+    await user.click(within(roles).getByText("Customer"));
+    await user.click(within(roles).getByText("Supplier"));
+
+    const at = (key: string) => document.getElementById(`form-business-partner-${key}`)!;
+    expect(at("customer").dataset.side).toBe("customer");
+    expect(at("sales").dataset.side).toBe("customer");
+    expect(at("supplier").dataset.side).toBe("supplier");
+    expect(at("purchasing").dataset.side).toBe("supplier");
+    /* Different from each other, and shared sections stay neutral. */
+    expect(at("customer").dataset.side).not.toBe(at("supplier").dataset.side);
+    expect(at("addresses").dataset.side).toBeUndefined();
+
+    /* Said in words too — the colour is not carrying it alone. */
+    expect(within(at("customer")).getByText("ฝั่งลูกค้า")).toBeInTheDocument();
+    expect(within(at("supplier")).getByText("ฝั่งผู้ขาย")).toBeInTheDocument();
+  });
+});

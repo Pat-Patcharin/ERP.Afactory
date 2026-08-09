@@ -629,6 +629,17 @@ export interface FormStep {
   labelTh?: string;
   /** Progressive disclosure — step only exists when this passes. */
   when?: (state: FormState) => boolean;
+  /**
+   * Which side of the business this section belongs to, when it belongs to
+   * one. Tints the section so a form that asks about both a customer and a
+   * supplier does not read as one long questionnaire — the person filling it
+   * can see at a glance which half they are in.
+   *
+   * Only for sections that are genuinely one-sided. A section everybody fills
+   * in leaves this off and stays neutral, which is what makes the tint mean
+   * something.
+   */
+  side?: "customer" | "supplier";
   /** Falsy entries are dropped, so a step can inline `isSupplier && {...}`. */
   blocks: (state: FormState) => (FormBlock | null | false | undefined)[];
   /** The final summary step. */
