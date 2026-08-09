@@ -162,6 +162,62 @@ describe("changing a parent clears what no longer belongs under it", () => {
     expect(state.addresses[0].sub).toBe("สุเทพ");
   });
 
+  const thaiRow = (over: Record<string, unknown> = {}) => ({
+    addresses: [
+      {
+        type: "Head Office",
+        country: "ประเทศไทย",
+        prov: "เชียงใหม่",
+        dist: "เมืองเชียงใหม่",
+        sub: "สุเทพ",
+        zip: "",
+        ...over,
+      },
+    ],
+  });
+
+  it("fills the postal code from the subdistrict", () => {
+    const state = thaiRow();
+    BP_FORM.onGridChange!("addresses", state);
+    expect(state.addresses[0].zip).toBe("50200");
+  });
+
+  /**
+   * The half that matters more than the filling.
+   *
+   * `onGridChange` runs on every change to the grid, so a rule that always
+   * wrote the code would undo a hand-typed one on the next keystroke in any
+   * other cell — the field would look possessed.
+   */
+  it("never argues with a code somebody typed", () => {
+    const state = thaiRow({ zip: "50210" });
+    BP_FORM.onGridChange!("addresses", state);
+    expect(state.addresses[0].zip).toBe("50210");
+  });
+
+  it("drops the code with the subdistrict it came from", () => {
+    /* Which is what makes "only fill a blank" enough: change the tambon and
+       the stale code goes, then the new one lands on the next pass. */
+    const state = thaiRow({ dist: "เมืองเชียงใหม่", sub: "ในเมือง", zip: "50200" });
+    BP_FORM.onGridChange!("addresses", state);
+    expect(state.addresses[0].sub, "ในเมือง is not in เมืองเชียงใหม่").toBe("");
+    expect(state.addresses[0].zip).toBe("");
+
+    state.addresses[0].sub = "ช้างเผือก";
+    BP_FORM.onGridChange!("addresses", state);
+    expect(state.addresses[0].zip).toBe("50300");
+  });
+
+  it("leaves a foreign postal code alone", () => {
+    const state = {
+      addresses: [
+        { type: "Manufacturer", country: "เวียดนาม", prov: "Hanoi", dist: "Ba Dinh", sub: "Ngoc Ha", zip: "" },
+      ],
+    };
+    BP_FORM.onGridChange!("addresses", state);
+    expect(state.addresses[0].zip).toBe("");
+  });
+
   /**
    * The one that is easy to get wrong: abroad, these same three fields are
    * free text. Checking a Vietnamese address against the Thai list would

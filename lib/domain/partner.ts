@@ -141,7 +141,12 @@ export const bpBillingAddress = (bp: BusinessPartner): Address | null =>
   bp.addresses?.find((a) => canBill(a) && a.active) ??
   bpPrimaryAddress(bp);
 
-/** Where the goods go. May legitimately be null — delivery is optional. */
+/**
+ * Where the goods go. Required as of the address rework — `bpValidate` blocks
+ * a partner without one — but still typed as nullable, because a record can
+ * be read before it has been validated and a caller that assumes otherwise
+ * would throw on exactly the data the rule exists to catch.
+ */
 export const bpDeliveryAddress = (bp: BusinessPartner): Address | null =>
   bp.addresses?.find((a) => a.deliveryPrimary) ??
   bp.addresses?.find((a) => canDeliver(a) && a.active) ??
@@ -187,8 +192,9 @@ export function reconcileAddressDefaults(bp: BusinessPartner) {
   };
 
   fix("billingPrimary", canBill);
-  /* Delivery only auto-assigns when some address can actually receive goods —
-     a partner billed at a registered office need not have a delivery point. */
+  /* Every address kind can receive goods now, so this holds whenever there is
+     an address at all — kept as a guard rather than assumed, because the list
+     of kinds is data and could gain one that cannot. */
   if (rows.some((a) => canDeliver(a))) fix("deliveryPrimary", canDeliver);
 
   if (!rows.some((a) => a.primary)) {
@@ -787,20 +793,35 @@ export function bpValidate(bp: Partial<BusinessPartner>): BpIssue[] {
     });
   }
 
+  /**
+   * A partner needs somewhere to be billed AND somewhere to receive goods,
+   * and both have to be usable rather than merely present.
+   *
+   * `&& a.active` is the part that makes these bite. Without it the check
+   * asked "is there a row of this kind", while `bpBillingAddress()` and
+   * `bpDeliveryAddress()` — the functions that actually go and find the
+   * address — skip inactive rows. A partner whose only address had been
+   * switched off passed validation and then resolved to nothing, which is
+   * the failure arriving one step later and further from its cause.
+   *
+   * Delivery is required as of the same change. It was reported and never
+   * blocking, on the reasoning that a partner billed at a registered office
+   * need not have a delivery point; the business says otherwise — goods have
+   * to have somewhere to go before the partner is usable.
+   */
   const addresses = bp.addresses ?? [];
-  if (!addresses.some((a) => canBill(a))) {
+  if (!addresses.some((a) => canBill(a) && a.active)) {
     issues.push({
       field: "addresses",
-      message: "ต้องมีที่อยู่สำหรับออกใบกำกับภาษีอย่างน้อย 1 แห่ง",
+      message: "ต้องมีที่อยู่สำหรับออกใบกำกับภาษีที่ใช้งานอยู่อย่างน้อย 1 แห่ง",
       blocking: true,
     });
   }
-  /* Delivery is explicitly optional — reported, never blocking. */
-  if (!addresses.some((a) => canDeliver(a))) {
+  if (!addresses.some((a) => canDeliver(a) && a.active)) {
     issues.push({
       field: "addresses",
-      message: "ยังไม่มีที่อยู่จัดส่ง — ระบบจะใช้ที่อยู่ออกบิลแทน",
-      blocking: false,
+      message: "ต้องมีที่อยู่จัดส่งที่ใช้งานอยู่อย่างน้อย 1 แห่ง",
+      blocking: true,
     });
   }
 

@@ -615,7 +615,18 @@ describe("BP Master — validation", () => {
     }
   });
 
-  it("requires a billing address but not a delivery one", () => {
+  /**
+   * Was "requires a billing address but not a delivery one". Delivery is
+   * required now — the business decided a partner the company cannot send
+   * goods to is not ready to trade with. Changed deliberately.
+   *
+   * The other half of the change is `&& a.active`, and that is the half that
+   * gives these rules teeth. They used to ask "is there a row of this kind",
+   * while `bpBillingAddress()` and `bpDeliveryAddress()` skip inactive rows —
+   * so a partner whose only address was switched off validated cleanly and
+   * then resolved to nothing.
+   */
+  it("requires an active billing address and an active delivery one", () => {
     const base = {
       code: "BP999999",
       nameTh: "ทดสอบ",
@@ -623,31 +634,24 @@ describe("BP Master — validation", () => {
       status: "Active",
       roles: { customer: true },
     } as unknown as BusinessPartner;
+    const at = (rows: unknown[]) =>
+      bpValidate({ ...base, addresses: rows } as unknown as BusinessPartner).filter(
+        (i) => i.blocking && i.field === "addresses",
+      );
 
-    const billingOnly = bpValidate({
-      ...base,
-      addresses: [{ type: "Head Office", zip: "10110" }],
-    } as unknown as BusinessPartner);
+    /* A head office does both, so one active row satisfies both rules. */
+    expect(at([{ type: "Head Office", zip: "10110", active: true }])).toHaveLength(0);
 
-    expect(billingOnly.filter((i) => i.blocking)).toHaveLength(0);
-    /**
-     * The "no delivery address" warning no longer fires here, and that is a
-     * consequence of the address types becoming site kinds.
-     *
-     * It used to be reachable because "Billing" could bill and not deliver.
-     * All four kinds that remain — Head Office, Branch, Warehouse,
-     * Manufacturer — are places goods can go, so a partner with any address
-     * has a delivery point. The warning can now only appear beside the
-     * blocking one, which is a rule that adds nothing; noted in the backlog
-     * as a decision rather than deleted inside a form change.
-     */
-    expect(billingOnly.some((i) => !i.blocking && i.field === "addresses")).toBe(false);
+    /* A warehouse receives goods and cannot be billed. */
+    const whOnly = at([{ type: "Warehouse", zip: "10110", active: true }]);
+    expect(whOnly).toHaveLength(1);
+    expect(whOnly[0].message).toContain("ออกใบกำกับภาษี");
 
-    const noBilling = bpValidate({
-      ...base,
-      addresses: [{ type: "Warehouse", zip: "10110" }],
-    } as unknown as BusinessPartner);
-    expect(noBilling.some((i) => i.blocking && i.field === "addresses")).toBe(true);
+    /* Nothing at all: both rules fire, and say so separately. */
+    expect(at([])).toHaveLength(2);
+
+    /* Present but switched off — the case the old rule let through. */
+    expect(at([{ type: "Head Office", zip: "10110", active: false }])).toHaveLength(2);
   });
 
   it("requires the Tax ID to be valid when present, not to be present", () => {
@@ -657,7 +661,7 @@ describe("BP Master — validation", () => {
       type: "Company",
       status: "Active",
       roles: { customer: true },
-      addresses: [{ type: "Head Office", zip: "10110" }],
+      addresses: [{ type: "Head Office", zip: "10110", active: true }],
     } as unknown as BusinessPartner;
 
     /* Absent — a warning only. */
@@ -1848,7 +1852,7 @@ describe("BP Master — form revisions", () => {
       type: "Company",
       status: "Active",
       roles: { customer: true },
-      addresses: [{ type: "Head Office", zip: "10110" }],
+      addresses: [{ type: "Head Office", zip: "10110", active: true }],
     } as unknown as BusinessPartner;
 
     const registered = bpValidate({ ...base, tax: { vatReg: true, taxId: "" } } as never);

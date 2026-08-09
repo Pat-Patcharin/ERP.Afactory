@@ -23,11 +23,10 @@ import {
   SUPPLIER_TYPES,
 } from "@/data/partners";
 import { SALES_AREA_NAMES } from "@/data/sales-areas";
-import { districtsOf, subdistrictsOf } from "@/lib/domain/thai-address";
+import { districtsOf, postalCodeOf, subdistrictsOf } from "@/lib/domain/thai-address";
 import { can } from "@/lib/domain/admin";
 import { PRODUCTS } from "@/lib/domain/product";
 import { PO_CURRENCIES, PO_INCOTERMS } from "@/data/purchase-orders";
-import { PRICE_LISTS } from "@/data/price-lists";
 import {
   BUSINESS_PARTNERS,
   decorateBPs,
@@ -86,8 +85,25 @@ const SUP_GROUPS = ["วัสดุสิ้นเปลือง", "เคร�
 const SALES_AREAS = SALES_AREA_NAMES;
 
 const CHANNELS = ["Direct Sales", "Dealer", "Online", "Government", "Export"];
-/* The price lists that exist, as the documents name them. */
-const PRICE_LIST_OPTIONS = PRICE_LISTS.map((p) => `${p.code} ${p.name}`);
+/**
+ * Price lists a partner can be put on — PROVISIONAL NAMES.
+ *
+ * Placeholders, agreed as placeholders: the field has to exist so a partner
+ * can be filed against a list, and what the lists really are is a separate
+ * piece of work. Named after the three ways this business is actually asked
+ * for a price, which is the part that will not change.
+ *
+ * They deliberately do NOT come from `PRICE_LISTS` (PL-STD-2026 and friends)
+ * yet. Two lists of price lists is one too many, and picking which survives
+ * belongs with the pricing work, not here — see the backlog. Whatever wins,
+ * it has to line up with the four tiers in pricing.ts, where government sits
+ * ABOVE private by design.
+ */
+const PRICE_LIST_OPTIONS = [
+  "ราคาเอกชน",
+  "ราคาราชการ",
+  "ราคาสอบราคา",
+];
 /* Address types now come from the master list so the form, the detail page
    and the validator agree on which of them can carry a billing default. */
 const ADDRESS_TYPES = [...BP_ADDRESS_TYPES];
@@ -133,6 +149,19 @@ const isThai = (r: GridRow) => {
   const c = String(r.country ?? "").trim();
   return !c || c === "ประเทศไทย";
 };
+
+/**
+ * The form's half of the address rule, kept to the same three conditions as
+ * `bpValidate`: a row of a kind that qualifies, with a street on it, still
+ * switched on. A row typed and then deactivated is not an address the company
+ * can use, and counting it would let the save through on a partner nothing
+ * can be sent to.
+ */
+const hasUsableAddress = (s: FormState, kinds: string[]) =>
+  ((s.addresses ?? []) as GridRow[]).some(
+    (a) =>
+      String(a.l1 ?? "").trim() && kinds.includes(String(a.type)) && a.active !== false,
+  );
 
 export const BP_FORM: FormSchema<BpRow> = {
   key: "business-partner",
@@ -1177,14 +1206,19 @@ export const BP_FORM: FormSchema<BpRow> = {
       test: (s) => ((s.contacts ?? []) as GridRow[]).some((c) => String(c.first ?? "").trim()),
     },
     {
-      /* Billing must exist; delivery is explicitly optional per the spec. */
+      /* Both are required now — the spec used to make delivery optional. A
+         partner the company cannot send goods to is not ready to trade with,
+         and the address grid is the only place to say where. */
       path: "addresses",
       label: "ที่อยู่ออกบิลอย่างน้อย 1 แห่ง",
       step: "addresses",
-      test: (s) =>
-        ((s.addresses ?? []) as GridRow[]).some(
-          (a) => String(a.l1 ?? "").trim() && BILLING_ADDRESS_TYPES.includes(String(a.type)),
-        ),
+      test: (s) => hasUsableAddress(s, BILLING_ADDRESS_TYPES),
+    },
+    {
+      path: "addresses",
+      label: "ที่อยู่จัดส่งอย่างน้อย 1 แห่ง",
+      step: "addresses",
+      test: (s) => hasUsableAddress(s, DELIVERY_ADDRESS_TYPES),
     },
     { path: "billType", label: "Bill Type", step: "identity" },
     { path: "creditTerm", label: "Credit Term", step: "identity" },
@@ -1491,8 +1525,27 @@ export const BP_FORM: FormSchema<BpRow> = {
         if (dist && !districtsOf(prov).includes(dist)) {
           a.dist = "";
           a.sub = "";
+          a.zip = "";
         } else if (a.sub && !subdistrictsOf(prov, dist).includes(String(a.sub))) {
           a.sub = "";
+          a.zip = "";
+        }
+
+        /**
+         * The postal code follows the tambon, and only fills a blank.
+         *
+         * Filling it unconditionally would fight the user: this runs on every
+         * change to the grid, so a code typed by hand would snap back on the
+         * next keystroke in any other cell. Clearing it alongside the tambon
+         * above is what makes "only when blank" enough — change the tambon and
+         * the old code goes with it, then the new one lands.
+         *
+         * A code is per-tambon, never per-district: most Thai postal codes
+         * cover several tambon, so there is no honest answer higher up.
+         */
+        if (a.sub && !String(a.zip ?? "").trim()) {
+          const zip = postalCodeOf(prov, dist, String(a.sub));
+          if (zip) a.zip = zip;
         }
       }
 
