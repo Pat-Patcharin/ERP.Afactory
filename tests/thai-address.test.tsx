@@ -1,4 +1,7 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { MasterForm } from "@/components/engine/MasterForm";
 
 import { PROVINCES, BKK_DISTRICTS, THAI_PROVINCES, resolveSalesArea } from "@/data/sales-areas";
 import {
@@ -94,6 +97,53 @@ describe("each list is drawn from the one above it", () => {
     expect(postalCodeOf("เชียงใหม่", "เมืองเชียงใหม่", "สุเทพ")).toBe("50200");
     /* A district covers several codes, so there is no answer above tambon. */
     expect(postalCodeOf("เชียงใหม่", "เมืองเชียงใหม่", "")).toBe("");
+  });
+
+  /**
+   * Rendered, not called.
+   *
+   * Every other test here reaches `optionsFor` as a function, which proves the
+   * data is right and proves nothing about whether the form uses it. Two whole
+   * pieces sit between them — the schema has to declare `optionsFor`, and the
+   * grid cell has to prefer it over `options` — and a break in either shows up
+   * as a district dropdown that never fills, with every test still green.
+   *
+   * So this one picks a province in the actual form and looks at the actual
+   * <select>.
+   */
+  it("fills the district dropdown on screen once a province is picked", async () => {
+    const user = userEvent.setup();
+    render(<MasterForm schema={BP_FORM} />);
+
+    await user.click(screen.getByRole("button", { name: /เพิ่มที่อยู่/ }));
+
+    /* Grid cells caption themselves with a <span>, not a <label for>, so the
+       select is found through the caption it sits under. (That the engine
+       gives these no accessible name is a real gap — noted in the backlog.) */
+    const card = document.getElementById("form-business-partner-addresses")!;
+    const cell = (caption: string) => {
+      const span = within(card)
+        .getAllByText(caption)
+        .find((el) => el.tagName === "SPAN")!;
+      return within(span.parentElement!).getByRole("combobox") as HTMLSelectElement;
+    };
+
+    const province = cell("จังหวัด");
+    const district = cell("เขต/อำเภอ");
+    /* Nothing to offer until a province says which districts exist. */
+    expect(within(district).queryAllByRole("option").length).toBe(1);
+
+    await user.selectOptions(province, "ขอนแก่น");
+
+    const names = within(district)
+      .getAllByRole("option")
+      .map((o) => o.textContent);
+    expect(names).toContain("เมืองขอนแก่น");
+    expect(names).not.toContain("เมืองเชียงใหม่");
+
+    await user.selectOptions(district, "เมืองขอนแก่น");
+    const sub = cell("แขวง/ตำบล");
+    expect(within(sub).getAllByRole("option").map((o) => o.textContent)).toContain("ในเมือง");
   });
 
   it("offers the right lists per row, not one list for the column", () => {
