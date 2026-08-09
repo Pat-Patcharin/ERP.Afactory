@@ -1,3 +1,4 @@
+import type { SalesReturn } from "@/data/sales-returns";
 import {
   RTN_CONDITIONS,
   RTN_METHODS,
@@ -881,7 +882,7 @@ export const RTN_FORM: FormSchema<RtnRow> = {
         kind: "info",
       });
     } else {
-      SALES_RETURNS.unshift({
+      const fresh: SalesReturn = {
         code,
         rmaNo: "",
         ...patch,
@@ -925,7 +926,8 @@ export const RTN_FORM: FormSchema<RtnRow> = {
         audit: [
           { event: "Return created", user: FORM_USER(), when: now, field: "—", from: "—", to: "Draft", kind: "" },
         ],
-      } as unknown as RtnRow);
+      };
+      SALES_RETURNS.unshift(fresh as RtnRow);
     }
 
     decorateReturns();

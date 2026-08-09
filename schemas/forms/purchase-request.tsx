@@ -1,3 +1,4 @@
+import type { PurchaseRequest } from "@/data/purchase-requests";
 import { PR_DEPARTMENTS, PR_PRIORITY, PR_REQUESTERS } from "@/data/purchase-requests";
 import { OPT } from "@/data/options";
 import { PRODUCTS, productStock } from "@/lib/domain/product";
@@ -439,6 +440,14 @@ export const PR_FORM: FormSchema<PrRow> = {
       warehouse: String(s.warehouse ?? ""),
       supplier: String(s.supplier ?? ""),
       note: String(s.note ?? ""),
+      /* A1 made these three required on the record and taught the document
+         editor to write them. This form is the OTHER way a purchase request
+         gets created, and it kept building one without them — the double cast
+         below meant the compiler had nothing to say about it. Found by taking
+         the cast off, which is the whole point of A1c. */
+      headerDisc: num(s.headerDisc),
+      freight: num(s.freight),
+      otherCharges: num(s.otherCharges),
       items,
       updated: now,
       updatedBy: FORM_USER(),
@@ -447,14 +456,15 @@ export const PR_FORM: FormSchema<PrRow> = {
     if (existing) {
       Object.assign(existing, patch);
     } else {
-      PURCHASE_REQUESTS.unshift({
+      const fresh: PurchaseRequest = {
         code,
         ...patch,
         status: "Draft",
         approvals: [],
         created: now,
         createdBy: FORM_USER(),
-      } as unknown as PrRow);
+      };
+      PURCHASE_REQUESTS.unshift(fresh as PrRow);
     }
 
     decoratePRs();

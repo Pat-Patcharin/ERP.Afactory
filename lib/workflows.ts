@@ -1,3 +1,4 @@
+import type { PurchaseOrder } from "@/data/purchase-orders";
 import { actingUserName } from "./domain/admin";
 import { stamp } from "./format";
 import type { ActionCtx } from "./types";
@@ -97,7 +98,7 @@ export function prConvert(pr: PrRow, ctx: ActionCtx) {
     onConfirm: () => {
       const now = stamp();
       const poCode = nextPOCode();
-      PURCHASE_ORDERS.unshift({
+      const fresh: PurchaseOrder = {
         code: poCode,
         supplier: pr.supplier || "",
         warehouse: WAREHOUSES[0] ? `${WAREHOUSES[0].code} ${WAREHOUSES[0].name}` : "",
@@ -126,7 +127,8 @@ export function prConvert(pr: PrRow, ctx: ActionCtx) {
         createdBy: actingUserName(),
         updated: now,
         updatedBy: actingUserName(),
-      } as unknown as PoRow);
+      };
+      PURCHASE_ORDERS.unshift(fresh as PoRow);
       decoratePOs();
 
       pr.status = "Converted";

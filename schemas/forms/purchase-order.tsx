@@ -1,3 +1,4 @@
+import type { PurchaseOrder } from "@/data/purchase-orders";
 import { PO_BUYERS, PO_CURRENCIES, PO_INCOTERMS } from "@/data/purchase-orders";
 import { PAY_TERMS } from "@/data/partners";
 import { PRODUCTS, productStock } from "@/lib/domain/product";
@@ -428,14 +429,15 @@ export const PO_FORM: FormSchema<PoRow> = {
     if (existing) {
       Object.assign(existing, patch);
     } else {
-      PURCHASE_ORDERS.unshift({
+      const fresh: PurchaseOrder = {
         code,
         ...patch,
         status: "Draft",
         receipts: [],
         created: now,
         createdBy: FORM_USER(),
-      } as unknown as PoRow);
+      };
+      PURCHASE_ORDERS.unshift(fresh as PoRow);
     }
 
     decoratePOs();

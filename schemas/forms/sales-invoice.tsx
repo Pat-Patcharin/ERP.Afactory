@@ -11,6 +11,7 @@ import {
   INV_TAX_INVOICE_TYPES,
   INV_TAX_MODES,
 } from "@/data/sales-invoices";
+import type { SalesInvoice } from "@/data/sales-invoices";
 import { PO_CURRENCIES } from "@/data/purchase-orders";
 import { PRODUCTS } from "@/lib/domain/product";
 import {
@@ -1159,7 +1160,7 @@ export const INV_FORM: FormSchema<InvRow> = {
         kind: "info",
       });
     } else {
-      SALES_INVOICES.unshift({
+      const fresh: SalesInvoice = {
         code,
         ...patch,
         /* Always Draft — submitting and issuing are separate, deliberate steps. */
@@ -1199,7 +1200,8 @@ export const INV_FORM: FormSchema<InvRow> = {
             kind: "",
           },
         ],
-      } as unknown as InvRow);
+      };
+      SALES_INVOICES.unshift(fresh as InvRow);
     }
 
     decorateInvoices();

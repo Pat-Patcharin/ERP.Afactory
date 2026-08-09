@@ -1,3 +1,4 @@
+import type { Shipment } from "@/data/shipments";
 import {
   SHP_BOX_TYPES,
   SHP_CARRIERS,
@@ -1003,7 +1004,7 @@ export const SHP_FORM: FormSchema<ShpRow> = {
         kind: "info",
       });
     } else {
-      SHIPMENTS.unshift({
+      const fresh: Shipment = {
         code,
         ...patch,
         /* Always Draft — Mark Ready and Dispatch are separate, deliberate steps. */
@@ -1048,7 +1049,8 @@ export const SHP_FORM: FormSchema<ShpRow> = {
             kind: "",
           },
         ],
-      } as unknown as ShpRow);
+      };
+      SHIPMENTS.unshift(fresh as ShpRow);
     }
 
     /* Point the invoice at this shipment, so the tracking number has one home

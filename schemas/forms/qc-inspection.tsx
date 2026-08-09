@@ -1,3 +1,4 @@
+import type { QcInspection } from "@/data/qc";
 import {
   QC_DECISIONS,
   QC_FAIL_ACTIONS,
@@ -610,7 +611,7 @@ export const QC_FORM: FormSchema<QcRow> = {
         kind: failing ? "warn" : "primary",
       });
     } else {
-      QC_INSPECTIONS.unshift({
+      const fresh: QcInspection = {
         code,
         ...patch,
         claimRef: "",
@@ -626,7 +627,8 @@ export const QC_FORM: FormSchema<QcRow> = {
             kind: "primary",
           },
         ],
-      } as unknown as QcRow);
+      };
+      QC_INSPECTIONS.unshift(fresh as QcRow);
     }
 
     /* Route the outcome back to the receipt that raised this inspection. */

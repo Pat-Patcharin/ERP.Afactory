@@ -5,6 +5,7 @@ import {
   PICK_STAFF,
   PICK_STRATEGIES,
 } from "@/data/picking";
+import type { PickingTask } from "@/data/picking";
 import { paAllBins, paBinShort } from "@/lib/domain/inbound";
 import { productStock } from "@/lib/domain/product";
 import {
@@ -438,7 +439,7 @@ export const PICK_FORM: FormSchema<PickRow> = {
         kind: "primary",
       });
     } else {
-      PICKING_TASKS.unshift({
+      const fresh: PickingTask = {
         code,
         ...patch,
         packRef: "",
@@ -453,7 +454,8 @@ export const PICK_FORM: FormSchema<PickRow> = {
             kind: "primary",
           },
         ],
-      } as unknown as PickRow);
+      };
+      PICKING_TASKS.unshift(fresh as PickRow);
     }
 
     decoratePicks();

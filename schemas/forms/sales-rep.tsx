@@ -1,3 +1,4 @@
+import type { SalesRep } from "@/data/sales-reps";
 import {
   SR_CHANNELS,
   SR_CUST_GROUPS,
@@ -556,14 +557,15 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
     if (existing) {
       Object.assign(existing, patch);
     } else {
-      SALES_REPRESENTATIVES.push({
+      const fresh: SalesRep = {
         code,
         ...patch,
         custCount: 0,
         customers: [],
         created: now,
         createdBy: FORM_USER(),
-      } as unknown as SalesRepRow);
+      };
+      SALES_REPRESENTATIVES.push(fresh as SalesRepRow);
     }
 
     decorateSRs();

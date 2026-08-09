@@ -1,4 +1,5 @@
 import { SO_CHANNELS, SO_INCOTERMS, SO_PRIORITY } from "@/data/sales-orders";
+import type { SalesOrder } from "@/data/sales-orders";
 import { BILL_TYPES, PAY_TERMS } from "@/data/partners";
 import { PO_CURRENCIES } from "@/data/purchase-orders";
 import { PRODUCTS, productStock } from "@/lib/domain/product";
@@ -813,7 +814,7 @@ export const SO_FORM: FormSchema<SoRow> = {
         kind: "primary",
       });
     } else {
-      SALES_ORDERS.unshift({
+      const fresh: SalesOrder = {
         code,
         ...patch,
         /* A new order always lands as Draft — confirming it is a separate,
@@ -832,7 +833,8 @@ export const SO_FORM: FormSchema<SoRow> = {
             kind: "primary",
           },
         ],
-      } as unknown as SoRow);
+      };
+      SALES_ORDERS.unshift(fresh as SoRow);
 
       /* Close the loop on the quotation this order came from. */
       const sr = SALES_REQUESTS.find((x) => x.code === patch.srRef);

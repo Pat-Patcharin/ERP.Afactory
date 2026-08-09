@@ -1,3 +1,4 @@
+import type { Warehouse } from "@/data/warehouses";
 import {
   WH_CAP_UNIT,
   WH_COSTING,
@@ -33,6 +34,14 @@ interface TreeNodeState {
   name?: string;
   children?: TreeNodeState[];
 }
+
+/* The four storage levels, read off the record rather than retyped here so
+   they cannot drift from it. Zone → Rack → Shelf → Bin, and only the bin
+   carries capacity and the pick/putaway flags. */
+type Zone = Warehouse["locations"][number];
+type Rack = Zone["children"][number];
+type Shelf = Rack["children"][number];
+type Bin = Shelf["children"][number];
 
 /** Strip the tree back to what the field edits, so editing round-trips cleanly. */
 const toTree = (nodes: { code: string; name: string; children?: unknown }[]): TreeNodeState[] =>
@@ -474,26 +483,49 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
       existing ? flattenBins(existing).map((b) => [b.bin, b]) : [],
     );
 
-    const build = (nodes: TreeNodeState[], depth: number): unknown[] =>
-      nodes
-        .filter((n) => String(n.code ?? "").trim())
-        .map((n) => {
-          const base = { code: String(n.code).trim(), name: String(n.name ?? "") };
-          if (depth < 3) {
-            return { ...base, children: build(n.children ?? [], depth + 1) };
-          }
-          const prior = priorBins.get(base.code);
-          return {
-            ...base,
-            binType: prior?.binType ?? "Storage",
-            cap: prior?.cap ?? 100,
-            capUnit: prior?.capUnit ?? String(s.rules?.capUnit ?? "Qty"),
-            temp: prior?.temp ?? String(s.rules?.temp ?? "Ambient"),
-            pick: prior?.pick ?? true,
-            putaway: prior?.putaway ?? true,
-            status: prior?.status ?? "Active",
-          };
-        });
+    /* One function per level instead of one function that took a depth and
+       returned `unknown[]`.
+
+       The old shape was honest about being unprovable: a tree whose leaves are
+       a different shape from its branches cannot be typed by a single
+       recursive call, so it returned `unknown[]` and the double cast on the
+       write took care of the rest. Nothing checked that a bin came out with a
+       bin's fields on it. Four named levels cost a few lines and the compiler
+       can read every one of them. */
+    const named = (n: TreeNodeState) => ({
+      code: String(n.code).trim(),
+      name: String(n.name ?? ""),
+    });
+    const kids = (n: TreeNodeState) =>
+      (n.children ?? []).filter((c) => String(c.code ?? "").trim());
+    const live = (nodes: TreeNodeState[]) =>
+      nodes.filter((n) => String(n.code ?? "").trim());
+
+    const buildBin = (n: TreeNodeState): Bin => {
+      const prior = priorBins.get(String(n.code).trim());
+      return {
+        ...named(n),
+        binType: prior?.binType ?? "Storage",
+        cap: prior?.cap ?? 100,
+        capUnit: prior?.capUnit ?? String(s.rules?.capUnit ?? "Qty"),
+        temp: prior?.temp ?? String(s.rules?.temp ?? "Ambient"),
+        pick: prior?.pick ?? true,
+        putaway: prior?.putaway ?? true,
+        status: prior?.status ?? "Active",
+      };
+    };
+    const buildShelf = (n: TreeNodeState): Shelf => ({
+      ...named(n),
+      children: kids(n).map(buildBin),
+    });
+    const buildRack = (n: TreeNodeState): Rack => ({
+      ...named(n),
+      children: kids(n).map(buildShelf),
+    });
+    const buildZone = (n: TreeNodeState): Zone => ({
+      ...named(n),
+      children: kids(n).map(buildRack),
+    });
 
     const patch = {
       icon: String(s.icon ?? "🏭"),
@@ -512,7 +544,7 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
         maxCap: num(s.rules?.maxCap),
         curCap: num(s.rules?.curCap),
       },
-      locations: build((s.locations ?? []) as TreeNodeState[], 0),
+      locations: live((s.locations ?? []) as TreeNodeState[]).map(buildZone),
       updated: now,
       updatedBy: FORM_USER(),
     };
@@ -534,7 +566,7 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
         kind: "primary",
       });
     } else {
-      WAREHOUSES.push({
+      const fresh: Warehouse = {
         code,
         ...patch,
         inv: {
@@ -558,7 +590,8 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
             kind: "primary",
           },
         ],
-      } as unknown as WarehouseRow);
+      };
+      WAREHOUSES.push(fresh as WarehouseRow);
     }
 
     decorateWarehouses();

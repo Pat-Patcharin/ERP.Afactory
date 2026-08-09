@@ -1,3 +1,4 @@
+import type { CreditNote } from "@/data/credit-notes";
 import {
   CN_BRANCHES,
   CN_REASONS,
@@ -894,7 +895,7 @@ export const CN_FORM: FormSchema<CnRow> = {
         kind: "info",
       });
     } else {
-      CREDIT_NOTES.unshift({
+      const fresh: CreditNote = {
         code,
         ...patch,
         /* Always Draft — submitting and issuing are separate, deliberate steps
@@ -925,7 +926,8 @@ export const CN_FORM: FormSchema<CnRow> = {
         audit: [
           { event: "Credit note created", user: FORM_USER(), when: now, field: "—", from: "—", to: "Draft", kind: "" },
         ],
-      } as unknown as CnRow);
+      };
+      CREDIT_NOTES.unshift(fresh as CnRow);
     }
 
     decorateCreditNotes();

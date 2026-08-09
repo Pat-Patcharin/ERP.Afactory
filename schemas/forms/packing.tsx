@@ -4,6 +4,7 @@ import {
   PACK_PRIORITY,
   PACK_STAFF,
 } from "@/data/packing";
+import type { PackingTask } from "@/data/packing";
 import {
   PACKING_TASKS,
   decoratePacks,
@@ -450,7 +451,7 @@ export const PACK_FORM: FormSchema<PackRow> = {
         kind: "primary",
       });
     } else {
-      PACKING_TASKS.unshift({
+      const fresh: PackingTask = {
         code,
         ...patch,
         doRef: "",
@@ -465,7 +466,8 @@ export const PACK_FORM: FormSchema<PackRow> = {
             kind: "primary",
           },
         ],
-      } as unknown as PackRow);
+      };
+      PACKING_TASKS.unshift(fresh as PackRow);
 
       /* Close the loop on the pick this task came from. */
       const pick = getPick(patch.pickRef);

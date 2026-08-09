@@ -1,3 +1,4 @@
+import type { Product } from "@/data/products";
 import { OPT } from "@/data/options";
 import { PRODUCTS, decorateProducts, type ProductRow } from "@/lib/domain/product";
 import { WAREHOUSES } from "@/lib/domain/warehouse";
@@ -885,7 +886,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         kind: "primary",
       });
     } else {
-      PRODUCTS.push({
+      const fresh: Product = {
         code,
         ...patch,
         stock: patch.onHand,
@@ -902,7 +903,8 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
             kind: "primary",
           },
         ],
-      } as unknown as ProductRow);
+      };
+      PRODUCTS.push(fresh as ProductRow);
     }
 
     decorateProducts();

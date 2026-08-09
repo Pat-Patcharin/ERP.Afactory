@@ -1,3 +1,4 @@
+import type { PriceList } from "@/data/price-lists";
 import {
   PL_AREAS,
   PL_CHANNELS,
@@ -465,7 +466,7 @@ export const PRICE_LIST_FORM: FormSchema<PriceListRow> = {
         kind: "primary",
       });
     } else {
-      PRICE_LISTS.push({
+      const fresh: PriceList = {
         code,
         ...patch,
         productsCount: 0,
@@ -480,7 +481,8 @@ export const PRICE_LIST_FORM: FormSchema<PriceListRow> = {
             kind: "primary",
           },
         ],
-      } as unknown as PriceListRow);
+      };
+      PRICE_LISTS.push(fresh as PriceListRow);
     }
 
     decoratePLs();

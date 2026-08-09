@@ -16,6 +16,10 @@ import {
 import { fmt, money0, stamp } from "./format";
 import { cn } from "./utils";
 import type { ActionCtx } from "./types";
+import type { SalesOrder } from "@/data/sales-orders";
+import type { PickingTask } from "@/data/picking";
+import type { PackingTask } from "@/data/packing";
+import type { DeliveryOrder } from "@/data/delivery-orders";
 import {
   DELIVERY_ORDERS,
   PACKING_TASKS,
@@ -979,7 +983,7 @@ function createSalesOrderFrom(
   if (blocked) throw new Error(blocked);
   const soCode = nextSOCode();
 
-  SALES_ORDERS.unshift({
+  const fresh: SalesOrder = {
     code: soCode,
     customer: draft.customer,
     customerCode: draft.customerCode,
@@ -1051,7 +1055,8 @@ function createSalesOrderFrom(
     createdBy: USER(),
     updated: now,
     updatedBy: USER(),
-  } as unknown as SoRow);
+  };
+  SALES_ORDERS.unshift(fresh as SoRow);
 
   return soCode;
 }
@@ -1547,7 +1552,7 @@ export function soCreatePick(so: SoRow, ctx: ActionCtx) {
       const now = stamp();
       const code = nextPickCode();
 
-      PICKING_TASKS.unshift({
+      const fresh: PickingTask = {
         code,
         soRef: so.code,
         customer: so.customer,
@@ -1592,7 +1597,8 @@ export function soCreatePick(so: SoRow, ctx: ActionCtx) {
         createdBy: USER(),
         updated: now,
         updatedBy: USER(),
-      } as unknown as PickRow);
+      };
+      PICKING_TASKS.unshift(fresh as PickRow);
 
       so.status = "Picking";
       so.updated = now;
@@ -1904,7 +1910,7 @@ export function pickCreatePack(task: PickRow, ctx: ActionCtx) {
       const now = stamp();
       const code = nextPackCode();
 
-      PACKING_TASKS.unshift({
+      const fresh: PackingTask = {
         code,
         pickRef: task.code,
         soRef: task.soRef,
@@ -1946,7 +1952,8 @@ export function pickCreatePack(task: PickRow, ctx: ActionCtx) {
         createdBy: USER(),
         updated: now,
         updatedBy: USER(),
-      } as unknown as PackRow);
+      };
+      PACKING_TASKS.unshift(fresh as PackRow);
 
       task.packRef = code;
       task.updated = now;
@@ -2298,7 +2305,7 @@ export function packCreateDelivery(task: PackRow, ctx: ActionCtx) {
       const code = nextDOCode();
       const so = getSO(task.soRef);
 
-      DELIVERY_ORDERS.unshift({
+      const fresh: DeliveryOrder = {
         code,
         soRef: task.soRef,
         packRef: task.code,
@@ -2371,7 +2378,8 @@ export function packCreateDelivery(task: PackRow, ctx: ActionCtx) {
         createdBy: USER(),
         updated: now,
         updatedBy: USER(),
-      } as unknown as DoRow);
+      };
+      DELIVERY_ORDERS.unshift(fresh as DoRow);
 
       task.doRef = code;
       task.updated = now;

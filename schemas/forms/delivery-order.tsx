@@ -6,6 +6,7 @@ import {
   DO_SERVICES,
   DO_TIME_SLOTS,
 } from "@/data/delivery-orders";
+import type { DeliveryOrder } from "@/data/delivery-orders";
 import {
   DELIVERY_ORDERS,
   decorateDOs,
@@ -523,7 +524,7 @@ export const DO_FORM: FormSchema<DoRow> = {
         kind: "primary",
       });
     } else {
-      DELIVERY_ORDERS.unshift({
+      const fresh: DeliveryOrder = {
         code,
         ...patch,
         /* Shipping is a deliberate workflow step, never a side effect of saving. */
@@ -541,7 +542,8 @@ export const DO_FORM: FormSchema<DoRow> = {
             kind: "primary",
           },
         ],
-      } as unknown as DoRow);
+      };
+      DELIVERY_ORDERS.unshift(fresh as DoRow);
 
       const pack = getPack(patch.packRef);
       if (pack && !pack.doRef) pack.doRef = code;

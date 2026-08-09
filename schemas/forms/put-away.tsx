@@ -1,3 +1,4 @@
+import type { PutAwayTask } from "@/data/putaway";
 import { PA_PRIORITY, PA_STAFF } from "@/data/putaway";
 import { WAREHOUSES } from "@/lib/domain/warehouse";
 import {
@@ -382,7 +383,7 @@ export const PA_FORM: FormSchema<PaRow> = {
         kind: "primary",
       });
     } else {
-      PUTAWAY_TASKS.unshift({
+      const fresh: PutAwayTask = {
         code,
         ...patch,
         created: now,
@@ -396,7 +397,8 @@ export const PA_FORM: FormSchema<PaRow> = {
             kind: "primary",
           },
         ],
-      } as unknown as PaRow);
+      };
+      PUTAWAY_TASKS.unshift(fresh as PaRow);
     }
 
     /* The receipt is not finished until its goods have somewhere to live. */

@@ -1,3 +1,4 @@
+import type { GoodsReceipt } from "@/data/goods-receipts";
 import {
   GR_DISCREPANCY,
   GR_NONPO_REASONS,
@@ -668,7 +669,7 @@ export const GR_FORM: FormSchema<GrRow> = {
         kind: "primary",
       });
     } else {
-      GOODS_RECEIPTS.unshift({
+      const fresh: GoodsReceipt = {
         code,
         ...patch,
         created: now,
@@ -682,7 +683,8 @@ export const GR_FORM: FormSchema<GrRow> = {
             kind: "primary",
           },
         ],
-      } as unknown as GrRow);
+      };
+      GOODS_RECEIPTS.unshift(fresh as GrRow);
     }
 
     /* Hand the received quantities back to the purchase order. */
