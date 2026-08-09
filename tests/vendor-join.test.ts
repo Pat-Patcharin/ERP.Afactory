@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -203,5 +205,129 @@ describe("the buying terms have one home", () => {
     expect(leadingNumber("")).toBe(0);
     expect(leadingNumber("—")).toBe(0);
     expect(leadingNumber(undefined)).toBe(0);
+  });
+});
+
+/* ============================================================
+   THE SUP-xxxx NAMESPACE IS GONE
+
+   Suppliers were named three ways: a free-text name on the
+   product, `SUP-0012` on `sup` and `altSuppliers`, and
+   `BP0xxxxx` on the partner master. None joined to the others.
+
+   One survives. `sup.code` and every alternative source carry a
+   partner code, which means every one of them opens the record
+   it is talking about.
+   ============================================================ */
+
+describe("a supplier is identified one way", () => {
+  it("never shows a SUP-xxxx code anywhere", () => {
+    const stale: string[] = [];
+    for (const p of PRODUCTS) {
+      const rec = p as unknown as {
+        sup?: { code?: string };
+        altSuppliers?: { code?: string }[];
+      };
+      if (String(rec.sup?.code ?? "").startsWith("SUP-")) stale.push(`${p.code} sup`);
+      for (const a of rec.altSuppliers ?? []) {
+        if (String(a.code ?? "").startsWith("SUP-")) stale.push(`${p.code} alt`);
+      }
+    }
+    expect(stale, `still on the old namespace:\n${stale.join("\n")}`).toEqual([]);
+  });
+
+  it("has no SUP-xxxx left in the source either", () => {
+    /*
+       The assertion above checks what is SHOWN, and passes even with a stale
+       code in the seed — `syncProductSupplyView` overwrites it before anyone
+       sees it. That is the design working, and it is also why that test
+       alone cannot tell you the namespace is gone.
+
+       This reads the file. A dead identifier sitting in source is a third
+       way of naming a supplier for whoever opens it next, whether or not it
+       ever reaches a screen.
+    */
+    const src = readFileSync(join("data", "products.ts"), "utf8");
+    const hits = src
+      .split("\n")
+      .map((line, i) => ({ line: line.trim(), no: i + 1 }))
+      .filter(({ line }) => /SUP-\d/.test(line));
+
+    expect(
+      hits,
+      `the SUP-xxxx namespace is retired — partner codes identify a supplier now:\n${hits
+        .map((h) => `  data/products.ts:${h.no}  ${h.line}`)
+        .join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("points every alternative source at a partner that exists", () => {
+    const codes = new Set(BUSINESS_PARTNERS.map((b) => b.code));
+    let checked = 0;
+    for (const p of PRODUCTS) {
+      const alts = (p as unknown as { altSuppliers?: { code: string }[] }).altSuppliers ?? [];
+      for (const a of alts) {
+        expect(codes.has(a.code), `${p.code} → ${a.code}`).toBe(true);
+        checked++;
+      }
+    }
+    /* Guards the guard: a product master with no alternatives listed would
+       satisfy the loop above without proving anything. */
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("migrated the companies the old alternatives list named", () => {
+    /*
+       Named explicitly, and that is the point. The looser assertions below
+       passed with the migration switched off, because a hand-seeded row on
+       another partner already made AA-TH003-WL look like it had a second
+       source. Green for a reason that had nothing to do with the code under
+       test — so this one names the two companies the product's old
+       `altSuppliers` list actually held and insists they are there.
+    */
+    for (const name of ["HDX WILL", "Andaman Medical"]) {
+      const bp = vendorPartner(name);
+      expect(bp, `${name} has no partner`).not.toBeNull();
+      const row = (bp!.supplierItems ?? []).find((i) => i.product === "AA-TH003-WL");
+      expect(row, `${name} holds no row for AA-TH003-WL`).toBeTruthy();
+      /* Carrying the terms it was listed with, not a copy of the default's. */
+      expect(row!.lead).toBeGreaterThan(0);
+      expect(row!.price).toBeGreaterThan(0);
+      expect(row!.preferred, `${name} must not claim to be the default`).toBe(false);
+    }
+  });
+
+  it("gives a second source a row of its own rather than a figure on the product", () => {
+    /* AA-TH003-WL is bought from more than one company. Each gets a row, so
+       each keeps its own price and lead time — which a single figure on the
+       product could only ever get right for one of them. */
+    const holders = BUSINESS_PARTNERS.filter((b) =>
+      (b.supplierItems ?? []).some((i) => i.product === "AA-TH003-WL"),
+    );
+    expect(holders.length).toBeGreaterThan(1);
+
+    const prices = holders.map(
+      (b) => (b.supplierItems ?? []).find((i) => i.product === "AA-TH003-WL")!.price,
+    );
+    expect(new Set(prices).size, "sources that all quote the same price prove nothing").toBeGreaterThan(1);
+  });
+
+  it("lets exactly one supplier per product be the preferred one", () => {
+    /* The same invariant the billing address holds. Five places read this
+       flag, including a Preferred badge — two rows claiming it at once is
+       the word meaning nothing. */
+    const counts = new Map<string, number>();
+    for (const b of BUSINESS_PARTNERS) {
+      for (const i of b.supplierItems ?? []) {
+        if (i.preferred) counts.set(i.product, (counts.get(i.product) ?? 0) + 1);
+      }
+    }
+    const doubled = [...counts.entries()].filter(([, n]) => n > 1);
+    expect(doubled, `products with two preferred suppliers: ${JSON.stringify(doubled)}`).toEqual([]);
+
+    /* And the one that wins is the one the product master names. */
+    const terms = supplyTermsFor("AA-TH003-WL")!;
+    expect(terms.row.preferred).toBe(true);
+    expect(terms.partner.code).toBe(vendorPartner(getProduct("AA-TH003-WL")!.supplier)!.code);
   });
 });

@@ -595,9 +595,93 @@ function mergeSupplierItems() {
       held.add(p.code);
     }
   }
+
+  /*
+     Second sources, onto the partner that offers them.
+
+     `product.altSuppliers` was the other half of the old arrangement: a list
+     on the product, naming companies by name and carrying the `SUP-xxxx`
+     code that joined to nothing. Every one of those names resolves to a
+     partner now, so the rows belong beside the default supplier's row —
+     same shape, same place, `preferred: false` to say which is which.
+
+     This is what makes (partner × product) the right grain rather than a
+     claim about it: AA-TH003-WL is bought from three companies at three
+     prices with three lead times, and there is now one row per company
+     instead of one figure on the product that has to be wrong for two.
+  */
+  for (const p of PRODUCTS) {
+    const alts = (p as unknown as { altSuppliers?: { name: string; lead: string; price: string }[] })
+      .altSuppliers;
+    if (!alts?.length) continue;
+
+    for (const alt of alts) {
+      const owner = vendorPartner(alt.name);
+      if (!owner) continue;
+      owner.supplierItems ??= [];
+      if (owner.supplierItems.some((i) => i.product === p.code)) continue;
+
+      owner.supplierItems.push({
+        product: p.code,
+        productName: p.name,
+        sku: "",
+        supName: p.name,
+        punit: p.unit,
+        /* The alt list never recorded a minimum. 0 is "not stated", which is
+           the truth, rather than borrowing the default supplier's figure. */
+        moq: 0,
+        lead: leadingNumber(alt.lead),
+        currency: p.pricing?.currency || "THB",
+        price: leadingNumber(alt.price),
+        preferred: false,
+        status: "Active",
+        effective: p.pricing?.effective ?? "",
+        expiry: "",
+      });
+    }
+  }
 }
 
 mergeSupplierItems();
+
+/**
+ * Exactly one preferred supplier per product.
+ *
+ * The same invariant `reconcileAddressDefaults` holds for billing addresses,
+ * and for the same reason: "preferred" cannot be true of two rows at once
+ * without the word meaning nothing. Five places read this flag, including a
+ * Preferred badge on the screen and `supplyTermsFor`'s own fallback, and
+ * three products ended up claiming two — a hand-written row on one partner
+ * and a generated row on the vendor the master names.
+ *
+ * The named supplier wins, because that is the answer everything else
+ * already gives. This does clear a flag on a hand-written row, which is not
+ * the same as overwriting one: the row keeps its price, its lead time and
+ * its minimum, and only stops claiming to be the default that another row
+ * is also claiming.
+ */
+function reconcileSupplierPreference() {
+  const byProduct = new Map<string, { bp: BpRow; row: BpSupplierItem }[]>();
+  for (const bp of BUSINESS_PARTNERS) {
+    for (const row of bp.supplierItems ?? []) {
+      const list = byProduct.get(row.product) ?? [];
+      list.push({ bp, row });
+      byProduct.set(row.product, list);
+    }
+  }
+
+  for (const [productCode, rows] of byProduct) {
+    if (rows.length < 2) continue;
+    const product = PRODUCTS.find((p) => p.code === productCode);
+    const named = product ? vendorPartner(product.supplier)?.code : undefined;
+
+    const winner =
+      rows.find((r) => r.bp.code === named) ?? rows.find((r) => r.row.preferred) ?? rows[0];
+    for (const r of rows) r.row.preferred = r === winner;
+  }
+}
+
+reconcileSupplierPreference();
 
 /**
  * Render the agreed terms back onto `product.sup`, so the Product master
@@ -627,6 +711,46 @@ function syncProductSupplyView() {
     sup.moq = row.moq > 0 ? `${row.moq} ${row.punit || p.unit}`.trim() : DASH;
     sup.lead = row.lead > 0 ? `${row.lead} วัน` : DASH;
     sup.lastPrice = row.price > 0 ? `${row.price.toFixed(2)} ${row.currency}` : DASH;
+
+    /*
+       The second sources, rendered from the same rows — so the alternatives
+       list cannot disagree with the partners it names either. It carried a
+       `SUP-xxxx` code that joined to nothing; it carries the partner code
+       now, which opens the record it is talking about.
+
+       `detail.altSupRows` is rebuilt alongside it: `decorateProducts` built
+       that from the old list before this module had loaded, and leaving it
+       would put a stale table under a fresh summary. It also gains a real
+       MOQ, which the old row could only ever show as a dash.
+    */
+    const others: { partner: BpRow; row: BpSupplierItem }[] = [];
+    for (const bp of BUSINESS_PARTNERS) {
+      if (bp.code === partner.code) continue;
+      const r = (bp.supplierItems ?? []).find((i) => i.product === p.code);
+      if (r) others.push({ partner: bp, row: r });
+    }
+
+    const prod = p as unknown as {
+      altSuppliers: { name: string; code: string; lead: string; price: string }[];
+      detail?: { altSupRows: unknown[] };
+    };
+    prod.altSuppliers = others.map(({ partner: bp, row: r }) => ({
+      name: bp.nameTh || bp.nameEn,
+      code: bp.code,
+      lead: r.lead > 0 ? `${r.lead} วัน` : DASH,
+      price: r.price.toFixed(2),
+    }));
+    if (prod.detail) {
+      prod.detail.altSupRows = others.map(({ partner: bp, row: r }) => ({
+        name: bp.nameTh || bp.nameEn,
+        code: bp.code,
+        punit: r.punit || p.unit,
+        moq: r.moq > 0 ? String(r.moq) : DASH,
+        lead: r.lead > 0 ? `${r.lead} วัน` : DASH,
+        price: r.price,
+        status: r.status,
+      }));
+    }
   }
 }
 

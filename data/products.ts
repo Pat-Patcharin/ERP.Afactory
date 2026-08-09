@@ -301,7 +301,7 @@ export const PRODUCTS: Product[] = [
       },
     ],
     sup: {
-      code: "SUP-0012",
+      code: "",
       itemCode: "AFX-PU40-WH",
       lead: "21 วัน",
       moq: "240 Tube",
@@ -313,13 +313,13 @@ export const PRODUCTS: Product[] = [
     altSuppliers: [
       {
         name: "HDX WILL Co., Ltd.",
-        code: "SUP-0031",
+        code: "",
         lead: "35 วัน",
         price: "71.00",
       },
       {
         name: "Andaman Medical",
-        code: "SUP-0044",
+        code: "",
         lead: "28 วัน",
         price: "73.20",
       },
@@ -438,7 +438,7 @@ export const PRODUCTS: Product[] = [
       },
     ],
     sup: {
-      code: "SUP-0012",
+      code: "",
       itemCode: "AFX-PU40-GR",
       lead: "21 วัน",
       moq: "240 Tube",
@@ -450,7 +450,7 @@ export const PRODUCTS: Product[] = [
     altSuppliers: [
       {
         name: "HDX WILL Co., Ltd.",
-        code: "SUP-0031",
+        code: "",
         lead: "35 วัน",
         price: "71.00",
       },
@@ -536,7 +536,7 @@ export const PRODUCTS: Product[] = [
       },
     ],
     sup: {
-      code: "SUP-0012",
+      code: "",
       itemCode: "AFX-PU50-BK",
       lead: "21 วัน",
       moq: "120 Tube",
@@ -623,7 +623,7 @@ export const PRODUCTS: Product[] = [
       },
     ],
     sup: {
-      code: "SUP-0031",
+      code: "",
       itemCode: "HDX-AC100-W",
       lead: "35 วัน",
       moq: "200 Tube",
@@ -635,7 +635,7 @@ export const PRODUCTS: Product[] = [
     altSuppliers: [
       {
         name: "Andaman Medical",
-        code: "SUP-0044",
+        code: "",
         lead: "28 วัน",
         price: "56.80",
       },
@@ -728,7 +728,7 @@ export const PRODUCTS: Product[] = [
       },
     ],
     sup: {
-      code: "SUP-0044",
+      code: "",
       itemCode: "AND-SL300-CL",
       lead: "28 วัน",
       moq: "50 Tube",
@@ -825,7 +825,7 @@ export const PRODUCTS: Product[] = [
       },
     ],
     sup: {
-      code: "SUP-0012",
+      code: "",
       itemCode: "AF-GLV-LTX-M",
       lead: "14 วัน",
       moq: "100 Box",
@@ -837,7 +837,7 @@ export const PRODUCTS: Product[] = [
     altSuppliers: [
       {
         name: "HDX WILL Co., Ltd.",
-        code: "SUP-0031",
+        code: "",
         lead: "30 วัน",
         price: "152.00",
       },
@@ -923,7 +923,7 @@ export const PRODUCTS: Product[] = [
       },
     ],
     sup: {
-      code: "SUP-0012",
+      code: "",
       itemCode: "AF-MSK-3P",
       lead: "14 วัน",
       moq: "200 Box",
@@ -1015,7 +1015,7 @@ export const PRODUCTS: Product[] = [
       },
     ],
     sup: {
-      code: "SUP-0058",
+      code: "",
       itemCode: "DGS-BRD12",
       lead: "45 วัน",
       moq: "50 Set",
@@ -1027,7 +1027,7 @@ export const PRODUCTS: Product[] = [
     altSuppliers: [
       {
         name: "Andaman Medical",
-        code: "SUP-0044",
+        code: "",
         lead: "40 วัน",
         price: "528.00",
       },
@@ -1240,7 +1240,7 @@ export const DETAIL: ProductDetailMap = {
     altSupRows: [
       {
         name: "HDX WILL Co., Ltd.",
-        code: "SUP-0031",
+        code: "",
         punit: "Carton (24)",
         moq: "240 Tube",
         lead: "35 วัน",
@@ -1249,7 +1249,7 @@ export const DETAIL: ProductDetailMap = {
       },
       {
         name: "Andaman Medical",
-        code: "SUP-0044",
+        code: "",
         punit: "Box (10)",
         moq: "100 Tube",
         lead: "28 วัน",
