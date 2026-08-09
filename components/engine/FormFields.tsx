@@ -760,7 +760,7 @@ function GridCell({
       return (
         <CellSelect value={String(v ?? "")} onChange={(e) => put(e.target.value)}>
           <option value="">{c.placeholder ?? "—"}</option>
-          {(c.options ?? []).map((o) => (
+          {(c.optionsFor?.(row) ?? c.options ?? []).map((o) => (
             <option key={o} value={o}>
               {o}
             </option>

@@ -531,6 +531,16 @@ export interface GridCol {
     | "lookup"
     | "seg";
   options?: string[];
+  /**
+   * Options that depend on the row — a district list belongs to the province
+   * picked on that row and nowhere else.
+   *
+   * `options` cannot express this: it is one list for the whole column, so a
+   * cascade had to be faked with one conditional column per parent value.
+   * That worked for Bangkok's fifty districts and stops working at seventy-
+   * seven provinces. Takes precedence over `options` when both are given.
+   */
+  optionsFor?: (row: GridRow) => string[];
   /** Segmented control choices. */
   segOptions?: { val: string; label: string; tone?: "ok" | "danger" | "neutral" }[];
   align?: "right";

@@ -22,7 +22,8 @@ import {
   SUPPLIER_STATUSES,
   SUPPLIER_TYPES,
 } from "@/data/partners";
-import { BANGKOK, BKK_DISTRICTS, SALES_AREA_NAMES } from "@/data/sales-areas";
+import { SALES_AREA_NAMES } from "@/data/sales-areas";
+import { districtsOf, subdistrictsOf } from "@/lib/domain/thai-address";
 import { can } from "@/lib/domain/admin";
 import { PRODUCTS } from "@/lib/domain/product";
 import { PO_CURRENCIES, PO_INCOTERMS } from "@/data/purchase-orders";
@@ -572,33 +573,27 @@ export const BP_FORM: FormSchema<BpRow> = {
                for them is offering the wrong list. */
             { key: "country", label: "ประเทศ", type: "select", options: opts(COUNTRIES), required: true },
 
-            /* ---- Thailand ---- */
+            /* ---- Thailand: จังหวัด › อำเภอ › ตำบล, each list drawn from
+                   the one above it. See lib/domain/thai-address.ts. ---- */
             { key: "prov", label: "จังหวัด", type: "select", options: opts(PROVINCES), when: isThai },
-            /**
-             * District as a dropdown wherever a real list exists, which today
-             * is Bangkok and only Bangkok.
-             *
-             * The 50 เขต come from the sales area master, where they are load-
-             * bearing: all four BKK areas share the province, so the district
-             * is what resolves an address to an area. The other 76 provinces
-             * have no amphoe list in this repo and no tambon list exists at
-             * all, so those stay free text rather than becoming a dropdown
-             * with nothing in it. See the note in the backlog.
-             */
             {
               key: "dist",
-              label: "เขต",
+              /* Bangkok has เขต; everywhere else has อำเภอ. Same field, and
+                 the label is the only place the difference shows. */
+              label: "เขต/อำเภอ",
               type: "select",
-              options: opts(BKK_DISTRICTS),
-              when: (r) => isThai(r) && String(r.prov ?? "") === BANGKOK,
+              optionsFor: (r) => districtsOf(String(r.prov ?? "")),
+              placeholder: "— เลือกจังหวัดก่อน —",
+              when: isThai,
             },
             {
-              key: "dist",
-              label: "อำเภอ",
-              type: "text",
-              when: (r) => isThai(r) && String(r.prov ?? "") !== BANGKOK,
+              key: "sub",
+              label: "แขวง/ตำบล",
+              type: "select",
+              optionsFor: (r) => subdistrictsOf(String(r.prov ?? ""), String(r.dist ?? "")),
+              placeholder: "— เลือกอำเภอก่อน —",
+              when: isThai,
             },
-            { key: "sub", label: "ตำบล/แขวง", type: "text", when: isThai },
 
             /* ---- Anywhere else ---- */
             { key: "prov", label: "State / Province", type: "text", when: (r) => !isThai(r) },
@@ -1477,6 +1472,30 @@ export const BP_FORM: FormSchema<BpRow> = {
     if (path === "banks") first(rows, "def");
     if (path === "images") first(rows, "cover");
     if (path === "addresses") {
+      /**
+       * A district belongs to the province above it and a subdistrict to the
+       * district above that, so changing a parent invalidates the children.
+       *
+       * Cleared rather than left standing: the select would show a blank for
+       * a value that is no longer in its list, which looks like nothing was
+       * ever filled in — while the record still carries กรุงเทพมหานคร with a
+       * tambon from Chiang Mai. Wrong and invisible beats empty and obvious
+       * only if nobody has to ship anything there.
+       */
+      for (const a of rows) {
+        /* Thailand only. The same three fields are free text abroad, and
+           checking a Hanoi address against the Thai list would empty it. */
+        if (!isThai(a)) continue;
+        const prov = String(a.prov ?? "");
+        const dist = String(a.dist ?? "");
+        if (dist && !districtsOf(prov).includes(dist)) {
+          a.dist = "";
+          a.sub = "";
+        } else if (a.sub && !subdistrictsOf(prov, dist).includes(String(a.sub))) {
+          a.sub = "";
+        }
+      }
+
       first(rows, "primary");
       first(rows, "billingPrimary", (a) => BILLING_ADDRESS_TYPES.includes(String(a.type)));
       if (rows.some((a) => DELIVERY_ADDRESS_TYPES.includes(String(a.type)))) {
