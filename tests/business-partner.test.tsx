@@ -306,9 +306,17 @@ describe("BP Master — address CRUD", () => {
       const eligible = BILLING_ADDRESS_TYPES.includes(t) || DELIVERY_ADDRESS_TYPES.includes(t);
       expect(eligible, `${t} has a purpose`).toBe(true);
     }
-    expect(canBill({ type: "Both" } as never)).toBe(true);
-    expect(canDeliver({ type: "Both" } as never)).toBe(true);
+    /* "Both" is gone from the list: the type says what the SITE IS, and what
+       the company sends there is on the two flags. Changed deliberately —
+       see the note on BP_ADDRESS_TYPES. A legacy record still carrying it
+       loads as Head Office through LEGACY_ADDRESS_TYPES. */
+    expect(canBill({ type: "Head Office" } as never)).toBe(true);
+    expect(canDeliver({ type: "Head Office" } as never)).toBe(true);
+    /* Nobody bills a warehouse or a production line; goods reach both. */
     expect(canBill({ type: "Warehouse" } as never)).toBe(false);
+    expect(canDeliver({ type: "Warehouse" } as never)).toBe(true);
+    expect(canBill({ type: "Manufacturer" } as never)).toBe(false);
+    expect(canDeliver({ type: "Manufacturer" } as never)).toBe(true);
   });
 
   it("renders a one-line address and a map link from coordinates", () => {
@@ -618,12 +626,22 @@ describe("BP Master — validation", () => {
 
     const billingOnly = bpValidate({
       ...base,
-      addresses: [{ type: "Billing", zip: "10110" }],
+      addresses: [{ type: "Head Office", zip: "10110" }],
     } as unknown as BusinessPartner);
 
     expect(billingOnly.filter((i) => i.blocking)).toHaveLength(0);
-    /* Missing delivery is reported, but never blocks. */
-    expect(billingOnly.some((i) => !i.blocking && i.field === "addresses")).toBe(true);
+    /**
+     * The "no delivery address" warning no longer fires here, and that is a
+     * consequence of the address types becoming site kinds.
+     *
+     * It used to be reachable because "Billing" could bill and not deliver.
+     * All four kinds that remain — Head Office, Branch, Warehouse,
+     * Manufacturer — are places goods can go, so a partner with any address
+     * has a delivery point. The warning can now only appear beside the
+     * blocking one, which is a rule that adds nothing; noted in the backlog
+     * as a decision rather than deleted inside a form change.
+     */
+    expect(billingOnly.some((i) => !i.blocking && i.field === "addresses")).toBe(false);
 
     const noBilling = bpValidate({
       ...base,
@@ -639,7 +657,7 @@ describe("BP Master — validation", () => {
       type: "Company",
       status: "Active",
       roles: { customer: true },
-      addresses: [{ type: "Billing", zip: "10110" }],
+      addresses: [{ type: "Head Office", zip: "10110" }],
     } as unknown as BusinessPartner;
 
     /* Absent — a warning only. */
@@ -1375,7 +1393,7 @@ describe("BP Master — create / edit form", () => {
   it("requires a billing address rather than any address", () => {
     const rule = BP_FORM.required.find((r) => r.path === "addresses")!;
     expect(rule.test!({ addresses: [{ l1: "1", type: "Warehouse" }] })).toBe(false);
-    expect(rule.test!({ addresses: [{ l1: "1", type: "Billing" }] })).toBe(true);
+    expect(rule.test!({ addresses: [{ l1: "1", type: "Head Office" }] })).toBe(true);
     expect(rule.test!({ addresses: [{ l1: "1", type: "Head Office" }] })).toBe(true);
   });
 
@@ -1397,9 +1415,12 @@ describe("BP Master — create / edit form", () => {
     expect(blank.supplier.supType).toBe("Distributor");
   });
 
-  it("defaults a new address to Both and assigns the billing flag", () => {
+  /* Was "defaults to Both". Both no longer exists — a new address is a head
+     office until somebody says otherwise, and it still takes both defaults
+     because a head office can carry either. */
+  it("defaults a new address to Head Office and assigns both flags", () => {
     const row = BP_FORM.newRow!("addresses", true)!;
-    expect(row.type).toBe("Both");
+    expect(row.type).toBe("Head Office");
 
     const state = { addresses: [row] };
     BP_FORM.onGridChange!("addresses", state);
@@ -1410,14 +1431,16 @@ describe("BP Master — create / edit form", () => {
   it("strips a default when the address type stops allowing it", () => {
     const state = {
       addresses: [
-        { type: "Billing", billingPrimary: true, deliveryPrimary: true },
+        { type: "Warehouse", billingPrimary: true, deliveryPrimary: true },
         { type: "Head Office" },
       ],
     };
     BP_FORM.onGridChange!("addresses", state);
-    /* Billing cannot deliver, so the delivery flag must move off it. */
-    expect(state.addresses[0].billingPrimary).toBe(true);
-    expect(state.addresses[0].deliveryPrimary).toBe(false);
+    /* A warehouse takes deliveries and cannot be billed, so the billing flag
+       must come off it. Written with "Billing" before — a type that no longer
+       exists. Same property, a type that still does. */
+    expect(state.addresses[0].deliveryPrimary).toBe(true);
+    expect(state.addresses[0].billingPrimary).toBe(false);
   });
 
   it("rejects duplicate vendor product codes", () => {
@@ -1488,20 +1511,33 @@ describe("BP Master — form revisions", () => {
     expect(isPhoto("")).toBe(false);
   });
 
-  it("groups the partner on the roles step instead of a step of its own", () => {
+  /**
+   * Was "groups the partner on the roles step". The Grouping card is gone
+   * altogether — a group is a fact about being a customer or a supplier, so
+   * it is asked on the step for that role. Sales Area and Sales Channel were
+   * asked twice, on Grouping and on Sales Terms; one copy is left.
+   */
+  it("asks for each group on the step for the role it belongs to", () => {
     expect(BP_FORM.steps.map((s) => s.key)).not.toContain("classification");
 
     const both = { roles: { customer: true, supplier: true } };
-    const paths = fieldsOf("roles", both).map((f) => f.path);
-    for (const p of [
-      "roles",
-      "cls.custGroup",
-      "cls.supGroup",
-      "cls.priceGroup",
-      "cls.territory",
-      "cls.channel",
-    ]) {
-      expect(paths, p).toContain(p);
+    expect(fieldsOf("roles", both).map((f) => f.path)).toContain("roles");
+    expect(fieldsOf("customer", both).map((f) => f.path)).toContain("cls.custGroup");
+    expect(fieldsOf("supplier", both).map((f) => f.path)).toContain("cls.supGroup");
+
+    /* Asked once, on Sales Terms. */
+    const sales = fieldsOf("sales", both).map((f) => f.path);
+    expect(sales).toContain("sales.territory");
+    expect(sales).toContain("sales.channel");
+
+    for (const step of ["roles", "customer", "supplier"] as const) {
+      const paths = fieldsOf(step, both).map((f) => f.path);
+      expect(paths, `${step} must not ask for the area again`).not.toContain("cls.territory");
+      expect(paths, `${step} must not ask for the channel again`).not.toContain("cls.channel");
+    }
+    /* Price Group is off the form entirely — see the backlog note. */
+    for (const step of ["roles", "customer", "supplier", "sales"] as const) {
+      expect(fieldsOf(step, both).map((f) => f.path)).not.toContain("cls.priceGroup");
     }
   });
 
@@ -1513,11 +1549,16 @@ describe("BP Master — form revisions", () => {
     expect(BP_FORM.blank().cls).not.toHaveProperty("industry");
   });
 
+  /* The groups are now role-conditional by living on the role's own step,
+     which is a stronger form of the same property: a supplier-only partner
+     never reaches the customer step at all. */
   it("keeps the grouping fields role-conditional after the move", () => {
-    const supplierOnly = fieldsOf("roles", { roles: { supplier: true } }).map((f) => f.path);
-    expect(supplierOnly).toContain("cls.supGroup");
-    expect(supplierOnly).not.toContain("cls.custGroup");
-    expect(supplierOnly).not.toContain("cls.priceGroup");
+    const supplierOnly = { roles: { supplier: true } };
+    expect(fieldsOf("supplier", supplierOnly).map((f) => f.path)).toContain("cls.supGroup");
+
+    const steps = BP_FORM.steps.filter((st) => !st.when || st.when(supplierOnly)).map((st) => st.key);
+    expect(steps).toContain("supplier");
+    expect(steps, "a supplier is never asked for a customer group").not.toContain("customer");
   });
 
   it("requires the Tax ID only when the partner is VAT registered", () => {
@@ -1807,7 +1848,7 @@ describe("BP Master — form revisions", () => {
       type: "Company",
       status: "Active",
       roles: { customer: true },
-      addresses: [{ type: "Billing", zip: "10110" }],
+      addresses: [{ type: "Head Office", zip: "10110" }],
     } as unknown as BusinessPartner;
 
     const registered = bpValidate({ ...base, tax: { vatReg: true, taxId: "" } } as never);

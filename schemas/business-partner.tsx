@@ -1248,8 +1248,11 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             cols: 2,
             items: [
               { label: "Customer Group", value: b.cls.custGroup || DASH },
-              { label: "Price Group", value: b.cls.priceGroup || DASH },
-              { label: "Territory", value: b.cls.territory || DASH },
+              /* Price Group is no longer asked for on the form; showing a
+                 field nobody can fill reads as missing data. It stays on the
+                 record because `price-tier.ts` compares against it — see the
+                 backlog note on what that leaves. */
+              { label: "Sales Area", value: b.cls.territory || DASH },
               { label: "Sales Channel", value: b.cls.channel || DASH },
               { label: "Roles", value: roleBadges(b) },
             ],

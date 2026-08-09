@@ -344,9 +344,18 @@ export interface BusinessPartner {
   updatedBy: string;
 }
 
+/**
+ * What kind of organisation this is — shown on the form as "Categories".
+ *
+ * `Dentist` is a person practising on their own account, which is neither
+ * `Individual` (that is anybody) nor `Dental Clinic` (that is a registered
+ * business). They buy differently and they are billed differently, so the
+ * category has to be able to say so.
+ */
 export const BP_TYPES = [
   "Company",
   "Individual",
+  "Dentist",
   "Government",
   "Hospital",
   "Dental Clinic",
@@ -374,18 +383,10 @@ export const BP_ROLE_DEFS: BpRoleDef[] = [
     badge: "badge--warning",
     desc: "ตัวแทนจำหน่ายหรือผู้ขายต่อ",
   },
-  {
-    key: "prospect",
-    label: "Prospect",
-    badge: "badge--neutral",
-    desc: "ผู้ที่มีแนวโน้มเป็นลูกค้า",
-  },
-  {
-    key: "other",
-    label: "Other",
-    badge: "badge--neutral",
-    desc: "คู่ค้าประเภทอื่น",
-  },
+  /* `prospect` and `other` were here and are gone from the picker. Nobody in
+     the seed set carries either flag, nothing downstream branches on them,
+     and a role that decides nothing is a question asked for no reason. The
+     flags stay on the record so older data still loads — see BpRoles. */
 ];
 
 /**
@@ -477,18 +478,22 @@ export const SUPPLIER_STATUSES = ["Preferred", "Approved", "Watch", "Suspended"]
 export const SUPPLIER_ITEM_STATUS = ["Active", "Inactive", "Expired"] as const;
 
 /**
- * Address purpose. The first three say what the address is FOR; the rest say
- * what the site IS. A "Both" address serves billing and delivery at once,
- * which is the common case for a single-site clinic.
+ * What the SITE IS — not what it is for.
+ *
+ * "Billing", "Delivery" and "Both" used to sit at the top of this list, which
+ * made the field answer two questions at once: what kind of place this is,
+ * and what the company sends there. The second question already has its own
+ * two answers on every row — the `billingPrimary` and `deliveryPrimary`
+ * flags — so the type is now only ever the first.
+ *
+ * `Manufacturer` joins the list because a supplier's factory is a real
+ * address to hold and is none of the other three.
  */
 export const BP_ADDRESS_TYPES = [
-  "Billing",
-  "Delivery",
-  "Both",
   "Head Office",
   "Branch",
   "Warehouse",
-  "Service Center",
+  "Manufacturer",
 ] as const;
 
 /**
@@ -501,22 +506,28 @@ export const BP_ADDRESS_TYPES = [
  */
 export const LEGACY_ADDRESS_TYPES: Record<string, string> = {
   "Registered Address": "Head Office",
-  "Billing Address": "Billing",
-  "Shipping Address": "Delivery",
-  "Delivery Address": "Delivery",
+  /* The purpose-shaped types map onto the site they describe in practice: an
+     address kept for billing is the head office, one kept for delivery is a
+     branch. The purpose itself is not lost — it is on the two flags. */
+  "Billing Address": "Head Office",
+  Billing: "Head Office",
+  "Shipping Address": "Branch",
+  "Delivery Address": "Branch",
+  Delivery: "Branch",
+  Both: "Head Office",
+  "Service Center": "Branch",
   Other: "Branch",
 };
 
-/** Address types that can carry a billing or delivery default. */
-export const BILLING_ADDRESS_TYPES = ["Billing", "Both", "Head Office", "Branch"];
-export const DELIVERY_ADDRESS_TYPES = [
-  "Delivery",
-  "Both",
-  "Head Office",
-  "Branch",
-  "Warehouse",
-  "Service Center",
-];
+/**
+ * Which kinds of site can carry the billing or the delivery default.
+ *
+ * An invoice goes to a place that can receive one; goods can go anywhere the
+ * partner operates. A factory is on neither list for billing because nobody
+ * bills a production line, and a warehouse takes deliveries but not bills.
+ */
+export const BILLING_ADDRESS_TYPES = ["Head Office", "Branch"];
+export const DELIVERY_ADDRESS_TYPES = ["Head Office", "Branch", "Warehouse", "Manufacturer"];
 
 export const ATTACHMENT_TYPES = [
   "Business License",

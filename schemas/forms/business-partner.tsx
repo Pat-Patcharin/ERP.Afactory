@@ -22,10 +22,11 @@ import {
   SUPPLIER_STATUSES,
   SUPPLIER_TYPES,
 } from "@/data/partners";
-import { SALES_AREA_NAMES, resolveSalesArea } from "@/data/sales-areas";
+import { BANGKOK, BKK_DISTRICTS, SALES_AREA_NAMES } from "@/data/sales-areas";
 import { can } from "@/lib/domain/admin";
 import { PRODUCTS } from "@/lib/domain/product";
-import { PO_CURRENCIES, PO_INCOTERMS, PO_BUYERS } from "@/data/purchase-orders";
+import { PO_CURRENCIES, PO_INCOTERMS } from "@/data/purchase-orders";
+import { PRICE_LISTS } from "@/data/price-lists";
 import {
   BUSINESS_PARTNERS,
   decorateBPs,
@@ -65,29 +66,27 @@ const ENTITY_TYPES = [
   "มูลนิธิ / สมาคม",
 ];
 const BRANCH_TYPES = ["สำนักงานใหญ่", "สาขา"];
-const CUST_GROUPS = ["คลินิกทั่วไป", "คลินิกเฉพาะทาง", "โรงพยาบาล", "ตัวแทนจำหน่าย", "หน่วยงานราชการ", "มหาวิทยาลัย"];
+/* The seven kinds of buyer this business actually sells to. State and private
+   hospitals are split because they buy on different terms, and `Dentist` is a
+   practitioner buying on their own account — see BP_TYPES. */
+const CUST_GROUPS = [
+  "คลินิกทันตกรรม",
+  "โรงพยาบาลรัฐ",
+  "โรงพยาบาลเอกชน",
+  "หน่วยงานราชการ",
+  "มหาวิทยาลัย",
+  "สถาบัน",
+  "Dentist",
+];
 const SUP_GROUPS = ["วัสดุสิ้นเปลือง", "เครื่องมือแพทย์", "อะไหล่", "บริการ", "ขนส่ง"];
-const PRICE_GROUPS = ["Retail", "Dealer", "Government", "Chain Clinic", "Contract"];
-/* Territory options come from the sales area master so a partner is filed
-   under the same 14 areas the reps are assigned to. The old six broad regions
-   could not be matched against a rep's area at all. */
-const TERRITORIES = SALES_AREA_NAMES;
+/* Sales areas come from the sales area master so a partner is filed under the
+   same 14 areas the reps are assigned to. Called "Territory" on screen until
+   now, which was a second name for the one thing the master already names. */
+const SALES_AREAS = SALES_AREA_NAMES;
 
-/**
- * The area the partner's billing address falls in, read live off the address
- * rows in form state. Shown next to Territory rather than written into it —
- * a head office in Bangkok served by an upcountry rep is a real arrangement,
- * so the address suggests and the user decides.
- */
-function suggestedArea(s: FormState): string {
-  const rows = Array.isArray(s.addresses) ? (s.addresses as Record<string, unknown>[]) : [];
-  const billing = rows.find((a) => a.billingPrimary) ?? rows[0];
-  if (!billing) return "";
-  return (
-    resolveSalesArea(String(billing.prov ?? ""), String(billing.dist ?? ""))?.name ?? ""
-  );
-}
 const CHANNELS = ["Direct Sales", "Dealer", "Online", "Government", "Export"];
+/* The price lists that exist, as the documents name them. */
+const PRICE_LIST_OPTIONS = PRICE_LISTS.map((p) => `${p.code} ${p.name}`);
 /* Address types now come from the master list so the form, the detail page
    and the validator agree on which of them can carry a billing default. */
 const ADDRESS_TYPES = [...BP_ADDRESS_TYPES];
@@ -122,6 +121,17 @@ const isSupplier = (s: { roles?: Record<string, boolean> }) => Boolean(s.roles?.
 
 /** A grid row is a foreign wire destination. */
 const isForeign = (k: GridRow) => isForeignBank(k as { scope?: string });
+
+/**
+ * An address row is in Thailand.
+ *
+ * Blank counts as Thailand: every new row starts there, and a half-filled row
+ * should show the Thai fields rather than the foreign ones.
+ */
+const isThai = (r: GridRow) => {
+  const c = String(r.country ?? "").trim();
+  return !c || c === "ประเทศไทย";
+};
 
 export const BP_FORM: FormSchema<BpRow> = {
   key: "business-partner",
@@ -354,7 +364,7 @@ export const BP_FORM: FormSchema<BpRow> = {
             {
               type: "select",
               path: "type",
-              label: "Partner Type",
+              label: "Categories",
               required: true,
               options: opts(BP_TYPES),
             },
@@ -405,44 +415,12 @@ export const BP_FORM: FormSchema<BpRow> = {
             desc: r.desc,
           })),
         },
-        /* The groups a partner belongs to follow from its roles, so they are
-           picked here rather than on a step of their own. */
-        {
-          type: "card",
-          title: "Grouping",
-          cols: "2",
-          fields: [
-            {
-              type: "select",
-              path: "cls.custGroup",
-              label: "Customer Group",
-              options: CUST_GROUPS,
-              when: isCustomer,
-            },
-            {
-              type: "select",
-              path: "cls.supGroup",
-              label: "Supplier Group",
-              options: SUP_GROUPS,
-              when: isSupplier,
-            },
-            {
-              type: "select",
-              path: "cls.priceGroup",
-              label: "Price Group",
-              options: PRICE_GROUPS,
-              when: isCustomer,
-            },
-            { type: "select", path: "cls.territory", label: "Territory", options: TERRITORIES },
-            {
-              type: "static",
-              label: "เขตตามที่อยู่ออกบิล",
-              value: (s) => suggestedArea(s) || "— ระบุจังหวัด/เขตในที่อยู่ก่อน",
-              hint: "จาก Sales Area Master — ใช้เทียบกับ Territory ที่เลือก",
-            },
-            { type: "select", path: "cls.channel", label: "Sales Channel", options: CHANNELS },
-          ],
-        },
+        /* The Grouping card stood here. Its two group pickers now sit with the
+           role they belong to — Customer Group on Customer Info, Supplier
+           Group on Supplier Info — because a group is a fact about being a
+           customer or a supplier, not a separate subject. Sales Area and
+           Sales Channel were asked twice, here and on Sales Terms; only the
+           Sales Terms copy is left. */
       ],
     },
 
@@ -580,7 +558,7 @@ export const BP_FORM: FormSchema<BpRow> = {
           required: true,
           addLabel: "เพิ่มที่อยู่",
           empty: "ยังไม่มีที่อยู่ — ต้องมีที่อยู่ออกบิลอย่างน้อย 1 แห่ง",
-          hint: "ที่อยู่ออกบิลบังคับ · ที่อยู่จัดส่งไม่บังคับ · ประเภท Billing / Both / Head Office / Branch เท่านั้นที่ตั้งเป็นที่อยู่ออกบิลได้",
+          hint: "ที่อยู่ออกบิลบังคับ · ที่อยู่จัดส่งไม่บังคับ · ออกบิลได้เฉพาะ Head Office และ Branch · ส่งของได้ทุกประเภท",
           /* Seventeen columns; a street address needs room to be read back. */
           layout: "stacked",
           rowLabel: "ที่อยู่",
@@ -588,11 +566,46 @@ export const BP_FORM: FormSchema<BpRow> = {
             { key: "name", label: "ชื่อเรียก", type: "text", required: true, placeholder: "สำนักงานใหญ่" },
             { key: "type", label: "ประเภท", type: "select", options: ADDRESS_TYPES, required: true },
             { key: "l1", label: "ที่อยู่", type: "text", required: true, width: "220px", span: true },
-            { key: "sub", label: "แขวง/ตำบล", type: "text" },
-            { key: "dist", label: "เขต/อำเภอ", type: "text" },
-            { key: "prov", label: "จังหวัด", type: "select", options: opts(PROVINCES) },
+            /* Country first, because it decides what the three lines under it
+               mean. A supplier in Vietnam has provinces and districts too —
+               they are simply not Thailand's, and offering a Thai dropdown
+               for them is offering the wrong list. */
+            { key: "country", label: "ประเทศ", type: "select", options: opts(COUNTRIES), required: true },
+
+            /* ---- Thailand ---- */
+            { key: "prov", label: "จังหวัด", type: "select", options: opts(PROVINCES), when: isThai },
+            /**
+             * District as a dropdown wherever a real list exists, which today
+             * is Bangkok and only Bangkok.
+             *
+             * The 50 เขต come from the sales area master, where they are load-
+             * bearing: all four BKK areas share the province, so the district
+             * is what resolves an address to an area. The other 76 provinces
+             * have no amphoe list in this repo and no tambon list exists at
+             * all, so those stay free text rather than becoming a dropdown
+             * with nothing in it. See the note in the backlog.
+             */
+            {
+              key: "dist",
+              label: "เขต",
+              type: "select",
+              options: opts(BKK_DISTRICTS),
+              when: (r) => isThai(r) && String(r.prov ?? "") === BANGKOK,
+            },
+            {
+              key: "dist",
+              label: "อำเภอ",
+              type: "text",
+              when: (r) => isThai(r) && String(r.prov ?? "") !== BANGKOK,
+            },
+            { key: "sub", label: "ตำบล/แขวง", type: "text", when: isThai },
+
+            /* ---- Anywhere else ---- */
+            { key: "prov", label: "State / Province", type: "text", when: (r) => !isThai(r) },
+            { key: "dist", label: "City / District", type: "text", when: (r) => !isThai(r) },
+            { key: "sub", label: "Area", type: "text", when: (r) => !isThai(r) },
+
             { key: "zip", label: "รหัสไปรษณีย์", type: "text", width: "110px" },
-            { key: "country", label: "ประเทศ", type: "select", options: opts(COUNTRIES) },
             { key: "contact", label: "ผู้ติดต่อ", type: "text" },
             { key: "phone", label: "โทรศัพท์", type: "text", width: "130px" },
             { key: "email", label: "อีเมล", type: "text" },
@@ -634,6 +647,13 @@ export const BP_FORM: FormSchema<BpRow> = {
               label: "Business Type",
               required: true,
               options: opts(CUSTOMER_BIZ_TYPES),
+            },
+            /* Moved off the old Grouping card — see the note on the Roles step. */
+            {
+              type: "select",
+              path: "cls.custGroup",
+              label: "Customer Group",
+              options: CUST_GROUPS,
             },
             {
               type: "select",
@@ -715,6 +735,14 @@ export const BP_FORM: FormSchema<BpRow> = {
               path: "supplier.status",
               label: "Supplier Status",
               options: opts(SUPPLIER_STATUSES),
+            },
+            /* Moved off the old Grouping card. Purchasing Terms asked for the
+               same group a second time; that copy is gone. */
+            {
+              type: "select",
+              path: "cls.supGroup",
+              label: "Supplier Group",
+              options: SUP_GROUPS,
             },
           ],
         },
@@ -823,15 +851,19 @@ export const BP_FORM: FormSchema<BpRow> = {
               required: true,
               options: opts(SALES_REPS),
             },
-            { type: "select", path: "sales.territory", label: "Territory", options: TERRITORIES },
-            {
-              type: "static",
-              label: "เขตตามที่อยู่ออกบิล",
-              value: (s) => suggestedArea(s) || "— ระบุจังหวัด/เขตในที่อยู่ก่อน",
-              hint: "จาก Sales Area Master",
-            },
+            { type: "select", path: "sales.territory", label: "Sales Area", options: SALES_AREAS },
             { type: "select", path: "sales.channel", label: "Sales Channel", options: CHANNELS },
-            { type: "text", path: "sales.priceList", label: "Price List", placeholder: "Retail 2569" },
+            /* Picked from the price list master rather than typed. A free-text
+               box here meant "Retail 2569" on the partner and "PL-STD-2026
+               Standard" in the list the documents read, with nothing to say
+               they were meant to be the same thing. */
+            {
+              type: "select",
+              path: "sales.priceList",
+              label: "Price List",
+              options: PRICE_LIST_OPTIONS,
+              hint: "จาก Price List Master — เอกสารขายอ่านรายการเดียวกันนี้",
+            },
             { type: "text", path: "sales.discGroup", label: "Discount Group", placeholder: "Gold 5%" },
             {
               type: "number",
@@ -891,14 +923,11 @@ export const BP_FORM: FormSchema<BpRow> = {
           title: "Purchasing",
           cols: "2",
           fields: [
-            {
-              type: "select",
-              path: "purchasing.buyer",
-              label: "Buyer",
-              required: true,
-              options: opts(PO_BUYERS),
-            },
-            { type: "select", path: "purchasing.supGroup", label: "Supplier Group", options: SUP_GROUPS },
+            /* Buyer stood here. Who places the order is a fact about the
+               purchase order, not about the supplier — the PO form asks for
+               it, and asking again on the partner produced a default nobody
+               reads. Supplier Group moved to Supplier Info with the rest of
+               the grouping. */
             {
               type: "select",
               path: "purchasing.currency",
@@ -1346,7 +1375,7 @@ export const BP_FORM: FormSchema<BpRow> = {
         return {
           name: "",
           /* Both is the common case — one site that bills and receives. */
-          type: "Both",
+          type: "Head Office",
           l1: "",
           l2: "",
           sub: "",
