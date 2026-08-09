@@ -25,7 +25,7 @@ import {
 import { SALES_AREA_NAMES } from "@/data/sales-areas";
 import { districtsOf, postalCodeOf, subdistrictsOf } from "@/lib/domain/thai-address";
 import { can } from "@/lib/domain/admin";
-import { PRODUCTS } from "@/lib/domain/product";
+import { PRODUCTS, getProduct } from "@/lib/domain/product";
 import { PO_CURRENCIES, PO_INCOTERMS } from "@/data/purchase-orders";
 import {
   BUSINESS_PARTNERS,
@@ -41,6 +41,8 @@ import {
   validThaiTaxId,
   validZip,
   type BpRow,
+  isDefaultSupplierOf,
+  supplyTermsFor,
 } from "@/lib/domain/partner";
 import { BILLING_ADDRESS_TYPES, DELIVERY_ADDRESS_TYPES } from "@/data/partners";
 import { money0, stamp, isoToDmy, dmyToIso } from "@/lib/format";
@@ -1685,6 +1687,32 @@ export const BP_FORM: FormSchema<BpRow> = {
     row.product = rec.code;
     row.productName = rec.name;
     row.punit ||= rec.meta ?? "";
+
+    /*
+       Fill in the terms — but only when this partner IS the supplier the
+       product master names for that product.
+
+       The question could not be asked at all until vendors became partners:
+       the product recorded its supplier as a NAME, and no name matched a
+       partner. `isDefaultSupplierOf` is that join.
+
+       `||=` throughout, so nothing a buyer has already typed is overwritten.
+       And for anybody who is NOT the default supplier the row is simply left
+       blank to be filled in by hand, which is the honest answer — we know
+       what the usual source charges, and nothing about what this one does.
+    */
+    const product = getProduct(rec.code);
+    if (!product) return;
+    const partnerCode = String(state.code ?? "");
+    if (!isDefaultSupplierOf(partnerCode, product)) return;
+
+    const terms = supplyTermsFor(rec.code);
+    if (!terms) return;
+    row.sku ||= terms.row.sku;
+    row.currency ||= terms.row.currency;
+    if (!num(row.moq)) row.moq = terms.row.moq;
+    if (!num(row.lead)) row.lead = terms.row.lead;
+    if (!num(row.price)) row.price = terms.row.price;
   },
 
   findDuplicates: (s) => {
