@@ -44,6 +44,23 @@ export interface SalesOrder {
   incoterm: string;
   shipTo: string;
   /**
+   * Who receives the goods and how to reach them, alongside `shipTo`.
+   *
+   * Carried from the request rather than looked up, for the same reason the
+   * price is: the address the customer asked for on the day is what the
+   * company committed to, and the partner master can move afterwards.
+   */
+  shipContact: string;
+  shipPhone: string;
+  /**
+   * What the driver has to know — "ส่งเช้าเท่านั้น", "โทรก่อนถึง".
+   *
+   * The only field on this record that exists purely for the warehouse. It
+   * rides to the delivery note, which is the piece of paper that travels with
+   * the goods.
+   */
+  shipInstruction: string;
+  /**
    * Whether this document is billed with VAT. Defaulted from the customer's
    * `billType` when the document is created, and carried from the quotation
    * or sales request it converted from.
@@ -139,6 +156,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "ส่งเช้าเท่านั้น ลูกค้ารับของ 09:00–11:00",
     creditApproved: true,
     creditNote: "อยู่ในวงเงิน",
     items: [
@@ -180,6 +200,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     creditApproved: true,
     creditNote: "อยู่ในวงเงิน",
     items: [
@@ -220,6 +243,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     creditApproved: false,
     creditNote: "ยอดสั่งซื้อทำให้เกินวงเงินเครดิตที่อนุมัติไว้",
     items: [
@@ -258,6 +284,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     creditApproved: true,
     creditNote: "ชำระเงินสด",
     items: [
@@ -299,6 +328,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     creditApproved: true,
     creditNote: "อยู่ในวงเงิน",
     items: [
@@ -340,6 +372,9 @@ export const SALES_ORDERS: SalesOrder[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     creditApproved: true,
     creditNote: "อนุมัติเกินวงเงินชั่วคราวโดยผู้จัดการฝ่ายขาย",
     items: BULK_ORDER_ITEMS.map((it) => ({

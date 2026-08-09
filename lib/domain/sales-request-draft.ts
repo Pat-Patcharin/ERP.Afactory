@@ -214,7 +214,18 @@ export function draftFromSalesRequest(r: SalesRequest): SalesRequestDraft {
     })),
   };
   if (!draft.items.length) draft.items = [blankLine()];
-  return applyCustomerTo(draft, pick);
+
+  /* Master first, the document's own ship-to on top — see the same lines in
+     draftFromQuotation for why the order matters. */
+  return {
+    ...applyCustomerTo(draft, pick),
+    sameAsBill: r.sameAsBill,
+    shipName: r.shipName,
+    shipAddress: r.shipAddress,
+    shipContact: r.shipContact,
+    shipPhone: r.shipPhone,
+    shipInstruction: r.shipInstruction,
+  };
 }
 
 /* ---------- Customer and source quotation ---------- */
@@ -261,6 +272,16 @@ export function applyQuotation(draft: SalesRequestDraft, quotationRef: string): 
     headerDisc: qt.headerDisc,
     freight: qt.freight,
     otherCharges: qt.otherCharges,
+    /* And where the customer asked for it to go. `applyCustomerTo` above has
+       just filled these from the partner master; the quotation's own answer
+       replaces it, because a one-off delivery address is agreed on the quote
+       and would otherwise be forgotten between the quote and the order. */
+    sameAsBill: qt.sameAsBill,
+    shipName: qt.shipName,
+    shipAddress: qt.shipAddress,
+    shipContact: qt.shipContact,
+    shipPhone: qt.shipPhone,
+    shipInstruction: qt.shipInstruction,
     /* The customer wanted the goods by the day the price stops standing. */
     requiredDate: dmyToIso(qt.validUntil),
     items: (qt.items ?? []).map((it) => ({
@@ -532,6 +553,14 @@ export function saveSalesRequestDraft(
     headerDisc: num(draft.headerDisc),
     freight: num(draft.freight),
     otherCharges: num(draft.otherCharges),
+    /* Where the goods go, and what the driver has to know. Same reasoning as
+       the quotation, and this is the document the order is raised from. */
+    sameAsBill: draft.sameAsBill !== false,
+    shipName: str(draft.shipName),
+    shipAddress: str(draft.shipAddress),
+    shipContact: str(draft.shipContact),
+    shipPhone: str(draft.shipPhone),
+    shipInstruction: str(draft.shipInstruction),
     items,
     updated: now,
     updatedBy: user,

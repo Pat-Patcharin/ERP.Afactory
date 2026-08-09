@@ -76,6 +76,20 @@ export interface SalesRequest {
   freight: number;
   otherCharges: number;
 
+  /**
+   * Where the goods go and what to do on arrival — see the long note on
+   * `Quotation`, which explains why all six are required.
+   *
+   * The request is the hop where it matters most: this is the document the
+   * order is raised from, and the order is what the warehouse picks against.
+   */
+  sameAsBill: boolean;
+  shipName: string;
+  shipAddress: string;
+  shipContact: string;
+  shipPhone: string;
+  shipInstruction: string;
+
   items: SrLine[];
   /** Internal approval trail. */
   approvedBy: string;
@@ -168,6 +182,12 @@ export const SALES_REQUESTS: SalesRequest[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "ส่งเช้าเท่านั้น ลูกค้ารับของ 09:00–11:00",
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 120, price: 120, disc: 5, tax: 7, note: "" },
       { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
@@ -211,6 +231,12 @@ export const SALES_REQUESTS: SalesRequest[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "ราคาประมูล" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
@@ -251,6 +277,12 @@ export const SALES_REQUESTS: SalesRequest[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 240, price: 120, disc: 18, tax: 7, note: "ราคาดีลเลอร์" },
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 120, price: 150, disc: 18, tax: 7, note: "" },
@@ -295,6 +327,12 @@ export const SALES_REQUESTS: SalesRequest[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 24, price: 95, disc: 0, tax: 7, note: "" },
     ],
@@ -333,6 +371,12 @@ export const SALES_REQUESTS: SalesRequest[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 25, tax: 0, note: "ขอส่วนลด 25%" },
     ],
@@ -387,6 +431,12 @@ export const SALES_REQUESTS: SalesRequest[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
@@ -429,6 +479,12 @@ export const SALES_REQUESTS: SalesRequest[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 24, price: 95, disc: 0, tax: 7, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 12, price: 110, disc: 0, tax: 7, note: "" },
@@ -472,6 +528,12 @@ export const SALES_REQUESTS: SalesRequest[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: BULK_ORDER_ITEMS.map((it) => ({
       code: it.code,
       name: it.name,

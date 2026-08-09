@@ -914,6 +914,20 @@ interface SoDraft {
   headerDisc: number;
   freight: number;
   otherCharges: number;
+  /**
+   * Where the goods go, and what the driver has to know.
+   *
+   * `shipTo` was hard-coded to `""` here. Every order raised by conversion —
+   * which is every order the process actually produces — reached the
+   * warehouse with no address on it, and the delivery note then fell back to
+   * whatever the partner master held. A customer who asked on the quotation
+   * for one delivery to a branch got it sent to head office, and nothing on
+   * any screen looked wrong.
+   */
+  shipTo: string;
+  shipContact: string;
+  shipPhone: string;
+  shipInstruction: string;
   items: readonly {
     code: string;
     name: string;
@@ -995,7 +1009,10 @@ function createSalesOrderFrom(
     fx: 1,
     payTerm: draft.payTerm,
     incoterm: "DAP",
-    shipTo: "",
+    shipTo: draft.shipTo,
+    shipContact: draft.shipContact,
+    shipPhone: draft.shipPhone,
+    shipInstruction: draft.shipInstruction,
     status: credit.withinLimit ? "Confirmed" : "On Hold",
     priority: draft.priority,
     channel: draft.channel,
@@ -1126,6 +1143,17 @@ export function srConvert(sr: SrRow, ctx: ActionCtx) {
           headerDisc: sr.headerDisc,
           freight: sr.freight,
           otherCharges: sr.otherCharges,
+          /* An order billed to the customer's own address still goes to the
+             customer's own address — `shipTo` empty keeps the reading the
+             delivery note and the print engine already have for it. A
+             one-off address is the case that was being lost, and it is the
+             case that is now carried. */
+          shipTo: sr.sameAsBill ? "" : sr.shipAddress,
+          shipContact: sr.sameAsBill ? "" : sr.shipContact,
+          shipPhone: sr.sameAsBill ? "" : sr.shipPhone,
+          /* Not conditional. "ส่งเช้าเท่านั้น" applies wherever the goods are
+             going, and the warehouse needs it either way. */
+          shipInstruction: sr.shipInstruction,
           items: sr.items ?? [],
         },
         { code: sr.code, field: "srRef", noun: "คำขอขาย" },
@@ -2312,8 +2340,8 @@ export function packCreateDelivery(task: PackRow, ctx: ActionCtx) {
         customer: task.customer,
         customerCode: task.customerCode,
         shipTo: so?.shipTo ?? "",
-        contact: "",
-        phone: "",
+        contact: so?.shipContact ?? "",
+        phone: so?.shipPhone ?? "",
         warehouse: task.warehouse,
         carrier: "A-Factory Fleet",
         service: "Standard",
@@ -2330,7 +2358,10 @@ export function packCreateDelivery(task: PackRow, ctx: ActionCtx) {
         receivedBy: "",
         receivedDate: "",
         failReason: "",
-        remark: `สร้างจากงานแพ็ค ${task.code}`,
+        /* The customer's own instruction leads, because this is the sheet the
+           driver reads at the door. Where the order carries none, the note
+           says where the document came from, as before. */
+        remark: so?.shipInstruction || `สร้างจากงานแพ็ค ${task.code}`,
         /**
          * Customer-facing wording is read from the SALES ORDER, not carried
          * through the pick and pack tasks — please do not "tidy" this into

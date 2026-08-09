@@ -320,7 +320,21 @@ export function draftFromQuotation(q: Quotation): QuotationDraft {
     })),
   };
   if (!draft.items.length) draft.items = [blankLine()];
-  return applyCustomer(draft, pick);
+
+  /* The customer master goes on FIRST and the document's own ship-to goes on
+     top of it. The other way round, `applyCustomer` overwrites all six with
+     whatever the partner master says today — which is exactly the bug this
+     document is now storing them to avoid. */
+  const withCustomer = applyCustomer(draft, pick);
+  return {
+    ...withCustomer,
+    sameAsBill: q.sameAsBill,
+    shipName: q.shipName,
+    shipAddress: q.shipAddress,
+    shipContact: q.shipContact,
+    shipPhone: q.shipPhone,
+    shipInstruction: q.shipInstruction,
+  };
 }
 
 
@@ -601,6 +615,17 @@ export function saveQuotationDraft(
     headerDisc: num(draft.headerDisc),
     freight: num(draft.freight),
     otherCharges: num(draft.otherCharges),
+    /* Where the goods go. In `patch` for the same reason the charges are: an
+       address changed on the second save has to actually replace the first
+       one. The flag is stored alongside, because "same as billing" and
+       "nobody filled it in" are different answers and only the flag tells
+       them apart. */
+    sameAsBill: draft.sameAsBill !== false,
+    shipName: str(draft.shipName),
+    shipAddress: str(draft.shipAddress),
+    shipContact: str(draft.shipContact),
+    shipPhone: str(draft.shipPhone),
+    shipInstruction: str(draft.shipInstruction),
     items,
     updated: now,
     updatedBy: user,

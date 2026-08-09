@@ -151,6 +151,34 @@ export interface Quotation {
   freight: number;
   otherCharges: number;
 
+  /* ----------------------------------------------------------
+     WHERE THE GOODS GO, AND WHAT TO DO WHEN THEY ARRIVE.
+
+     Required, and for a harder reason than the charges above.
+     The editor has collected all six for months and the record
+     held none of them, so the preview printed the address the
+     salesperson chose and the saved document printed whatever
+     the partner master says today. Same fault as the totals in
+     A1, on the line that decides which building a lorry goes to.
+
+     `sameAsBill` is stored, not derived. When it is true the
+     goods go to the customer's own address and the ship fields
+     stay empty — that is a decision the document recorded, and
+     a reader cannot tell it apart from "nobody filled this in"
+     without the flag.
+
+     `shipInstruction` is the one the warehouse reads: "ส่งเช้า
+     เท่านั้น", "โทรก่อนถึง 30 นาที", "ห้ามส่งวันศุกร์". It has
+     to survive every conversion down to the delivery note or it
+     is a note to nobody.
+     ---------------------------------------------------------- */
+  sameAsBill: boolean;
+  shipName: string;
+  shipAddress: string;
+  shipContact: string;
+  shipPhone: string;
+  shipInstruction: string;
+
   /** Why the customer said no — kept for win/loss reporting later. */
   rejectReason: string;
   note: string;
@@ -291,6 +319,12 @@ export const QUOTATIONS: Quotation[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "ส่งเช้าเท่านั้น ลูกค้ารับของ 09:00–11:00",
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 120, price: 120, disc: 5, tax: 7, note: "" },
       { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
@@ -338,6 +372,12 @@ export const QUOTATIONS: Quotation[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 300, price: 150, disc: 12, tax: 0, note: "ราคาประมูล" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 200, price: 110, disc: 10, tax: 0, note: "" },
@@ -384,6 +424,12 @@ export const QUOTATIONS: Quotation[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 240, price: 120, disc: 18, tax: 7, note: "ราคาดีลเลอร์" },
       { code: "AA-TH004-BK", name: "A-FLEX PU50 (Black)", unit: "Tube", qty: 120, price: 150, disc: 18, tax: 7, note: "" },
@@ -431,6 +477,12 @@ export const QUOTATIONS: Quotation[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 0, tax: 0, note: "" },
     ],
@@ -475,6 +527,12 @@ export const QUOTATIONS: Quotation[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AB-AC001", name: "A-ACRYLIC 100% (White)", unit: "Tube", qty: 48, price: 95, disc: 3, tax: 7, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 24, price: 110, disc: 3, tax: 7, note: "" },
@@ -519,6 +577,12 @@ export const QUOTATIONS: Quotation[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AA-TH003-WL", name: "A-FLEX PU40 (White)", unit: "Tube", qty: 60, price: 120, disc: 5, tax: 7, note: "" },
     ],
@@ -564,6 +628,12 @@ export const QUOTATIONS: Quotation[] = [
     headerDisc: 0,
     freight: 0,
     otherCharges: 0,
+    sameAsBill: true,
+    shipName: "",
+    shipAddress: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     items: [
       { code: "AA-TH003-GR", name: "A-FLEX PU40 (Grey)", unit: "Tube", qty: 48, price: 120, disc: 3, tax: 0, note: "" },
       { code: "AT-SL001", name: "A-SILICONE 300 (Clear)", unit: "Tube", qty: 36, price: 110, disc: 3, tax: 0, note: "" },

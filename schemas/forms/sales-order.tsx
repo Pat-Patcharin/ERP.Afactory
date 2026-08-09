@@ -108,6 +108,9 @@ export const SO_FORM: FormSchema<SoRow> = {
     payTerm: "เครดิต 30 วัน",
     incoterm: "DAP",
     shipTo: "",
+    shipContact: "",
+    shipPhone: "",
+    shipInstruction: "",
     status: "Draft",
     priority: "Normal",
     channel: "Direct",
@@ -136,6 +139,9 @@ export const SO_FORM: FormSchema<SoRow> = {
     payTerm: so.payTerm,
     incoterm: so.incoterm,
     shipTo: so.shipTo,
+    shipContact: so.shipContact,
+    shipPhone: so.shipPhone,
+    shipInstruction: so.shipInstruction,
     status: so.status,
     priority: so.priority,
     channel: so.channel,
@@ -509,8 +515,15 @@ export const SO_FORM: FormSchema<SoRow> = {
       s.headerDisc = sr.headerDisc;
       s.freight = sr.freight;
       s.otherCharges = sr.otherCharges;
+      /* And where it goes. `shipTo` is set from the address book two lines
+         below when the request carries no address of its own. */
+      s.shipContact = sr.sameAsBill ? "" : sr.shipContact;
+      s.shipPhone = sr.sameAsBill ? "" : sr.shipPhone;
+      s.shipInstruction = sr.shipInstruction;
+      /* The request's own address wins. Falling straight to the address book
+         is what made a one-off delivery address disappear at this hop. */
       const addresses = shipToOptions(s.customerPick);
-      s.shipTo = addresses[0] ?? "";
+      s.shipTo = (sr.sameAsBill ? "" : sr.shipAddress) || addresses[0] || "";
       s.items = (sr.items ?? []).map((it) => ({
         code: it.code,
         name: it.name,
@@ -786,6 +799,9 @@ export const SO_FORM: FormSchema<SoRow> = {
       payTerm: String(s.payTerm ?? ""),
       incoterm: String(s.incoterm ?? ""),
       shipTo: String(s.shipTo ?? ""),
+      shipContact: String(s.shipContact ?? ""),
+      shipPhone: String(s.shipPhone ?? ""),
+      shipInstruction: String(s.shipInstruction ?? ""),
       priority: String(s.priority ?? "Normal"),
       channel: String(s.channel ?? ""),
       billType: String(s.billType ?? "VAT"),

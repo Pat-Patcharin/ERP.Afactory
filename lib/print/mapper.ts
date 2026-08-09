@@ -124,6 +124,49 @@ const applySnapshot = (party: PrintParty, snap: PartySnapshot): PrintParty => ({
 });
 
 /**
+ * What the document itself recorded about where the goods go.
+ *
+ * Outranks the master for the same reason `PartySnapshot` does, and more
+ * sharply: a delivery address is a one-off decision far more often than a
+ * billing address is. Re-reading it from the partner master means a quotation
+ * that promised delivery to a branch prints head office the moment it is
+ * saved — which is what it did, until the record had somewhere to keep this.
+ *
+ * Empty fields fall through to the master, so "same as billing" needs no
+ * special case here: the document simply recorded nothing of its own.
+ */
+export interface ShipSnapshot extends PartySnapshot {
+  name?: string;
+  instruction?: string;
+}
+
+/**
+ * The ship-to a quotation or a sales request recorded.
+ *
+ * `sameAsBill` means the document deliberately recorded nothing of its own, so
+ * everything falls through to the master — which is what "same as billing"
+ * has always printed. The instruction is passed either way: it applies
+ * wherever the goods are going.
+ */
+const shipFrom = (d: {
+  sameAsBill: boolean;
+  shipName: string;
+  shipAddress: string;
+  shipContact: string;
+  shipPhone: string;
+  shipInstruction: string;
+}): ShipSnapshot =>
+  d.sameAsBill
+    ? { instruction: d.shipInstruction }
+    : {
+        name: d.shipName,
+        address: d.shipAddress,
+        contact: d.shipContact,
+        phone: d.shipPhone,
+        instruction: d.shipInstruction,
+      };
+
+/**
  * Bill-to and ship-to. Where the document carries no snapshot of its own they
  * come from the Business Partner master, so an address corrected on the
  * partner corrects every document printed after it. A document that names a
@@ -133,9 +176,13 @@ const applySnapshot = (party: PrintParty, snap: PartySnapshot): PrintParty => ({
 export function parties(
   customerCode: string,
   customerName: string,
-  shipToOverride = "",
+  shipToOverride: string | ShipSnapshot = "",
   billToSnapshot: PartySnapshot = {},
 ): { billTo: PrintParty; shipTo: PrintParty } {
+  /* Callers that only ever had an address string still pass one. */
+  const ship: ShipSnapshot =
+    typeof shipToOverride === "string" ? { address: shipToOverride } : shipToOverride;
+  const shipAddress = str(ship.address);
   const bp = BUSINESS_PARTNERS.find(
     (b) => b.code === customerCode || b.nameTh === customerName,
   );
@@ -146,9 +193,11 @@ export function parties(
       billTo: applySnapshot(fallback, billToSnapshot),
       shipTo: {
         ...fallback,
-        address: shipToOverride || str(billToSnapshot.address),
-        phone: str(billToSnapshot.phone),
-        contact: str(billToSnapshot.contact),
+        name: str(ship.name) || fallback.name,
+        address: shipAddress || str(billToSnapshot.address),
+        phone: str(ship.phone) || str(billToSnapshot.phone),
+        contact: str(ship.contact) || str(billToSnapshot.contact),
+        instruction: str(ship.instruction),
       },
     };
   }
@@ -172,14 +221,14 @@ export function parties(
       billToSnapshot,
     ),
     shipTo: {
-      name: bp.nameTh || bp.nameEn,
+      name: str(ship.name) || bp.nameTh || bp.nameEn,
       code: bp.code,
-      address: shipToOverride || (delivery ? addressLine(delivery) : ""),
+      address: shipAddress || (delivery ? addressLine(delivery) : ""),
       taxId: "",
       branch: "",
-      phone: delivery?.phone || contact?.mobile || "",
-      contact: delivery?.contact || contactName,
-      instruction: delivery?.remark ?? "",
+      phone: str(ship.phone) || delivery?.phone || contact?.mobile || "",
+      contact: str(ship.contact) || delivery?.contact || contactName,
+      instruction: str(ship.instruction) || (delivery?.remark ?? ""),
     },
   };
 }
@@ -392,7 +441,10 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
     case "quotation": {
       const d = QUOTATIONS.find((x) => x.code === source.code);
       if (!d) return null;
-      const p = parties(d.customerCode, d.customer);
+      /* The ship-to the document itself recorded. Without this the saved sheet
+         re-reads the partner master and prints a different address from the
+         preview the salesperson showed the customer. */
+      const p = parties(d.customerCode, d.customer, shipFrom(d));
       return {
         entity: source.entity,
         code: d.code,
@@ -433,7 +485,7 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
     case "sales-request": {
       const d = SALES_REQUESTS.find((x) => x.code === source.code);
       if (!d) return null;
-      const p = parties(d.customerCode, d.customer);
+      const p = parties(d.customerCode, d.customer, shipFrom(d));
       return {
         entity: source.entity,
         code: d.code,
@@ -462,7 +514,12 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
     case "sales-order": {
       const d = SALES_ORDERS.find((x) => x.code === source.code);
       if (!d) return null;
-      const p = parties(d.customerCode, d.customer, d.shipTo);
+      const p = parties(d.customerCode, d.customer, {
+        address: d.shipTo,
+        contact: d.shipContact,
+        phone: d.shipPhone,
+        instruction: d.shipInstruction,
+      });
       return {
         entity: source.entity,
         code: d.code,
@@ -576,7 +633,14 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
     case "delivery-order": {
       const d = DELIVERY_ORDERS.find((x) => x.code === source.code);
       if (!d) return null;
-      const p = parties(d.customerCode, d.customer, d.shipTo);
+      /* `remark` is where the order's shipping instruction lands when the
+         delivery note is raised — see packCreateDelivery. */
+      const p = parties(d.customerCode, d.customer, {
+        address: d.shipTo,
+        contact: d.contact,
+        phone: d.phone,
+        instruction: d.remark,
+      });
       const so = SALES_ORDERS.find((x) => x.code === d.soRef);
       /* Price comes from the sales order this delivery fulfils — a delivery
          order has no prices of its own, and inventing them would be worse
