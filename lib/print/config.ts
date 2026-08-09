@@ -24,7 +24,6 @@ const BASE: Omit<PrintConfig, "documentType" | "entity" | "titleTH" | "titleEN">
   showSerial: false,
   showWarehouse: false,
   showLocation: false,
-  showPackage: false,
   showBarcode: true,
   showQRCode: true,
   showDueDate: true,
@@ -63,8 +62,17 @@ const DELIVERY_REMARKS = [
   "ใบส่งนี้ใช้แทนใบกำกับภาษี จะจัดส่งให้หลังจากได้รับชำระเงินเรียบร้อยแล้ว",
 ];
 
+/*
+   "กรุณาชำระเงินภายในวันที่ครบกำหนด" used to be the first line here.
+
+   It tells the customer to pay by a date and does not say which one, on the
+   documents that are the only ones that know. The date it means is on the
+   record — `dueDate`, computed from the invoice date and the credit days —
+   so the sheet now prints it: see `dueRemark` in the mapper, which is also
+   what finally gives `showDueDate` something to decide. A flag nothing reads
+   and a sentence naming no date were two halves of the same gap.
+*/
 const TAX_REMARKS = [
-  "กรุณาชำระเงินภายในวันที่ครบกำหนด",
   "การชำระเงินโดยเช็ค กรุณาสั่งจ่ายในนามบริษัทตามที่ระบุด้านล่าง",
   "เอกสารฉบับนี้เป็นใบกำกับภาษีตามประมวลรัษฎากร",
 ];
@@ -264,7 +272,6 @@ export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
     titleEN: "PACKING LIST",
     showLot: true,
     showSerial: true,
-    showPackage: true,
     itemColumns: ["no", "code", "description", "lot", "serial", "qty", "uom", "package", "weight"],
     firstPageRows: 17,
     continuationPageRows: 22,
@@ -303,10 +310,11 @@ export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
     entity: "delivery-order",
     titleTH: "ใบส่งสินค้า (แสดงราคา)",
     titleEN: "DELIVERY ORDER",
+    showDueDate: false,
     showLot: true,
     showSerial: true,
     itemColumns: ["no", "code", "description", "lot", "serial", "qty", "uom", "unitPrice", "discount", "netPrice", "amount"],
-    metaFields: ["docNo", "docDate", "customerCode", "salesOrderNo", "salesRep", "payTerm", "dueDate", "currency"],
+    metaFields: ["docNo", "docDate", "customerCode", "salesOrderNo", "salesRep", "payTerm", "deliveryDate", "currency"],
     remarks: DELIVERY_REMARKS,
     signatureRoles: ["receivedBy", "deliveredBy", "authorizedBy", "collectedBy"],
     supportedCopyTypes: ["ORIGINAL", "CUSTOMER", "COMPANY", "ACCOUNTING", "REPRINT"],
@@ -318,10 +326,11 @@ export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
     entity: "delivery-order",
     titleTH: "ใบส่งสินค้า / ใบกำกับภาษี",
     titleEN: "DELIVERY ORDER / TAX INVOICE",
+    showDueDate: false,
     showLot: true,
     showSerial: true,
     itemColumns: ["no", "code", "description", "lot", "serial", "qty", "uom", "unitPrice", "discount", "netPrice", "amount"],
-    metaFields: ["docNo", "docDate", "customerCode", "customerPo", "salesOrderNo", "salesRep", "payTerm", "dueDate", "currency"],
+    metaFields: ["docNo", "docDate", "customerCode", "customerPo", "salesOrderNo", "salesRep", "payTerm", "deliveryDate", "currency"],
     remarks: [...DELIVERY_REMARKS, ...TAX_REMARKS],
     signatureRoles: ["receivedBy", "deliveredBy", "authorizedBy", "collectedBy"],
   },
@@ -395,7 +404,6 @@ export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
     titleEN: "SHIPMENT DOCUMENT",
     showLot: true,
     showSerial: true,
-    showPackage: true,
     showWarehouse: true,
     itemColumns: ["no", "code", "description", "warehouse", "lot", "serial", "package", "qty", "uom"],
     firstPageRows: 17,

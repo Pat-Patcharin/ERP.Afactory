@@ -102,7 +102,6 @@ export interface PrintConfig {
   showSerial: boolean;
   showWarehouse: boolean;
   showLocation: boolean;
-  showPackage: boolean;
   showBarcode: boolean;
   showQRCode: boolean;
   showDueDate: boolean;

@@ -233,6 +233,24 @@ export function parties(
   };
 }
 
+/**
+ * The one remark that names a date instead of gesturing at one.
+ *
+ * `showDueDate` was declared on every config, set deliberately per document,
+ * asserted in a test — and read by nothing at all. Meanwhile the tax-document
+ * remarks carried "กรุณาชำระเงินภายในวันที่ครบกำหนด": pay by the due date,
+ * without printing the due date. The customer reads it on a sheet that knows
+ * exactly what day it means.
+ *
+ * Both halves are fixed by joining them: the flag decides whether the sheet
+ * asks for payment by a date, and the date is the real one off the record.
+ * Documents with no due date to name print nothing rather than the vague
+ * version — a promise with no date on it is worse than silence, because it
+ * reads as though a date were somewhere on the page.
+ */
+const dueRemark = (config: PrintConfig, dueDate: string): string[] =>
+  config.showDueDate && str(dueDate) ? [`กรุณาชำระเงินภายในวันที่ ${str(dueDate)}`] : [];
+
 /* ---------- Metadata ---------- */
 
 /**
@@ -688,7 +706,6 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
           salesOrderNo: d.soRef,
           salesRep: so?.salesRep,
           payTerm: so?.payTerm,
-          dueDate: so?.deliveryDate,
           deliveryDate: d.deliveryDate,
           trackingNo: d.trackingNo,
           warehouse: d.warehouse,
@@ -778,7 +795,7 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
           d.currency,
         ),
         bank: defaultBank(d.code),
-        remarks: [...config.remarks, ...(d.note ? [d.note] : [])],
+        remarks: [...dueRemark(config, d.dueDate), ...config.remarks, ...(d.note ? [d.note] : [])],
       };
     }
 
