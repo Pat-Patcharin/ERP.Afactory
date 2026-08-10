@@ -27,6 +27,7 @@ import type {
 import { Icon } from "@/lib/icons";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { QuotationEditor } from "@/components/quotation/QuotationEditor";
+import { QuotationDocument } from "@/components/quotation/QuotationDocument";
 
 /* ============================================================
    QUOTATION — optional. The price offer that may precede a Sales
@@ -608,4 +609,7 @@ export const qtSchemas: EntitySchemas<QtRow> = {
      its validation and save now live in lib/domain/quotation-draft.ts, which
      the editor and the print preview both read. */
   editor: ({ record }) => <QuotationEditor record={record} />,
+  /* Opening a quotation shows the quotation — the sheet the customer will
+     receive, with the decision and the history under it. */
+  document: ({ record }) => <QuotationDocument record={record} />,
 };

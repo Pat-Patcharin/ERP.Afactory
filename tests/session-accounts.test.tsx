@@ -37,12 +37,14 @@ const ADMIN = "EMP001";
 /* The sales chairs still exist as USERS and still hold the seeded
    documents; they are simply not offered by the switcher any more. Reached
    here through `switchAccount` when a test needs one. */
-/* The inbound chairs — Pim, Praew, Max, Kie, A care. */
+/* The inbound chairs — Pim, Praew, Max, Kie — then the sell side. */
 const BACKOFFICE = "EMP014";
 const GENERAL_MANAGER = "EMP015";
 const MANAGING_DIRECTOR = "EMP016";
 const WAREHOUSE_ADMIN = "EMP018";
 const SUPER_ADMIN_2 = "EMP017";
+const SALES_ADMIN_2 = "EMP019";
+const SALES_REP_2 = "EMP020";
 
 const SEED = JSON.parse(JSON.stringify(SALES_REQUESTS)) as SrRow[];
 
@@ -84,7 +86,7 @@ function approved(): SrRow {
 const labels = (acts: { label?: string }[]) => acts.map((a) => a.label ?? "");
 
 describe("Two accounts — who they are", () => {
-  it("offers the chairs one purchase passes through, in that order", () => {
+  it("offers the chairs each order passes through, in that order", () => {
     /* This used to carry the sales five as well, which was the same five
        jobs a second time — two super admins, two warehouse people — and the
        switcher asked which of two identical answers you wanted. The USERS
@@ -95,6 +97,10 @@ describe("Two accounts — who they are", () => {
       GENERAL_MANAGER,
       MANAGING_DIRECTOR,
       WAREHOUSE_ADMIN,
+      /* The sell side: the rep raises the quotation and the customer behind
+         it, the sales admin signs both. */
+      SALES_REP_2,
+      SALES_ADMIN_2,
       SUPER_ADMIN_2,
     ]);
 
@@ -103,7 +109,9 @@ describe("Two accounts — who they are", () => {
     expect(roleOf(1).code).toBe("GENERAL_MANAGER");
     expect(roleOf(2).code).toBe("MANAGEMENT");
     expect(roleOf(3).code).toBe("WAREHOUSE_ADMIN");
-    expect(roleOf(4).all).toBe(true);
+    expect(roleOf(4).code).toBe("SALES_REP");
+    expect(roleOf(5).code).toBe("SALES_ADMIN");
+    expect(roleOf(6).all).toBe(true);
 
     /* No chair appears twice, which is the thing that made the old list
        confusing rather than long. */

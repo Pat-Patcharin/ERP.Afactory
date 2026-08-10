@@ -125,6 +125,18 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     purpose: "รับของเข้าคลัง ตรวจ QC และจัดเก็บ",
     initials: "KI",
   },
+  /* The sell side, in the order that work moves too: the rep raises the
+     quotation and the customer behind it; the sales admin signs both. */
+  {
+    code: "EMP020",
+    purpose: "เปิดใบเสนอราคาและเพิ่มลูกค้าใหม่ — อนุมัติเองไม่ได้",
+    initials: "NY",
+  },
+  {
+    code: "EMP019",
+    purpose: "อนุมัติใบเสนอราคาราคาปกติ และยืนยันลูกค้าใหม่",
+    initials: "MN",
+  },
   {
     code: "EMP017",
     purpose: "ดูแลระบบ สิทธิ์ และการตั้งค่าทั้งหมด",

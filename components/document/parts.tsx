@@ -4,6 +4,11 @@ import { useMemo, useState, type ReactNode } from "react";
 import { COMPANY } from "@/data/admin";
 import { customerOptions } from "@/lib/domain/outbound";
 import {
+  createDraftCustomer,
+  validateDraftCustomer,
+  type DraftCustomerInput,
+} from "@/lib/domain/draft-customer";
+import {
   DISCOUNT_THRESHOLD,
   lineAvailability,
   productSearch,
@@ -202,19 +207,26 @@ export function BillToPanel({
       <div className="mt-2">
         <DocRow label="Customer" required field="customer" invalid={invalid.has("customer")}>
           {mode === "edit" ? (
-            <Select
-              aria-label="Customer"
-              className="h-9"
-              value={draft.customerPick}
-              onChange={(e) => set({ customerPick: e.target.value })}
-            >
-              <option value="">— เลือกลูกค้า —</option>
-              {customerOptions().map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </Select>
+            <div className="flex items-center gap-1.5">
+              <Select
+                aria-label="Customer"
+                className="h-9"
+                value={draft.customerPick}
+                onChange={(e) => set({ customerPick: e.target.value })}
+              >
+                <option value="">— เลือกลูกค้า —</option>
+                {customerOptions().map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </Select>
+              {/* The customer in front of the salesperson is not always in the
+                  file yet. Sending them away to have one opened first is how
+                  quotations get written against "ลูกค้าใหม่ (รอเปิดรหัส)" and
+                  reconciled by hand a week later. */}
+              <NewCustomerButton onCreated={(label) => set({ customerPick: label })} />
+            </div>
           ) : (
             <DocValue value={draft.customer} />
           )}
@@ -264,6 +276,127 @@ export function BillToPanel({
         </DocRow>
       </div>
     </section>
+  );
+}
+
+/**
+ * Raise a customer without leaving the document.
+ *
+ * What comes back is a DRAFT partner: quotable immediately, and refused by
+ * the sales order until somebody with the authority has checked the name and
+ * the tax ID. The rep is not adding a customer to the master file — they are
+ * asking for one, and the request lands on the sales admin's desk.
+ */
+function NewCustomerButton({ onCreated }: { onCreated: (label: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button
+        size="sm"
+        onClick={() => setOpen(true)}
+        title="ลูกค้าใหม่ — เปิดไว้ก่อน รอฝ่ายขายยืนยัน"
+      >
+        <Icon name="plus" size={15} strokeWidth={2.2} />
+        ลูกค้าใหม่
+      </Button>
+      {open && (
+        <NewCustomerDialog
+          onClose={() => setOpen(false)}
+          onCreated={(label) => {
+            onCreated(label);
+            setOpen(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function NewCustomerDialog({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (label: string) => void;
+}) {
+  const [form, setForm] = useState<DraftCustomerInput>({ nameTh: "" });
+  const [errors, setErrors] = useState<string[]>([]);
+  const set = (patch: Partial<DraftCustomerInput>) => setForm((f) => ({ ...f, ...patch }));
+
+  const submit = () => {
+    const issues = validateDraftCustomer(form);
+    setErrors(issues);
+    if (issues.length) return;
+    const res = createDraftCustomer(form);
+    onCreated(`${res.code} - ${res.name}`);
+  };
+
+  const field = (
+    label: string,
+    key: keyof DraftCustomerInput,
+    placeholder?: string,
+    required = false,
+  ) => (
+    <label className="flex flex-col gap-1">
+      <span className="text-cap font-medium text-ink-2">
+        {label}
+        {required && <span className="text-danger"> *</span>}
+      </span>
+      <CellInput
+        aria-label={label}
+        value={String(form[key] ?? "")}
+        placeholder={placeholder}
+        onChange={(e) => set({ [key]: e.target.value } as Partial<DraftCustomerInput>)}
+      />
+    </label>
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      role="dialog"
+      aria-label="ลูกค้าใหม่"
+    >
+      <div className="max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-card border border-line bg-card p-5 shadow-lg">
+        <h2 className="text-[15px] font-bold">ลูกค้าใหม่</h2>
+        <p className="mt-1 text-cap text-ink-2">
+          กรอกเท่าที่ใบเสนอราคาต้องใช้ · บันทึกแล้วจะยังไม่เข้า Master Data
+          จนกว่าฝ่ายขายจะยืนยัน — เสนอราคาได้ทันที แต่ยังเปิดใบสั่งขายไม่ได้
+        </p>
+
+        {errors.length > 0 && (
+          <ul className="mt-3 rounded-card border border-danger bg-danger-soft px-3 py-2 text-cap text-danger-text">
+            {errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-4 grid grid-cols-2 gap-3 max-[520px]:grid-cols-1">
+          <div className="col-span-2 max-[520px]:col-span-1">
+            {field("ชื่อลูกค้า (ชื่อนิติบุคคล)", "nameTh", "บริษัท ... จำกัด", true)}
+          </div>
+          {field("ชื่อการค้า", "trade", "ชื่อที่ใช้เรียกกัน")}
+          {field("เลขผู้เสียภาษี", "taxId", "0105558xxxxxx")}
+          {field("ผู้ติดต่อ", "contactName", "ชื่อผู้ติดต่อ")}
+          {field("เบอร์โทร", "phone", "02-xxx-xxxx")}
+          {field("อีเมล", "email", "name@company.co.th")}
+          <div className="col-span-2 max-[520px]:col-span-1">
+            {field("ที่อยู่ออกบิล", "addressLine", "เลขที่ ถนน แขวง")}
+          </div>
+          {field("เขต/อำเภอ", "district")}
+          {field("จังหวัด", "province")}
+          {field("รหัสไปรษณีย์", "postcode", "10110")}
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button onClick={onClose}>ยกเลิก</Button>
+          <Button variant="primary" onClick={submit}>
+            บันทึกและใช้ลูกค้ารายนี้
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1552,24 +1685,52 @@ export function TotalsPanel({
 export interface SignatureBlock {
   en: string;
   th: string;
+  /** Filled once somebody has signed — see SignatureRow. */
+  signedBy?: string;
+  signedRole?: string;
+  signedAt?: string;
 }
 
 /**
  * Who signs differs by document: a quotation ends with the customer, an
  * internal request ends with the approver.
  */
+/**
+ * The block a signature goes in — and, once it has been signed, the signature.
+ *
+ * `signedBy` fills the line that is otherwise left blank for a pen. It is a
+ * script-font rendering of the approver's name rather than an uploaded image:
+ * a MOCK of a signature, which is what a document that has been approved in
+ * the system actually has — a name, a role and a moment, not a scan.
+ */
 export function SignatureRow({ blocks }: { blocks: SignatureBlock[] }) {
-  const SIGNATURES = blocks;
-
   return (
     <div className="grid grid-cols-4 gap-4 max-md:grid-cols-2">
-      {SIGNATURES.map((s) => (
+      {blocks.map((s) => (
         <div key={s.en} className="rounded-card border border-line px-4 pb-3 pt-4">
           <p className="text-center text-[12px] font-semibold">
             {s.en} <span className="font-normal text-ink-2">({s.th})</span>
           </p>
-          <p className="mt-9 border-t border-dashed border-line-strong pt-2 text-center text-cap text-ink-3">
-            Date ____ / ____ / ______
+          {s.signedBy ? (
+            <p
+              className="mt-2 text-center text-[26px] leading-[38px] text-primary"
+              style={{ fontFamily: '"Segoe Script", "Brush Script MT", cursive' }}
+            >
+              {s.signedBy}
+            </p>
+          ) : (
+            <p className="mt-9" />
+          )}
+          <p className="border-t border-dashed border-line-strong pt-2 text-center text-cap text-ink-3">
+            {s.signedBy ? (
+              <>
+                {s.signedRole || "—"}
+                <br />
+                {s.signedAt || ""}
+              </>
+            ) : (
+              "Date ____ / ____ / ______"
+            )}
           </p>
         </div>
       ))}
