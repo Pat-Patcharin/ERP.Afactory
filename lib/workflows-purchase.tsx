@@ -649,8 +649,30 @@ function LinePicker({
     .filter((l) => picked.includes(l.code))
     .reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0);
 
+  const all = picked.length === lines.length;
+  const some = picked.length > 0 && !all;
+
   return (
     <div className="flex flex-col gap-1.5">
+      <label className="flex items-center gap-2 text-cap text-ink-2">
+        {/* A dialog whose whole job is ticking rows offers the tick that does
+            all of them — including the one that clears them again. */}
+        <input
+          type="checkbox"
+          aria-label="เลือกทุกรายการ"
+          checked={all}
+          ref={(el) => {
+            if (el) el.indeterminate = some;
+          }}
+          onChange={(e) => {
+            const next = e.target.checked ? lines.map((l) => l.code) : [];
+            setPicked(next);
+            onChange(next);
+          }}
+          className="h-4 w-4 accent-primary"
+        />
+        เลือกทุกรายการ
+      </label>
       <div className="max-h-64 overflow-y-auto rounded-card border border-line">
         {lines.map((l) => (
           <label
@@ -659,6 +681,7 @@ function LinePicker({
           >
             <input
               type="checkbox"
+              aria-label={`สั่ง ${l.code}`}
               checked={picked.includes(l.code)}
               onChange={() => toggle(l.code)}
               className="h-4 w-4 accent-primary"

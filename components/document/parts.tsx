@@ -1074,7 +1074,25 @@ export function ItemTable({
       <table className="w-full min-w-[900px] border-collapse text-[13px]">
         <thead>
           <tr className={HEAD}>
-            {mode === "edit" && <th className="w-9 px-2 py-2.5" />}
+            {mode === "edit" && (
+              <th className="w-9 px-2 py-2.5">
+                {/* Wherever there is a column of ticks there is a tick for
+                    the column. Half-ticked when some rows are chosen, so the
+                    header says which of the three states the table is in
+                    rather than only "all" or "none". */}
+                <Checkbox
+                  aria-label="เลือกทุกบรรทัด"
+                  checked={rows.length > 0 && rows.every((l) => selected.has(l.id))}
+                  ref={(el) => {
+                    if (el)
+                      el.indeterminate =
+                        rows.some((l) => selected.has(l.id)) &&
+                        !rows.every((l) => selected.has(l.id));
+                  }}
+                  onChange={(e) => rows.forEach((l) => onSelect(l.id, e.target.checked))}
+                />
+              </th>
+            )}
             <th className="w-11 px-2 py-2.5 text-center">No.</th>
             <th className="w-[150px] px-2 py-2.5 text-left">Item Code</th>
             <th className="px-2 py-2.5 text-left">Description</th>

@@ -41,6 +41,8 @@ export interface FormApi {
   gridSet: (path: string, index: number, key: string, value: unknown) => void;
   /** Sets the flag on one row and clears it on every other — "the primary one". */
   gridRadio: (path: string, index: number, key: string) => void;
+  /** Every row in one tick column — see the header checkbox on a grid. */
+  gridSetColumn: (path: string, key: string, value: boolean) => void;
   gridAdd: (path: string) => void;
   gridRemove: (path: string, index: number) => void;
   lookup: (source: string, q: string) => LookupHit[];
@@ -579,8 +581,30 @@ function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
                     c.align === "right" ? "text-right" : "text-left",
                   )}
                 >
-                  {c.label}
-                  {c.required && <span className="font-semibold text-danger"> *</span>}
+                  {/* A column of ticks carries the tick that does the column.
+                      Half-ticked when only some rows are on, so the header
+                      reports the state rather than only offering a switch. */}
+                  {c.type === "check" && rows.length > 0 ? (
+                    <label className="flex flex-col items-center gap-0.5">
+                      <Checkbox
+                        aria-label={`${c.label} — ทุกแถว`}
+                        checked={rows.every((r) => Boolean(r[c.key]))}
+                        ref={(el) => {
+                          if (el)
+                            el.indeterminate =
+                              rows.some((r) => Boolean(r[c.key])) &&
+                              !rows.every((r) => Boolean(r[c.key]));
+                        }}
+                        onChange={(e) => api.gridSetColumn(path, c.key, e.target.checked)}
+                      />
+                      <span>{c.label}</span>
+                    </label>
+                  ) : (
+                    <>
+                      {c.label}
+                      {c.required && <span className="font-semibold text-danger"> *</span>}
+                    </>
+                  )}
                 </th>
               ))}
               <th className="w-10 border-b border-line" />

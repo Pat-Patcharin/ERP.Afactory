@@ -299,8 +299,12 @@ describe("Goods Receipt editor — the document", () => {
 
     const outstanding = po.items.filter((it) => it.qty - it.recv > 0);
     /* One tick per outstanding line — a line already received in full has
-       nothing left to offer this receipt. */
-    expect(screen.getAllByRole("checkbox")).toHaveLength(outstanding.length);
+       nothing left to offer this receipt — plus the one that does them all. */
+    for (let i = 0; i < outstanding.length; i++) {
+      expect(screen.getByLabelText(`รับรายการที่ ${i + 1}`)).toBeChecked();
+    }
+    expect(screen.getByLabelText("รับทุกรายการ")).toBeChecked();
+    expect(screen.getAllByRole("checkbox")).toHaveLength(outstanding.length + 1);
     for (const it of outstanding) expect(screen.getByText(it.code)).toBeInTheDocument();
   });
 

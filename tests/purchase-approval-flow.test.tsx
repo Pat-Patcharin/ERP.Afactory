@@ -304,9 +304,11 @@ describe("ออกใบสั่งซื้อจากใบขอซื้�
       }),
     );
 
-    const boxes = screen.getAllByRole("checkbox");
-    expect(boxes).toHaveLength(3);
-    await userEvent.click(boxes[0]);
+    /* Three lines plus the tick that does all three. */
+    expect(screen.getAllByRole("checkbox")).toHaveLength(4);
+    expect(screen.getByLabelText("เลือกทุกรายการ")).toBeChecked();
+
+    await userEvent.click(screen.getByLabelText(`สั่ง ${dropped}`));
     confirm!();
 
     const po = PURCHASE_ORDERS.find((p) => p.prRef === pr.code)!;

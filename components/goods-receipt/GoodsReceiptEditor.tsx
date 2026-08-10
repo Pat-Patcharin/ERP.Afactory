@@ -555,7 +555,27 @@ function ReceiptLineTable({
       <table className="w-full min-w-[900px] border-collapse text-[13px]">
         <thead>
           <tr className="border-b border-line bg-surface text-cap text-ink-2">
-            <th className="w-[44px] px-2 py-2">รับ</th>
+            <th className="w-[44px] px-2 py-2">
+              {mode === "edit" ? (
+                <label className="flex flex-col items-center gap-0.5">
+                  <input
+                    type="checkbox"
+                    aria-label="รับทุกรายการ"
+                    checked={rows.length > 0 && rows.every((l) => l.include)}
+                    ref={(el) => {
+                      if (el)
+                        el.indeterminate =
+                          rows.some((l) => l.include) && !rows.every((l) => l.include);
+                    }}
+                    onChange={(e) => rows.forEach((l) => onTick(l.id, e.target.checked))}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  <span>รับ</span>
+                </label>
+              ) : (
+                "รับ"
+              )}
+            </th>
             <th className="px-2 py-2 text-left">Product</th>
             <th className="w-[70px] px-2 py-2 text-right">Ordered</th>
             <th className="w-[80px] px-2 py-2 text-right">Received</th>

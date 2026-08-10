@@ -129,6 +129,27 @@ export function MasterForm<T extends RecordBase>({
     [mutate, schema],
   );
 
+  /**
+   * Every row in one tick column at once.
+   *
+   * A column of checkboxes needs the checkbox that does the column — ticking
+   * fourteen units Active one at a time is the kind of work a screen is
+   * supposed to save somebody.
+   */
+  const gridSetColumn = useCallback(
+    (path: string, col: string, value: boolean) =>
+      mutate((d) => {
+        const cur = (getPath(d, path) ?? []) as GridRow[];
+        setPath(
+          d,
+          path,
+          cur.map((row) => ({ ...row, [col]: value })),
+        );
+        schema.onGridChange?.(path, d);
+      }),
+    [mutate, schema],
+  );
+
   /** "Primary contact", "default bank" — one row owns the flag, the rest lose it. */
   const gridRadio = useCallback(
     (path: string, index: number, col: string) =>
@@ -355,6 +376,7 @@ export function MasterForm<T extends RecordBase>({
     set,
     gridSet,
     gridRadio,
+    gridSetColumn,
     gridAdd,
     gridRemove,
     lookup,
