@@ -84,6 +84,16 @@ export interface Column<T> {
   cell: (rec: T) => ReactNode;
 }
 
+/** An icon button on the row itself — see `ListSchema.quickActions`. */
+export interface QuickAction<T> {
+  /** Used as the tooltip and the accessible name. Icons alone say nothing. */
+  label: string;
+  icon: IconName;
+  tone?: "ok" | "neutral";
+  danger?: boolean;
+  run: (rec: T, ctx: ActionCtx) => void;
+}
+
 export interface RowAction<T> {
   label?: string;
   icon?: IconName;
@@ -158,6 +168,19 @@ export interface ListSchema<T extends RecordBase = RecordBase> {
   filters: ListFilter<T>[];
   columns: Column<T>[];
   rowActions: (rec: T, ctx: ActionCtx) => RowAction<T>[];
+  /**
+   * The act this row is waiting for, as a button on the row.
+   *
+   * For queues where somebody works down a list making the same decision
+   * over and over: approving eight requests should be eight clicks, not
+   * eight menus. Return nothing for rows with nothing pending — a row of
+   * greyed-out buttons is noise on every other line of the table.
+   *
+   * Never the only way to do something. Whatever appears here is also in
+   * `rowActions`, because the menu is where somebody looks when the button
+   * they expected is not there.
+   */
+  quickActions?: (rec: T, ctx: ActionCtx) => QuickAction<T>[];
   hero?: (ctx: ActionCtx) => Hero | undefined;
   secondaryActions?: (ctx: ActionCtx) => { label: string; icon?: IconName; run: () => void }[];
   /**
@@ -775,4 +798,13 @@ export interface EntitySchemas<T extends RecordBase = RecordBase> {
    * present the form routes render it and ignore `form`.
    */
   editor?: (props: { record?: T }) => ReactNode;
+  /**
+   * A purpose-built READ screen, used instead of the tabbed profile.
+   *
+   * Same argument as `editor`, from the other side: for a document, the
+   * thing somebody wants to look at is the document. Four tabs of cards is
+   * a summary of a request rather than the request, and an approver reading
+   * a summary is approving a summary.
+   */
+  document?: (props: { record: T }) => ReactNode;
 }

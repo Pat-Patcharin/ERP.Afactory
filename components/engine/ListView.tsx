@@ -533,6 +533,30 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
                       </Td>
                     ))}
                     <Td align="right" className="w-14">
+                      {/* The one or two acts this row is actually waiting for,
+                          on the row itself. Everything else stays behind the
+                          menu — a decision somebody is queueing to make should
+                          not cost two clicks and a read of eight labels. */}
+                      {(schema.quickActions?.(rec, ctx) ?? []).map((a) => (
+                        <IconButton
+                          key={a.label}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            a.run(rec, ctx);
+                          }}
+                          aria-label={a.label}
+                          title={a.label}
+                          className={
+                            a.danger
+                              ? "text-danger hover:bg-danger-soft"
+                              : a.tone === "ok"
+                                ? "text-success-text hover:bg-success-soft"
+                                : "text-ink-2 hover:bg-surface"
+                          }
+                        >
+                          <Icon name={a.icon} size={17} strokeWidth={2.2} />
+                        </IconButton>
+                      ))}
                       <Menu
                         trigger={({ toggle }) => (
                           <IconButton onClick={toggle} aria-label="Row actions">

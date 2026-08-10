@@ -189,8 +189,15 @@ describe("ใบขอซื้อเกินวงเงิน", () => {
        apart by this, not by the status. */
     expect(pr.submittedAt).toBeTruthy();
     expect(prCanSubmit(pr)).toBe(false);
-    expect(prCanOpen(pr)).toBe(true);
     expect(toRoles(pr.code)).toContain("GENERAL_MANAGER");
+
+    /* `prCanOpen` answers "may I open this", not "is this openable" — so it
+       is false for the requester who just sent it, and true for the desk it
+       landed on. Asked as both, because the buttons on both screens are
+       drawn from this one answer. */
+    expect(prCanOpen(pr), "ผู้ขอซื้อเปิดเอกสารเองไม่ได้").toBe(false);
+    setCurrentUser(PRAEW);
+    expect(prCanOpen(pr)).toBe(true);
   });
 
   it("ยังอนุมัติไม่ได้จนกว่า Praew จะเปิดเอกสาร", () => {

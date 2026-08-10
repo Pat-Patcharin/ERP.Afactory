@@ -37,6 +37,7 @@ export {
   prCanApprove,
   prCanConvert,
   prCanOpen,
+  prCanRevise,
   prCanSubmit,
   prCancel,
   prConvert,
@@ -44,6 +45,7 @@ export {
   prOpen,
   prProgress,
   prReject,
+  prRevise,
   prSubmit,
 } from "./workflows-purchase";
 

@@ -14,6 +14,7 @@ import {
   prCanApprove,
   prCanConvert,
   prCanOpen,
+  prCanRevise,
   prCanSubmit,
   prCancel,
   prConvert,
@@ -21,11 +22,19 @@ import {
   prOpen,
   prProgress,
   prReject,
+  prRevise,
   prSubmit,
 } from "@/lib/workflows";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  QuickAction,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { PR_FORM } from "./forms/purchase-request";
+import { PurchaseRequestDocument } from "@/components/purchase-request/PurchaseRequestDocument";
 
 /* ============================================================
    PURCHASE REQUEST — the first transactional document.
@@ -122,6 +131,36 @@ export const PR_LIST: ListSchema<PrRow> = {
     },
   ],
 
+  /* The one or two things this row is waiting for, on the row.
+     An approver working down a queue of eight requests should press eight
+     ticks, not open eight menus — and everything here is in the menu too,
+     because the menu is where somebody looks when the button is missing. */
+  quickActions: (pr) => {
+    const acts: QuickAction<PrRow>[] = [];
+    if (prCanSubmit(pr))
+      acts.push({ label: "ส่งขออนุมัติ", icon: "send", run: (r, c) => prSubmit(r, c) });
+    if (prCanOpen(pr))
+      acts.push({
+        label: "ตรวจแล้ว — เปิดเอกสาร",
+        icon: "checkCircle",
+        tone: "ok",
+        run: (r, c) => prOpen(r, c),
+      });
+    if (prCanApprove(pr))
+      acts.push({ label: "Approve", icon: "check", tone: "ok", run: (r, c) => prApprove(r, c) });
+    if (prCanRevise(pr))
+      acts.push({ label: "Revise — ส่งกลับแก้ไข", icon: "refresh", run: (r, c) => prRevise(r, c) });
+    if (prCanApprove(pr) || prCanOpen(pr))
+      acts.push({ label: "Reject", icon: "close", danger: true, run: (r, c) => prReject(r, c) });
+    if (prCanConvert(pr))
+      acts.push({
+        label: "ออกใบสั่งซื้อ",
+        icon: "purchaseOrder",
+        run: (r, c) => prConvert(r, c),
+      });
+    return acts;
+  },
+
   rowActions: (pr, ctx) => {
     const acts: RowAction<PrRow>[] = [
       { label: "View", icon: "eye", run: (r) => ctx.openEntity("purchase-request", r.code) },
@@ -157,6 +196,10 @@ export const PR_LIST: ListSchema<PrRow> = {
       acts.push({ label: "Approve", icon: "check", run: (r) => prApprove(r, ctx) });
       acts.push({ label: "Reject", icon: "close", danger: true, run: (r) => prReject(r, ctx) });
     }
+
+    /* The third answer: not yes, not no, but "fix this and send it again". */
+    if (prCanRevise(pr))
+      acts.push({ label: "Revise — ส่งกลับแก้ไข", icon: "refresh", run: (r) => prRevise(r, ctx) });
 
     if (prCanConvert(pr))
       acts.push({
@@ -525,4 +568,8 @@ export const prSchemas: EntitySchemas<PrRow> = {
      when it is present — see app/(erp)/m/[entity]/new/page.tsx. */
   form: PR_FORM,
   editor: ({ record }) => <PurchaseRequestEditor record={record} />,
+  /* Opening a request shows the request, not a summary of it — the same
+     sheet it was typed on, with the decision, the history and the thread
+     under it. The tabbed profile above is kept as the fallback. */
+  document: ({ record }) => <PurchaseRequestDocument record={record} />,
 };

@@ -321,6 +321,73 @@ export function prReject(pr: PrRow, ctx: ActionCtx) {
   });
 }
 
+/**
+ * Open → back to the requester for changes.
+ *
+ * The third answer an approver needs and the flow did not have: not "yes",
+ * not "no", but "fix this and send it again". Rejecting a request that only
+ * needed a quantity changed loses the document and makes somebody retype it,
+ * so approvers reject things they meant to query — and the rejection log
+ * stops meaning anything.
+ *
+ * It goes back to a Draft that has NOT been submitted: the requester edits
+ * and submits again, and the limit decides the route from scratch, because
+ * what they change may be the amount.
+ */
+export function prRevise(pr: PrRow, ctx: ActionCtx) {
+  if (denied(ctx, "approve", "ส่งกลับแก้ไขไม่ได้")) return;
+  if (pr.status !== "Open" && pr.status !== "Draft")
+    return void wrongStatus(ctx, pr, "ส่งกลับแก้ไขไม่ได้", "ยังไม่ถูกอนุมัติ");
+
+  let reason = "";
+  ctx.confirm({
+    title: "Send back for revision?",
+    message: (
+      <div className="flex flex-col gap-3">
+        <span>
+          ส่ง <strong>{pr.code}</strong> กลับให้ {pr.createdBy} แก้ไข
+        </span>
+        <ReasonField
+          label="สิ่งที่ต้องแก้"
+          placeholder="เช่น ปรับจำนวนรายการที่ 2 ให้เหลือ 50"
+          onChange={(v) => {
+            reason = v;
+          }}
+        />
+      </div>
+    ),
+    confirmText: "Send back",
+    onConfirm: () => {
+      const now = stamp();
+      const pending = (pr.approvals ?? []).find((a) => a.status === "pending");
+      if (pending) {
+        pending.status = "revision";
+        pending.by = USER();
+        pending.when = now;
+        pending.note = reason.trim() || "ขอให้แก้ไข";
+      }
+      pr.status = "Draft";
+      /* Cleared, so it is a draft nobody is waiting on — and so the
+         requester's Submit is available again. */
+      pr.submittedAt = "";
+      pr.submittedBy = "";
+      pr.updated = now;
+      pr.updatedBy = USER();
+
+      notify({
+        kind: "revision_requested",
+        docType: "purchase-request",
+        docCode: pr.code,
+        title: `${pr.code} ส่งกลับให้แก้ไข`,
+        body: `${USER()} ขอให้แก้ไข — ${reason.trim() || "ไม่ระบุรายละเอียด"}`,
+        toUser: pr.createdBy,
+      });
+
+      commit(ctx, "ส่งกลับให้แก้ไขแล้ว", `${pr.code} — ${reason.trim() || "ขอให้แก้ไข"}`, "info");
+    },
+  });
+}
+
 /* ---------- 4. Ordering, in as many instalments as it takes ---------- */
 
 /**
@@ -488,10 +555,37 @@ export function prDelete(pr: PrRow, ctx: ActionCtx) {
  * Every surface — the list row, the detail menu, the workspace — asks these
  * rather than re-deriving "may I approve this" from the status and the role.
  */
-export const prCanSubmit = (pr: PrRow) => pr.status === "Draft" && !pr.submittedAt;
-export const prCanOpen = (pr: PrRow) => pr.status === "Draft" && Boolean(pr.submittedAt);
-export const prCanApprove = (pr: PrRow) => pr.status === "Open";
-export const prCanConvert = (pr: PrRow) => pr.status === "Approved" && prOpenLines(pr).length > 0;
+/**
+ * The predicates answer "may I", not "is this document in that state".
+ *
+ * Both halves matter: a request that is Open is not one THIS person may
+ * sign, and a bar that offered Approve to the warehouse would be offering a
+ * button the workflow then refuses. The guard on the mutation stays either
+ * way — this is what keeps the button from being there to press.
+ */
+const mayEdit = () => can("purchase-request", "edit");
+const mayApprove = () => can("purchase-request", "approve");
+
+export const prCanSubmit = (pr: PrRow) =>
+  pr.status === "Draft" && !pr.submittedAt && mayEdit();
+
+export const prCanOpen = (pr: PrRow) =>
+  pr.status === "Draft" && Boolean(pr.submittedAt) && mayApprove();
+
+export const prCanApprove = (pr: PrRow) => {
+  if (pr.status !== "Open" || !mayApprove()) return false;
+  /* And at THIS step: a request over the limit is on the managing
+     director's desk, and the general manager's tick does not reach it. */
+  const step = prNextStep(pr);
+  return !step || canApproveStep(step);
+};
+
+/** Send back for changes — open to any approver on anything undecided. */
+export const prCanRevise = (pr: PrRow) =>
+  mayApprove() && (pr.status === "Open" || (pr.status === "Draft" && Boolean(pr.submittedAt)));
+
+export const prCanConvert = (pr: PrRow) =>
+  pr.status === "Approved" && prOpenLines(pr).length > 0 && can("purchase-request", "create");
 
 /** How far down the approval plan this request has got, for the detail page. */
 export const prProgress = (pr: PrRow) => {

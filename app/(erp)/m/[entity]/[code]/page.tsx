@@ -33,5 +33,9 @@ export default function EntityDetailPage() {
     );
   }
 
+  /* A document renders as the document. Everything else gets the tabbed
+     profile, which is still the right shape for a master record. */
+  if (schemas.document) return <div key={record.code}>{schemas.document({ record })}</div>;
+
   return <FullDetail key={record.code} schema={schemas.detail} record={record} />;
 }
