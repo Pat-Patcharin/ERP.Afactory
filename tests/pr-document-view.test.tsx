@@ -151,7 +151,7 @@ describe("ประวัติและช่องพูดคุย", () => {
     setCurrentUser(PRAEW);
     render(<PurchaseRequestDocument record={pr("Open")} />);
 
-    const thread = screen.getByTestId("pr-comments");
+    const thread = screen.getByTestId("doc-comments");
     expect(within(thread).getByText(/ยังไม่มีความเห็น/)).toBeInTheDocument();
 
     /* Tagging writes the handle into the box, which is what the reader then
@@ -178,7 +178,7 @@ describe("ประวัติและช่องพูดคุย", () => {
        than no thread. It says so on the page, not only in the code. */
     render(<PurchaseRequestDocument record={pr("Open")} />);
     expect(
-      within(screen.getByTestId("pr-comments")).getByText(/Mock — ยังไม่ได้เก็บข้อมูล/),
+      within(screen.getByTestId("doc-comments")).getByText(/Mock — ยังไม่ได้เก็บข้อมูล/),
     ).toBeInTheDocument();
   });
 });

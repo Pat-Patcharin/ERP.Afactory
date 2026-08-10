@@ -13,8 +13,22 @@ import {
 import { QuotationDocument } from "@/components/quotation/QuotationDocument";
 import { QuotationEditor } from "@/components/quotation/QuotationEditor";
 import { NOTIFY_ITEMS } from "@/data/notifications";
-import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
-import { blockedForDraftPartner } from "@/lib/domain/outbound";
+import { getUsers, resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
+import { SALES_REQUESTS, blockedForDraftPartner } from "@/lib/domain/outbound";
+import { srSchemas } from "@/schemas/sales-request";
+import type { ActionCtx } from "@/lib/types";
+
+const makeCtx = () =>
+  ({
+    goto: () => {},
+    openEntity: () => {},
+    toast: () => {},
+    confirm: () => {},
+    formModal: () => {},
+    refresh: () => {},
+    quickView: () => {},
+    panel: () => {},
+  }) as ActionCtx;
 
 /* ============================================================
    THE CUSTOMER IN FRONT OF THE SALESPERSON
@@ -246,5 +260,73 @@ describe("ใบเสนอราคาเปิดดูเป็นเอก�
         name: /Confirm & generate S\/R/,
       }),
     ).toBeInTheDocument();
+  });
+});
+
+/* ============================================================
+   THE CONVERSATION UNDER THE DOCUMENT
+   ============================================================ */
+
+describe("ช่องพูดคุยใต้เอกสาร", () => {
+  it("ใบเสนอราคามีช่องพูดคุย และบอกว่ายังเป็น mock", () => {
+    setCurrentUser(NOEY);
+    render(<QuotationDocument record={qt("Approved")} />);
+
+    const thread = screen.getByTestId("doc-comments");
+    expect(within(thread).getByText(/ยังไม่มีความเห็น/)).toBeInTheDocument();
+    /* A thread that looks real and forgets what you wrote is worse than no
+       thread — it says so on the page, not only in the code. */
+    expect(within(thread).getByText(/Mock — ยังไม่ได้เก็บข้อมูล/)).toBeInTheDocument();
+  });
+
+  it("แท็กคนที่เกี่ยวข้องกับเอกสารได้ ไม่ใช่ทั้งบริษัท", () => {
+    setCurrentUser(NOEY);
+    const rec = qt("Approved");
+    render(<QuotationDocument record={rec} />);
+
+    const thread = screen.getByTestId("doc-comments");
+    const tags = within(thread)
+      .getAllByRole("button", { name: /^@/ })
+      .map((b) => b.textContent!.replace("@", ""));
+
+    expect(tags.length).toBeGreaterThan(0);
+    /* Everyone offered is either on this document or on the desk it crosses;
+       a mention list of the whole staff directory is a list nobody reads. */
+    const sales = new Set(
+      getUsers().filter((u) => u.department === "Sales").map((u) => u.name),
+    );
+    const onDoc = new Set([rec.createdBy, rec.salesRep, rec.approvedBy].filter(Boolean));
+    for (const t of tags) expect(sales.has(t) || onDoc.has(t), t).toBe(true);
+  });
+
+  it("พิมพ์แล้วขึ้นในเธรด พร้อมแท็กที่เลือก", async () => {
+    setCurrentUser(MIN);
+    render(<QuotationDocument record={qt("Approved")} />);
+    const thread = screen.getByTestId("doc-comments");
+
+    const tag = within(thread).getAllByRole("button", { name: /^@/ })[0];
+    const who = tag.textContent!.replace("@", "");
+    await userEvent.click(tag);
+    await userEvent.type(within(thread).getByLabelText("เขียนความเห็น"), "ยืนยันราคานี้ได้ไหม");
+    await userEvent.click(within(thread).getByRole("button", { name: "ส่ง" }));
+
+    expect(
+      within(thread).getByText((t) => t.includes("ยืนยันราคานี้ได้ไหม")),
+    ).toBeInTheDocument();
+    expect(within(thread).getAllByText(new RegExp(who)).length).toBeGreaterThan(1);
+  });
+
+  it("คำขอขายก็มีช่องเดียวกัน", () => {
+    const sr = SALES_REQUESTS[0];
+    const history = srSchemas.detail.tabs.find((t) => t.key === "history")!;
+    const blocks = history.blocks(sr, makeCtx()).filter(Boolean);
+
+    /* Same component, not a third copy that would drift the first time one
+       of the three gained a feature. */
+    const node = blocks.find((b) => b && b.type === "node");
+    expect(node).toBeTruthy();
+
+    render(<>{(node as { node: React.ReactNode }).node}</>);
+    expect(screen.getByTestId("doc-comments")).toBeInTheDocument();
   });
 });

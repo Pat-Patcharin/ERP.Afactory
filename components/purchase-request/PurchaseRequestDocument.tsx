@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { PurchaseRequest } from "@/data/purchase-requests";
 import { prLineTotal, type PrRow } from "@/lib/domain/purchase";
 import { productStock } from "@/lib/domain/product";
-import { actingUserName, currentUser, getUsers } from "@/lib/domain/admin";
 import {
   prApprove,
   prCanApprove,
@@ -19,10 +18,11 @@ import {
   prRevise,
   prSubmit,
 } from "@/lib/workflows";
-import { DASH, fmt, money0, stamp } from "@/lib/format";
+import { DASH, fmt, money0 } from "@/lib/format";
 import { useActionCtx } from "@/components/engine/useActionCtx";
 import { DocHeader, DocLabel, SignatureRow } from "@/components/document/parts";
-import { Badge, Button, CellInput } from "@/components/ui";
+import { CommentThread } from "@/components/document/CommentThread";
+import { Badge, Button } from "@/components/ui";
 import { Icon } from "@/lib/icons";
 import type { BadgeTone } from "@/lib/types";
 import { PR_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
@@ -63,15 +63,6 @@ const PR_SIGNATURES = [
   { en: "Purchasing", th: "ฝ่ายจัดซื้อ" },
   { en: "Approved By", th: "ผู้อนุมัติ" },
 ];
-
-interface Comment {
-  id: number;
-  author: string;
-  role: string;
-  at: string;
-  text: string;
-  mentions: string[];
-}
 
 export function PurchaseRequestDocument({ record }: { record: PurchaseRequest }) {
   const ctx = useActionCtx();
@@ -245,7 +236,12 @@ export function PurchaseRequestDocument({ record }: { record: PurchaseRequest })
       <HistoryStrip pr={pr} />
 
       {/* ---------- The conversation ---------- */}
-      <CommentThread pr={pr} />
+      <CommentThread
+        docCode={pr.code}
+        people={[pr.createdBy, pr.requester, pr.updatedBy, ...(pr.approvals ?? []).map((a) => a.by)]}
+        /* The desks a purchase request crosses on its way to an order. */
+        departments={["Management", "Purchasing"]}
+      />
     </div>
   );
 }
@@ -443,134 +439,6 @@ function HistoryStrip({ pr }: { pr: PrRow }) {
           </li>
         ))}
       </ol>
-    </section>
-  );
-}
-
-/* ---------- Comments ---------- */
-
-/**
- * MOCK. Component state, cleared by a reload.
- *
- * Shown before it is built so the shape can be argued with: who is taggable,
- * what a mention looks like on the page, whether a thread belongs under the
- * document at all. Nothing here writes to a store, and it says so on screen
- * rather than only in this comment.
- */
-function CommentThread({ pr }: { pr: PrRow }) {
-  const me = currentUser();
-  const [items, setItems] = useState<Comment[]>([]);
-  const [text, setText] = useState("");
-  const [seq, setSeq] = useState(0);
-
-  /* Everybody the document has touched, plus whoever may sign it. A mention
-     list of the whole staff directory is a list nobody reads. */
-  const people = useMemo(() => {
-    const named = new Set(
-      [pr.createdBy, pr.requester, pr.updatedBy, ...(pr.approvals ?? []).map((a) => a.by)].filter(
-        Boolean,
-      ),
-    );
-    return getUsers()
-      .filter((u) => u.status === "Active")
-      .filter((u) => named.has(u.name) || u.department === "Management" || u.department === "Purchasing")
-      .map((u) => ({ name: u.name, role: u.roleCode }));
-  }, [pr]);
-
-  const mentioned = people.filter((p) => text.includes(`@${p.name}`)).map((p) => p.name);
-
-  const post = () => {
-    const body = text.trim();
-    if (!body) return;
-    setItems((prev) => [
-      ...prev,
-      {
-        id: seq,
-        author: actingUserName(),
-        role: me.roleCode,
-        at: stamp(),
-        text: body,
-        mentions: mentioned,
-      },
-    ]);
-    setSeq((n) => n + 1);
-    setText("");
-  };
-
-  return (
-    <section
-      data-testid="pr-comments"
-      className="mx-auto mt-4 max-w-[1100px] rounded-card border border-line bg-card p-4"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <DocLabel en="Comments" th="พูดคุยเกี่ยวกับเอกสารนี้" />
-        <Badge tone="neutral">Mock — ยังไม่ได้เก็บข้อมูล</Badge>
-      </div>
-
-      <ol className="mt-3 flex flex-col gap-3">
-        {items.length === 0 && (
-          <li className="text-cap text-ink-3">
-            ยังไม่มีความเห็น — พิมพ์ด้านล่าง แท็กคนที่เกี่ยวข้องด้วย @ชื่อ
-          </li>
-        )}
-        {items.map((c) => (
-          <li key={c.id} className="flex gap-3">
-            <span className="mt-0.5 grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-primary-soft text-cap font-bold text-primary">
-              {c.author.slice(0, 2).toUpperCase()}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-baseline gap-2">
-                <span className="text-[13px] font-semibold">{c.author}</span>
-                <span className="text-cap text-ink-3">{c.at}</span>
-              </div>
-              <p className="whitespace-pre-wrap text-[13px]">{c.text}</p>
-              {c.mentions.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {c.mentions.map((m) => (
-                    <Badge key={m} tone="info">
-                      @{m}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
-          </li>
-        ))}
-      </ol>
-
-      <div className="mt-4 flex flex-col gap-2">
-        <div className="flex flex-wrap gap-1.5">
-          <span className="text-cap text-ink-3">แท็ก:</span>
-          {people.map((p) => (
-            <button
-              key={p.name}
-              type="button"
-              onClick={() => setText((t) => `${t}${t && !t.endsWith(" ") ? " " : ""}@${p.name} `)}
-              className="rounded-pill border border-line px-2 py-0.5 text-cap text-ink-2 hover:border-primary hover:text-primary"
-            >
-              @{p.name}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <CellInput
-            aria-label="เขียนความเห็น"
-            value={text}
-            placeholder={`ตอบกลับเกี่ยวกับ ${pr.code} — แท็กด้วย @ชื่อ`}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                post();
-              }
-            }}
-            className="h-10 flex-1"
-          />
-          <Button variant="primary" onClick={post}>
-            ส่ง
-          </Button>
-        </div>
-      </div>
     </section>
   );
 }

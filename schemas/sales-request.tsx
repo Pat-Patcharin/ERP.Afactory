@@ -24,6 +24,7 @@ import {
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { SalesRequestEditor } from "@/components/sales-request/SalesRequestEditor";
+import { CommentThread } from "@/components/document/CommentThread";
 
 /* ============================================================
    SALES REQUEST — the REQUIRED first operational document.
@@ -496,6 +497,25 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
             when: h.when,
             kind: h.kind,
           })),
+        },
+        {
+          /* Under the history rather than in a tab of its own: a question
+             about this request is usually a question about something in the
+             list above it, and the two read as one column. Same thread the
+             quotation and the purchase request carry. */
+          type: "node",
+          node: (
+            <CommentThread
+              docCode={sr.code}
+              people={[
+                sr.createdBy,
+                sr.salesRep,
+                sr.updatedBy,
+                ...(sr.history ?? []).map((h) => h.u),
+              ]}
+              departments={["Sales"]}
+            />
+          ),
         },
       ],
     },

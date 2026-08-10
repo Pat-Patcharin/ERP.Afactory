@@ -18,6 +18,7 @@ import { lineNet, lineBase, lineDisc } from "@/lib/domain/lines";
 import { DASH, fmt, money, money0 } from "@/lib/format";
 import { useActionCtx } from "@/components/engine/useActionCtx";
 import { DocHeader, DocLabel, SignatureRow } from "@/components/document/parts";
+import { CommentThread } from "@/components/document/CommentThread";
 import { Badge, Button } from "@/components/ui";
 import { Icon } from "@/lib/icons";
 import { QT_TONE, tone } from "@/lib/badges";
@@ -184,6 +185,15 @@ export function QuotationDocument({ record }: { record: Quotation }) {
 
       <DecisionBar qt={qt} />
       <HistoryStrip qt={qt} />
+
+      {/* A question about a price belongs beside the price, asked of the
+          person who typed it — not on the phone, where the answer ends up
+          nowhere the next reader can find it. */}
+      <CommentThread
+        docCode={qt.code}
+        people={[qt.createdBy, qt.salesRep, qt.approvedBy, ...(qt.history ?? []).map((h) => h.u)]}
+        departments={["Sales"]}
+      />
     </div>
   );
 }
