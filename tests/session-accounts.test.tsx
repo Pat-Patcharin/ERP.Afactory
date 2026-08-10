@@ -7,7 +7,6 @@ import { ListView } from "@/components/engine/ListView";
 import {
   actingUserName,
   can,
-  canViewField,
   currentUser,
   demoAccounts,
   getRole,
@@ -35,9 +34,9 @@ import type { ActionCtx } from "@/lib/types";
 
 const REP = "EMP004";
 const ADMIN = "EMP001";
-const SALES_ADMIN = "EMP013";
-const SALES_MANAGER = "EMP003";
-const WAREHOUSE = "EMP008";
+/* The sales chairs still exist as USERS and still hold the seeded
+   documents; they are simply not offered by the switcher any more. Reached
+   here through `switchAccount` when a test needs one. */
 /* The inbound chairs — Pim, Praew, Max, Kie, A care. */
 const BACKOFFICE = "EMP014";
 const GENERAL_MANAGER = "EMP015";
@@ -85,23 +84,13 @@ function approved(): SrRow {
 const labels = (acts: { label?: string }[]) => acts.map((a) => a.label ?? "");
 
 describe("Two accounts — who they are", () => {
-  it("offers the chairs each order passes through, in that order", () => {
-    /* This used to read "exactly the sales rep and the administrator", from
-       when every outbound approval needed a manager. The sales admin desk
-       exists now, and the warehouse joined it once confirming what actually
-       ships stopped being something the admin could do.
-
-       The inbound story was added beside it, in its own order: backoffice
-       raises the request, the general manager signs what is within the
-       limit, the managing director signs what is over it, and the warehouse
-       receives what arrives. Two stories, one switcher. */
+  it("offers the chairs one purchase passes through, in that order", () => {
+    /* This used to carry the sales five as well, which was the same five
+       jobs a second time — two super admins, two warehouse people — and the
+       switcher asked which of two identical answers you wanted. The USERS
+       behind them stay; they created half the seeded documents. */
     const codes = demoAccounts().map((a) => a.code);
     expect(codes).toEqual([
-      REP,
-      SALES_ADMIN,
-      SALES_MANAGER,
-      WAREHOUSE,
-      ADMIN,
       BACKOFFICE,
       GENERAL_MANAGER,
       MANAGING_DIRECTOR,
@@ -110,16 +99,16 @@ describe("Two accounts — who they are", () => {
     ]);
 
     const roleOf = (i: number) => getRole(demoAccounts()[i].user.roleCode)!;
-    expect(roleOf(0).code).toBe("SALES_REP");
-    expect(roleOf(1).code).toBe("SALES_ADMIN");
-    expect(roleOf(2).code).toBe("SALES_MANAGER");
-    expect(roleOf(3).code).toBe("WAREHOUSE_STAFF");
+    expect(roleOf(0).code).toBe("BACKOFFICE");
+    expect(roleOf(1).code).toBe("GENERAL_MANAGER");
+    expect(roleOf(2).code).toBe("MANAGEMENT");
+    expect(roleOf(3).code).toBe("WAREHOUSE_ADMIN");
     expect(roleOf(4).all).toBe(true);
-    expect(roleOf(5).code).toBe("BACKOFFICE");
-    expect(roleOf(6).code).toBe("GENERAL_MANAGER");
-    expect(roleOf(7).code).toBe("MANAGEMENT");
-    expect(roleOf(8).code).toBe("WAREHOUSE_ADMIN");
-    expect(roleOf(9).all).toBe(true);
+
+    /* No chair appears twice, which is the thing that made the old list
+       confusing rather than long. */
+    expect(new Set(codes).size).toBe(codes.length);
+    expect(new Set(demoAccounts().map((a) => a.user.roleCode)).size).toBe(codes.length);
 
     /* Every one of them must be usable — a demo chair nobody can sit in is
        worse than not offering it. */
@@ -303,9 +292,9 @@ describe("Two accounts — on the screen", () => {
     expect(screen.getByTestId("session-role")).toHaveTextContent("Super Admin");
 
     await user.click(screen.getByRole("button", { name: /Super Admin/ }));
-    await user.click(screen.getByText("สุภาวิตา โยธะพันธ์"));
+    await user.click(screen.getByText(getUser(BACKOFFICE)!.name));
 
-    expect(currentUser().code).toBe(REP);
+    expect(currentUser().code).toBe(BACKOFFICE);
   });
 
   it("offers every chair in the story from that menu", async () => {
@@ -317,7 +306,7 @@ describe("Two accounts — on the screen", () => {
        here rather than as a demo that quietly cannot be walked. The acting
        one appears twice — in the trigger, and in the list carrying the tick
        that says which chair you are sitting in. */
-    for (const code of [REP, SALES_ADMIN, SALES_MANAGER, ADMIN]) {
+    for (const code of [BACKOFFICE, GENERAL_MANAGER, MANAGING_DIRECTOR, WAREHOUSE_ADMIN]) {
       const hits = screen.getAllByText(getUser(code)!.name);
       expect(hits.length, code).toBeGreaterThanOrEqual(currentUser().code === code ? 2 : 1);
     }
@@ -329,12 +318,12 @@ describe("Two accounts — on the screen", () => {
     const user = userEvent.setup();
     render(<Topbar />);
     await user.click(screen.getByRole("button", { name: /Super Admin/ }));
-    await user.click(screen.getByText(getUser(SALES_ADMIN)!.name));
+    await user.click(screen.getByText(getUser(WAREHOUSE_ADMIN)!.name));
 
-    expect(currentUser().code).toBe(SALES_ADMIN);
-    expect(can("quotation", "approve"), "the desk signs the ordinary").toBe(true);
+    expect(currentUser().code).toBe(WAREHOUSE_ADMIN);
+    expect(can("goods-receipt", "create"), "the desk receives goods").toBe(true);
+    expect(can("goods-receipt", "approve"), "but cannot close an order short").toBe(false);
     expect(can("admin-role", "view"), "and loses the admin console").toBe(false);
-    expect(canViewField("cost"), "and never sees cost").toBe(false);
   });
 
   it("hides from the rep the modules the rep may not open", () => {

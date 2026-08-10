@@ -86,52 +86,25 @@ export interface DemoAccount {
 }
 
 /**
- * The accounts the sales flow is demonstrated with, in the order the work
- * actually moves through them.
+ * The accounts the demo is driven from, in the order the work moves.
  *
- * The seed carries thirteen users; these five are one story. The rep raises
- * the paperwork and cannot approve it. The sales admin signs everything
- * routine and moves it down the line — but not a price below the floor. The
- * sales manager signs that. The warehouse says what can actually be shipped,
- * which the sales admin cannot say on their behalf. The super admin is here
- * because the demo needs a chair that can reach the Administration module,
- * not because the sales flow needs one.
+ * Backoffice raises the request and cannot approve it. The general manager
+ * signs what is within the limit and refers what is over it; the managing
+ * director signs that. The warehouse receives what arrives, and cannot close
+ * an order short. The super admin is here because the demo needs a chair that
+ * reaches Administration, not because the flow needs one.
+ *
+ * The five sales chairs that used to sit beside these were the same five jobs
+ * a second time — two super admins, two warehouse people — and the switcher
+ * asked which of two identical answers you wanted. The USERS behind them stay:
+ * they created half the seeded documents, and a person who is deleted takes
+ * the history stamped with their name with them. What went is the menu entry.
  *
  * DEMO ONLY. When real authentication lands, this list and the account
  * switcher in the topbar both go: an account is what you logged in as, not
  * something you pick from a menu.
  */
 export const DEMO_ACCOUNTS: DemoAccount[] = [
-  {
-    code: "EMP004",
-    purpose: "ออกใบเสนอราคาและคำขอขาย — อนุมัติเองไม่ได้",
-    initials: "SY",
-  },
-  {
-    code: "EMP013",
-    purpose: "อนุมัติเอกสารขายราคาปกติ ยืนยันคู่ค้า ออกใบส่งของและวางบิล",
-    initials: "NP",
-  },
-  {
-    code: "EMP003",
-    purpose: "อนุมัติราคาที่ต่ำกว่าราคาขั้นต่ำ — ด่านที่แอดมินผ่านไม่ได้",
-    initials: "SJ",
-  },
-  {
-    code: "EMP008",
-    purpose: "หยิบของ แพ็ค และยืนยันจำนวนที่ส่งได้จริง — แอดมินยืนยันแทนไม่ได้",
-    initials: "WT",
-  },
-  {
-    code: "EMP001",
-    purpose: "ดูแลระบบ สิทธิ์ และการตั้งค่าทั้งหมด",
-    initials: "PS",
-  },
-
-  /* The inbound story, in the order the work moves: backoffice raises the
-     request, the general manager signs what is within the limit and refers
-     what is over it, the managing director signs that, and the warehouse
-     receives what arrives. */
   {
     code: "EMP014",
     purpose: "เปิดใบขอซื้อ — อนุมัติเองไม่ได้",
@@ -154,7 +127,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
   },
   {
     code: "EMP017",
-    purpose: "ดูแลระบบทั้งหมด — บัญชีของฝั่ง A care",
+    purpose: "ดูแลระบบ สิทธิ์ และการตั้งค่าทั้งหมด",
     initials: "AC",
   },
 ];
