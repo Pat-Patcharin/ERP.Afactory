@@ -437,11 +437,15 @@ export const ROLES: RoleDef[] = [
     perms: {
       dashboard: ["view"],
       ...grant(ALL, ["Purchase"]),
-      /* Purchasing only. A general manager who could also sign sales
-         documents would quietly join the tier the price-floor rule names,
-         and that rule is about who may discount below cost — a different
-         question from who may commit the company to a spend. */
       ...grant(VIEW_ONLY, ["Master Data", "Inventory", "Outbound", "Reports"]),
+      /* The floor, and only the floor.
+
+         A sale at list price is the sales admin's to sign. One priced under
+         the minimum goes up to this desk — see MANAGER_ROLES. That is an
+         `approve` bit on the two documents a price is set on, and nothing
+         else on the sell side: this role does not pick, pack or invoice. */
+      quotation: ["view", "approve", "export", "print"],
+      "sales-request": ["view", "approve", "export", "print"],
       "business-partner": OPERATE,
     },
     fields: ["cost", "margin", "profit", "supplierCost", "inventoryValue"],

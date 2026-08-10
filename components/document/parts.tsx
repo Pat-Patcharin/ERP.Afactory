@@ -116,11 +116,26 @@ export function DocHeader({
   code,
   status,
   showVerifyCode = true,
+  anonymous = false,
 }: {
   title: string;
   titleTh: string;
   code: string;
   status: string;
+  /**
+   * A letterhead that names nobody.
+   *
+   * A Non-VAT bill is not issued in the company's name, so the sheet must not
+   * carry the company's name, address, tax ID or website — printing them on
+   * a document there is no tax invoice for is exactly the thing the customer
+   * asked not to happen. What is left is a plain mark, "A.FAC", which
+   * identifies the sheet to whoever handles it and to nobody else.
+   *
+   * A flag rather than a second header component: the two differ in what the
+   * left-hand block says and in nothing else, and two components would have
+   * drifted the first time the right-hand block changed.
+   */
+  anonymous?: boolean;
   /**
    * The "scan to verify document" QR and barcode.
    *
@@ -134,26 +149,38 @@ export function DocHeader({
 }) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-6 border-b-[3px] border-doc-accent pb-5">
-      <div className="flex min-w-0 items-start gap-4">
-        <AFactoryLogo size={22} src={COMPANY.logoUrl} />
-        <div className="min-w-0">
-          <h1 className="text-[22px] font-extrabold uppercase leading-tight tracking-[-0.01em] text-primary">
-            {COMPANY.nameEn}
-          </h1>
-          <p className="text-[15px] font-semibold text-ink">{COMPANY.nameTh}</p>
-          <div className="mt-2 space-y-0.5 text-cap text-ink-2">
-            <p>{COMPANY.address}</p>
-            <p>
-              โทร. {COMPANY.phone}
-              <span className="ml-4">เลขประจำตัวผู้เสียภาษี {COMPANY.taxId}</span>
-            </p>
-            <p>
-              E-mail : {COMPANY.email}
-              <span className="ml-4">Website : {COMPANY.website}</span>
-            </p>
+      {anonymous ? (
+        <div className="flex min-w-0 items-center gap-3" data-testid="doc-anonymous-mark">
+          {/* The whole letterhead. No name, no address, no tax ID, no site. */}
+          <span className="grid h-[52px] w-[52px] place-items-center rounded-card border-2 border-ink text-[15px] font-extrabold tracking-[-0.02em]">
+            A.
+          </span>
+          <span className="text-[26px] font-extrabold uppercase leading-none tracking-[0.08em]">
+            A.FAC
+          </span>
+        </div>
+      ) : (
+        <div className="flex min-w-0 items-start gap-4">
+          <AFactoryLogo size={22} src={COMPANY.logoUrl} />
+          <div className="min-w-0">
+            <h1 className="text-[22px] font-extrabold uppercase leading-tight tracking-[-0.01em] text-primary">
+              {COMPANY.nameEn}
+            </h1>
+            <p className="text-[15px] font-semibold text-ink">{COMPANY.nameTh}</p>
+            <div className="mt-2 space-y-0.5 text-cap text-ink-2">
+              <p>{COMPANY.address}</p>
+              <p>
+                โทร. {COMPANY.phone}
+                <span className="ml-4">เลขประจำตัวผู้เสียภาษี {COMPANY.taxId}</span>
+              </p>
+              <p>
+                E-mail : {COMPANY.email}
+                <span className="ml-4">Website : {COMPANY.website}</span>
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="flex items-start gap-5">
         <div className="text-right">

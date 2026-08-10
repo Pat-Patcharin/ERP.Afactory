@@ -35,6 +35,7 @@ import {
   ItemTable,
   type ItemTableLayout,
   MetaPanel,
+  DocLabel,
   MetaSelect,
   metaControls,
   RemarksPanel,
@@ -49,6 +50,7 @@ import {
   ItemSectionBar,
 } from "@/components/document/DocumentEditorShell";
 import { useDocumentEditor } from "@/components/document/useDocumentEditor";
+import { Select } from "@/components/ui";
 import { SR_CHANNELS, SR_PRICE_LISTS, SR_PRIORITY } from "@/data/sales-requests";
 import { BILL_TYPES, PAY_TERMS } from "@/data/partners";
 import {
@@ -338,6 +340,39 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
         stickySummary: "sr-sticky-summary",
       }}
       printJob={printJob}
+      /* ---- Asked first, and asked outside the paper ----
+
+         How the sale is billed decides what the sheet IS: a Non-VAT bill is
+         not issued in the company's name, so its letterhead carries neither.
+         That is a decision about the document rather than a field on it,
+         which is why it sits above the sheet rather than in the meta panel —
+         and why it is still there in the panel too, for a document somebody
+         opens later and reads top to bottom. */
+      settings={
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="flex flex-col gap-1">
+            <DocLabel en="Bill Type" th="ออกบิลแบบไหน" />
+            <Select
+              aria-label="Bill Type (header)"
+              value={draft.billType}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => askBillType(e.target.value)}
+              className="w-[190px]"
+              disabled={docMode === "read"}
+            >
+              {BILL_TYPES.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <p className="max-w-[420px] pb-1.5 text-cap text-ink-2">
+            {draft.billType === "Non VAT"
+              ? "หัวกระดาษจะขึ้นเป็น A.FAC อย่างเดียว — ไม่มีชื่อบริษัท ที่อยู่ เลขผู้เสียภาษี หรือเว็บไซต์"
+              : "หัวกระดาษเป็นหัวจดหมายของบริษัทเต็มรูปแบบ พร้อมเลขผู้เสียภาษี"}
+          </p>
+        </div>
+      }
       onSaveDraft={() => saveDraftNow(reporter)}
       onSave={() => saveDocument(reporter)}
       onCancel={cancel}
@@ -356,6 +391,8 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
         titleTh="ใบขอขาย"
         code={draft.code}
         status={draft.status}
+        /* A Non-VAT bill names nobody — see the note on `anonymous`. */
+        anonymous={draft.billType === "Non VAT"}
       />
 
       <div className="mt-5 grid grid-cols-[1fr_1fr_minmax(300px,340px)] items-start gap-4 max-[1100px]:grid-cols-1">

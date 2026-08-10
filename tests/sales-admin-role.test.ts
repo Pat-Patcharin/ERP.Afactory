@@ -8,6 +8,7 @@ import {
   roleActions,
   setCurrentUser,
 } from "@/lib/domain/admin";
+import { maySignAt } from "@/lib/domain/doc-draft";
 import { checkPermission } from "@/lib/permissions";
 
 /* ============================================================
@@ -158,15 +159,28 @@ describe("SALES_ADMIN — the tier below the manager", () => {
     expect(canViewField("margin")).toBe(false);
   });
 
-  it("keeps the manager tier to the two roles the floor rule names", () => {
+  it("keeps the tier that may sign below the floor to the manager roles", () => {
     /* If a new role is given Outbound approve without a decision about the
-       floor, this is where it shows up. */
-    const outboundApprovers = ROLES.filter(
+       floor, this is where it shows up. Two decisions are recorded here.
+
+       SALES_ADMIN approves at list price and NOT below it — that is the
+       whole reason the desk exists. GENERAL_MANAGER is the desk a sale under
+       the minimum goes up to, so it holds approve on the two documents a
+       price is set on and signs at the floor. */
+    const quotationApprovers = ROLES.filter(
       (r) => r.status === "Active" && roleActions(r.code, "quotation").includes("approve"),
     ).map((r) => r.code);
 
-    expect(outboundApprovers.sort()).toEqual(
-      ["MANAGEMENT", "SALES_ADMIN", "SALES_MANAGER", "SUPER_ADMIN"].sort(),
+    expect(quotationApprovers.sort()).toEqual(
+      ["GENERAL_MANAGER", "MANAGEMENT", "SALES_ADMIN", "SALES_MANAGER", "SUPER_ADMIN"].sort(),
     );
+
+    /* And of those, who may sign one priced under the minimum. */
+    asRole("GENERAL_MANAGER");
+    expect(maySignAt("manager"), "ผู้จัดการทั่วไปเซ็นใต้ราคาขั้นต่ำได้").toBe(true);
+
+    asRole("SALES_ADMIN");
+    expect(maySignAt("manager"), "แอดมินฝ่ายขายเซ็นใต้ราคาขั้นต่ำไม่ได้").toBe(false);
+    expect(maySignAt("admin"), "แต่เซ็นราคาปกติได้").toBe(true);
   });
 });

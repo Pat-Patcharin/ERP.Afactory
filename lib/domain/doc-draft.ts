@@ -445,9 +445,15 @@ export function priceApproval(items: readonly PlanLine[]): PriceApproval {
    only Super Admin carries the `all` flag, so without naming
    Management explicitly an executive could approve every ordinary
    quotation but not one priced below the floor.
+
+   General Manager joined them for the same reason from the other
+   direction: the sales admin signs a request at list price, and
+   anything under the floor goes up to the general manager. They
+   outrank the desk that would otherwise have signed it, which is
+   the whole point of a floor.
    ============================================================ */
 
-export const MANAGER_ROLES = ["SALES_MANAGER", "MANAGEMENT"];
+export const MANAGER_ROLES = ["SALES_MANAGER", "GENERAL_MANAGER", "MANAGEMENT"];
 
 /** May the acting user sign a document that asked for this level? */
 export const maySignAt = (level: string): boolean => {
