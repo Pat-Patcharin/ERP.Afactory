@@ -7,9 +7,11 @@ import {
   marginPct,
   markupPct,
   netWithVat,
+  sellableUnits,
   vatAmount,
   type PriceLine,
 } from "@/lib/domain/pricing";
+import { getProduct } from "@/lib/domain/product";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { FieldShell, Input, Select } from "@/components/ui";
@@ -36,6 +38,14 @@ export function PriceEditor({
   const [price, setPrice] = useState(line?.price ?? 0);
   const [minPrice, setMinPrice] = useState(line?.minPrice ?? 0);
 
+  /* The two sample products in the pricing workspace have no master record,
+     so an empty list is a real state here rather than a bug — the stock unit
+     falls back to whatever the line already says. */
+  const master = getProduct(productCode);
+  const units = master
+    ? sellableUnits(master)
+    : [{ unit: line?.unit ?? "หน่วย", factor: 1 }];
+
   const mk = markupPct(cost, price);
   const mg = marginPct(cost, price);
   const gp = grossProfit(cost, price);
@@ -54,6 +64,28 @@ export function PriceEditor({
               </option>
             ))}
             <option value="CONTRACT-TU">CONTRACT-TU — สัญญาเฉพาะ</option>
+          </Select>
+        </FieldShell>
+
+        {/* The unit is part of what this line IS, so it is asked for beside
+            the list rather than buried among the figures. Only units the
+            product can actually be sold in are offered — quoting a customer
+            in a purchase-only carton is a price nobody can order at. */}
+        <FieldShell
+          label="Sales Unit"
+          hint={
+            units.length > 1
+              ? "ราคาต่อหน่วยนี้ ตั้งอิสระจากหน่วยหลัก"
+              : "สินค้านี้ขายเป็นหน่วยหลักอย่างเดียว"
+          }
+        >
+          <Select name="unit" defaultValue={line?.unit ?? units[0]?.unit ?? ""}>
+            {units.map((u) => (
+              <option key={u.unit} value={u.unit}>
+                {u.unit}
+                {u.factor > 1 ? ` (= ${u.factor.toLocaleString("en-US")} ${units[0].unit})` : ""}
+              </option>
+            ))}
           </Select>
         </FieldShell>
 

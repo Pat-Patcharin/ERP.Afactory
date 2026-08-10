@@ -1,6 +1,6 @@
 import { PRICE_LISTS as RAW, PL_PRIORITY_ENGINE, type PriceList } from "@/data/price-lists";
 import { PRICING as RAW_PRICING } from "@/data/pricing";
-import { PRODUCTS } from "./product";
+import { PRODUCTS, PURCHASE_UNIT, unitFactor, type ProductRow } from "./product";
 import { daysUntil } from "@/lib/format";
 
 /* ============================================================
@@ -62,9 +62,18 @@ export { PL_PRIORITY_ENGINE };
    under each price list. One product, many price lines.
    ============================================================ */
 
+export interface QtyBreak {
+  min: number;
+  /** Null on the top step — "this many and above". */
+  max: number | null;
+  price: number;
+}
+
 export interface PriceLine {
   id: string;
   priceList: string;
+  /** The sales unit this price is quoted for. See PricingMap for why. */
+  unit: string;
   type: string;
   currency: string;
   cost: number;
@@ -75,6 +84,7 @@ export interface PriceLine {
   exp: string;
   status: string;
   note: string;
+  qtyBreaks: QtyBreak[];
 }
 
 export const PRICING = RAW_PRICING as Record<string, PriceLine[]>;
@@ -118,8 +128,32 @@ export const PRICE_TYPE_TO_LEVEL: Record<string, string> = {
 };
 
 /**
+ * The units a product can be SOLD in — the stock unit always, plus any
+ * alternative unit marked as a sales unit and still active.
+ *
+ * Purchase-only units are left out on purpose: they describe how the goods
+ * arrive, and quoting a customer in a unit we never offer is a price nobody
+ * can order at.
+ */
+export function sellableUnits(p: ProductRow): { unit: string; factor: number }[] {
+  const rows = [{ unit: p.unit, factor: 1 }];
+  for (const u of p.detail?.units ?? []) {
+    if (u.unit === p.unit || !u.active) continue;
+    if (u.type === PURCHASE_UNIT) continue;
+    rows.push({ unit: u.unit, factor: u.factor > 0 ? u.factor : 1 });
+  }
+  return rows;
+}
+
+/**
  * Seed price lines for a product that has no explicit matrix, so the pricing
  * workspace can open any product from the master rather than only the samples.
+ *
+ * One line per (list × unit). The larger unit's price is SEEDED at the
+ * arithmetic — twelve tubes at the tube price — and is editable from there,
+ * because a box price is a commercial decision and not a multiplication. The
+ * seed only means nobody starts from an empty box; the screen shows what the
+ * arithmetic would have said beside whatever was typed.
  */
 export function ensurePricing(code: string): PriceLine[] {
   if (PRICING[code]) return PRICING[code];
@@ -132,23 +166,46 @@ export function ensurePricing(code: string): PriceLine[] {
 
   const cost = p.pricing?.lastCost ?? p.pricing?.avgCost ?? Math.round((p.price ?? 0) * 0.6);
   const cur = p.pricing?.currency ?? "THB";
+  const units = sellableUnits(p);
   const lines: PriceLine[] = [];
 
-  const push = (suffix: string, list: string, type: string, price: number, maxDisc: number) =>
-    lines.push({
-      id: `PP-${code}-${suffix}`,
-      priceList: list,
-      type,
-      currency: cur,
-      cost,
-      price,
-      minPrice: Math.round(price * 0.9),
-      maxDisc,
-      eff: "01/01/2026",
-      exp: "31/12/2026",
-      status: "Active",
-      note: "",
-    });
+  const push = (
+    suffix: string,
+    list: string,
+    type: string,
+    basePrice: number,
+    maxDisc: number,
+  ) => {
+    for (const u of units) {
+      const price = Math.round(basePrice * u.factor);
+      lines.push({
+        id: `PP-${code}-${suffix}${u.factor === 1 ? "" : `-${u.unit}`}`,
+        priceList: list,
+        unit: u.unit,
+        type,
+        currency: cur,
+        cost: Math.round(cost * u.factor),
+        price,
+        minPrice: Math.round(price * 0.9),
+        maxDisc,
+        eff: "01/01/2026",
+        exp: "31/12/2026",
+        status: "Active",
+        note: "",
+        /* The quantity ladder the product used to carry is a fact about the
+           standard price in the stock unit, so it lands on that one line
+           rather than being copied onto every list and unit. */
+        qtyBreaks:
+          list === "PL-STD-2026" && u.factor === 1
+            ? (p.detail?.tiers ?? []).map((t) => ({
+                min: t.min,
+                max: t.max,
+                price: t.price,
+              }))
+            : [],
+      });
+    }
+  };
 
   if (p.pricing?.retail) push("S", "PL-STD-2026", "Standard", p.pricing.retail, 8);
   if (p.pricing?.dealer) push("D", "PL-DEALER-2026", "Dealer", p.pricing.dealer, 12);
@@ -156,6 +213,26 @@ export function ensurePricing(code: string): PriceLine[] {
 
   PRICING[code] = lines;
   return lines;
+}
+
+/**
+ * What the arithmetic would say for a unit, given the same list's price for
+ * the stock unit. Null when there is nothing to compare against — the stock
+ * unit itself, or a list that does not price it.
+ *
+ * Shown BESIDE the typed price rather than replacing it: the gap between the
+ * two is the volume discount, and it is the number worth seeing.
+ */
+export function impliedUnitPrice(
+  lines: PriceLine[],
+  line: PriceLine,
+  p: ProductRow,
+): number | null {
+  const factor = unitFactor(p, line.unit);
+  if (factor === 1) return null;
+  const base = lines.find((l) => l.priceList === line.priceList && l.unit === p.unit);
+  if (!base || !(base.price > 0)) return null;
+  return Math.round(base.price * factor);
 }
 
 /** Catalogue for the pricing workspace: real products plus the spec samples. */

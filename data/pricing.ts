@@ -10,6 +10,15 @@
 export type PricingMap = Record<string, {
   id: string;
   priceList: string;
+  /**
+   * The sales unit this price is quoted for — part of the line's identity,
+   * not a label on it.
+   *
+   * A Box is not twelve times a Tube: selling by the box is where the volume
+   * discount lives, and a model that prices only the stock unit has to
+   * multiply it back out and lose that. One line per (list × product × unit).
+   */
+  unit: string;
   type: string;
   currency: string;
   cost: number;
@@ -20,6 +29,8 @@ export type PricingMap = Record<string, {
   exp: string;
   status: string;
   note: string;
+  /** Volume ladder for THIS unit. Leave `max` null for the top step. */
+  qtyBreaks: { min: number; max: number | null; price: number }[];
 }[]>;
 
 export const PRICING: PricingMap = {
@@ -27,6 +38,8 @@ export const PRICING: PricingMap = {
     {
       id: "PP-0001",
       priceList: "PL-STD-2026",
+
+      unit: "Syringe",
       type: "Standard",
       currency: "THB",
       cost: 7200,
@@ -37,10 +50,14 @@ export const PRICING: PricingMap = {
       exp: "31/12/2026",
       status: "Active",
       note: "",
+
+      qtyBreaks: [],
     },
     {
       id: "PP-0002",
       priceList: "PL-DEALER-2026",
+
+      unit: "Syringe",
       type: "Dealer",
       currency: "THB",
       cost: 7200,
@@ -51,10 +68,14 @@ export const PRICING: PricingMap = {
       exp: "31/12/2026",
       status: "Active",
       note: "ราคาตัวแทน",
+
+      qtyBreaks: [],
     },
     {
       id: "PP-0003",
       priceList: "PL-GOV-2026",
+
+      unit: "Syringe",
       type: "Government",
       currency: "THB",
       cost: 7200,
@@ -65,10 +86,14 @@ export const PRICING: PricingMap = {
       exp: "31/12/2026",
       status: "Active",
       note: "",
+
+      qtyBreaks: [],
     },
     {
       id: "PP-0004",
       priceList: "PL-PROMO-SEP",
+
+      unit: "Syringe",
       type: "Promotion",
       currency: "THB",
       cost: 7200,
@@ -79,10 +104,14 @@ export const PRICING: PricingMap = {
       exp: "30/09/2026",
       status: "Scheduled",
       note: "โปรกันยายน",
+
+      qtyBreaks: [],
     },
     {
       id: "PP-0005",
       priceList: "CONTRACT-TU",
+
+      unit: "Syringe",
       type: "Contract",
       currency: "THB",
       cost: 7200,
@@ -93,12 +122,16 @@ export const PRICING: PricingMap = {
       exp: "31/12/2026",
       status: "Active",
       note: "สัญญา รพ.ธรรมศาสตร์",
+
+      qtyBreaks: [],
     },
   ],
   "CMP-A5": [
     {
       id: "PP-0006",
       priceList: "PL-STD-2026",
+
+      unit: "Syringe",
       type: "Standard",
       currency: "THB",
       cost: 11400,
@@ -109,10 +142,14 @@ export const PRICING: PricingMap = {
       exp: "31/12/2026",
       status: "Active",
       note: "",
+
+      qtyBreaks: [],
     },
     {
       id: "PP-0007",
       priceList: "PL-DEALER-2026",
+
+      unit: "Syringe",
       type: "Dealer",
       currency: "THB",
       cost: 11400,
@@ -123,10 +160,14 @@ export const PRICING: PricingMap = {
       exp: "31/12/2026",
       status: "Active",
       note: "",
+
+      qtyBreaks: [],
     },
     {
       id: "PP-0008",
       priceList: "PL-GOV-2026",
+
+      unit: "Syringe",
       type: "Government",
       currency: "THB",
       cost: 11400,
@@ -137,6 +178,8 @@ export const PRICING: PricingMap = {
       exp: "31/12/2026",
       status: "Active",
       note: "",
+
+      qtyBreaks: [],
     },
   ],
 };

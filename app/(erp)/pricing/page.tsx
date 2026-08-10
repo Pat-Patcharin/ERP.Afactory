@@ -5,12 +5,14 @@ import {
   PRICING,
   PRICE_TYPE_TO_LEVEL,
   ensurePricing,
+  impliedUnitPrice,
   marginPct,
   markupPct,
   pricingProducts,
   winningLine,
   type PriceLine,
 } from "@/lib/domain/pricing";
+import { getProduct } from "@/lib/domain/product";
 import { PRICE_LISTS } from "@/data/price-lists";
 import { daysUntil, money, money0, today } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -82,6 +84,10 @@ export default function ProductPricingPage() {
   const product = products.find((p) => p.code === selected) ?? products[0];
   const lines = product ? ensurePricing(product.code) : [];
   const win = winningLine(lines);
+  /* The catalogue row above carries only what the picker needs. The unit
+     conversions live on the master record, which the two sample products in
+     `pricingProducts()` deliberately do not have — hence the null. */
+  const master = product ? getProduct(product.code) : null;
 
   /* ---------- KPI strip ---------- */
   const kpi = useMemo(() => {
@@ -142,6 +148,7 @@ export default function ProductPricingPage() {
 
         const patch = {
           priceList: String(data.get("priceList")),
+          unit: String(data.get("unit")),
           type: String(data.get("type")),
           cost: Number(data.get("cost")),
           price,
@@ -158,6 +165,9 @@ export default function ProductPricingPage() {
             id: `PP-${product.code}-${Date.now()}`,
             eff: today(),
             exp: "",
+            /* A new line starts with no ladder. The ladder is a second
+               decision about an existing price, not part of making one. */
+            qtyBreaks: [],
             ...patch,
           });
 
@@ -333,14 +343,14 @@ export default function ProductPricingPage() {
               <thead>
                 <tr>
                   {[
-                    "Price List", "Type", "Base Cost", "Markup %", "Margin %",
+                    "Price List", "Unit", "Type", "Base Cost", "Markup %", "Margin %",
                     "Selling Price", "Min Price", "Max Disc", "Effective", "Status", "",
                   ].map((h, i) => (
                     <th
                       key={h + i}
                       className={cn(
                         "whitespace-nowrap border-b border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.03em] text-ink-3",
-                        [2, 3, 4, 5, 6, 7].includes(i) ? "text-right" : "text-left",
+                        [3, 4, 5, 6, 7, 8].includes(i) ? "text-right" : "text-left",
                       )}
                     >
                       {h}
@@ -351,7 +361,7 @@ export default function ProductPricingPage() {
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="p-6 text-center text-[13px] text-ink-3">
+                    <td colSpan={12} className="p-6 text-center text-[13px] text-ink-3">
                       ยังไม่มีราคาสำหรับสินค้านี้ — กด Add Price
                     </td>
                   </tr>
@@ -360,6 +370,13 @@ export default function ProductPricingPage() {
                     const isWin = win?.id === l.id;
                     const below = l.price < l.minPrice;
                     const expSoon = daysUntil(l.exp);
+                    /* What twelve tubes would have cost at the tube price.
+                       Shown against the typed box price because the gap
+                       between the two IS the volume discount — the number
+                       somebody setting this price is actually choosing. */
+                    const implied = master ? impliedUnitPrice(lines, l, master) : null;
+                    const gap =
+                      implied && implied > 0 ? Math.round(((implied - l.price) / implied) * 1000) / 10 : null;
                     return (
                       <tr
                         key={l.id}
@@ -369,6 +386,14 @@ export default function ProductPricingPage() {
                         )}
                       >
                         <td className="px-3 py-3 font-medium">{l.priceList}</td>
+                        <td className="px-3 py-3">
+                          <span className="font-medium">{l.unit}</span>
+                          {l.qtyBreaks.length > 0 && (
+                            <span className="mt-px block text-[11px] text-ink-3 tnum">
+                              {l.qtyBreaks.length} ขั้นราคา
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-3">
                           <Badge tone={LINE_TONE[l.type] ?? "neutral"}>{l.type}</Badge>
                         </td>
@@ -391,6 +416,18 @@ export default function ProductPricingPage() {
                           )}
                         >
                           {money0(l.price)}
+                          {implied !== null && (
+                            <span
+                              className="mt-px block text-[11px] font-normal text-ink-3 tnum"
+                              title={`ราคาหน่วยหลัก × ตัวคูณ = ${money0(implied)}`}
+                            >
+                              {gap === null || gap === 0
+                                ? `เท่ากับ ${money0(implied)}`
+                                : gap > 0
+                                  ? `ลด ${gap}% จาก ${money0(implied)}`
+                                  : `สูงกว่า ${money0(implied)} ${Math.abs(gap)}%`}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-3 text-right text-ink-2 tnum">
                           {money0(l.minPrice)}
