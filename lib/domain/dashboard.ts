@@ -129,9 +129,11 @@ const sparkPoints = (series: DaySlice[], n = 8) =>
 
 /* Each module's own closed set. Kept beside the dashboard rather than
    guessed inline, so "open" means the same thing here as in the module. */
-const OPEN_PR = ["Draft", "Pending Approval", "Approved"];
+/* "Open" is the purchase request's own word for waiting on a signature —
+   it replaced "Pending Approval" on that document only. */
+const OPEN_PR = ["Draft", "Open", "Approved"];
 const OPEN_PO = ["Draft", "Open", "Partial Received"];
-const OPEN_GR = ["Draft", "Waiting", "Partial", "Pending QC", "Ready for Put Away"];
+const OPEN_GR = ["Draft", "Waiting", "Partial", "Pending QC"];
 const OPEN_PICK = ["Waiting", "Assigned", "In Progress"];
 const OPEN_PACK = ["Waiting", "In Progress"];
 const OPEN_DO = ["Draft", "Ready", "Shipped"];
@@ -583,16 +585,9 @@ export function dashPendingTasks(): DashTask[] {
       tone: "danger",
       needs: { module: "qc-inspection", action: "edit" },
     },
-    {
-      key: "putaway",
-      icon: "putAway",
-      title: "Put Away รอจัดเก็บ",
-      count: PUTAWAY_TASKS.filter((p) => p.status === "Waiting" || p.status === "Assigned").length,
-      priority: "High",
-      goto: "Put Away",
-      tone: "warning",
-      needs: { module: "put-away", action: "edit" },
-    },
+    /* No Put Away queue. Receiving ends at the goods receipt, so nothing
+       creates these tasks any more — a queue that only ever counts down is
+       a queue nobody should be sent to. */
     {
       key: "shipment",
       icon: "truck",
@@ -832,7 +827,6 @@ export function dashPurchaseOverview(): DashOverviewRow[] {
     row("po", "Purchase Order", "purchaseOrder", PURCHASE_ORDERS, OPEN_PO, (r) => r.updated, "Purchase Order", "info"),
     row("gr", "Goods Receipt", "goodsReceipt", GOODS_RECEIPTS, OPEN_GR, (r) => r.updated, "Goods Receipt", "success"),
     row("qc", "QC Inspection", "qc", QC_INSPECTIONS, ["Waiting", "In Progress", "Hold"], (r) => r.updated, "QC Inspection", "danger"),
-    row("pa", "Put Away", "putAway", PUTAWAY_TASKS, ["Waiting", "Assigned", "In Progress"], (r) => r.updated, "Put Away", "warning"),
     {
       key: "claim",
       label: "Supplier Claim",

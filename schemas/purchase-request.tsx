@@ -1,6 +1,7 @@
 import {
   PURCHASE_REQUESTS,
   prLineTotal,
+  prNeedsSecondSignature,
   type PrRow,
 } from "@/lib/domain/purchase";
 import { productStock } from "@/lib/domain/product";
@@ -10,20 +11,30 @@ import { PR_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money0 } from "@/lib/format";
 import {
   prApprove,
+  prCanApprove,
+  prCanConvert,
+  prCanOpen,
+  prCanSubmit,
   prCancel,
   prConvert,
   prDelete,
+  prOpen,
+  prProgress,
   prReject,
   prSubmit,
 } from "@/lib/workflows";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
-import { Badge, CellMedia, Thumb } from "@/components/ui";
+import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { PR_FORM } from "./forms/purchase-request";
 
 /* ============================================================
    PURCHASE REQUEST — the first transactional document.
-   Draft → Pending Approval → Approved → Converted to PO
-                            → Rejected
+   Draft → Open → Approved → Converted to PO
+                → Rejected
+
+   A request over the approval limit is submitted but stays a
+   Draft until the reviewer opens it — see lib/workflows-purchase.
+   Which is why "Draft" needs a line under it on this screen.
    ============================================================ */
 
 export const PR_LIST: ListSchema<PrRow> = {
@@ -44,7 +55,8 @@ export const PR_LIST: ListSchema<PrRow> = {
   tabs: [
     { key: "all", label: "All" },
     { key: "draft", label: "Draft", test: (p) => p.status === "Draft" },
-    { key: "pending", label: "Pending Approval", test: (p) => p.status === "Pending Approval" },
+    { key: "review", label: "รอตรวจสอบ", test: (p) => p.status === "Draft" && Boolean(p.submittedAt) },
+    { key: "open", label: "Open", test: (p) => p.status === "Open" },
     { key: "approved", label: "Approved", test: (p) => p.status === "Approved" },
     { key: "converted", label: "Converted to PO", test: (p) => p.status === "Converted" },
     { key: "rejected", label: "Rejected", test: (p) => p.status === "Rejected" },
@@ -87,7 +99,19 @@ export const PR_LIST: ListSchema<PrRow> = {
     {
       key: "status",
       label: "Status",
-      cell: (p) => <Badge tone={tone(PR_TONE, p.status)}>{p.status}</Badge>,
+      /* Two documents can both read "Draft" and mean opposite things — one
+         still being typed, one sitting on the reviewer's desk. The status
+         cannot say which; the line under it can. */
+      cell: (p) => (
+        <>
+          <Badge tone={tone(PR_TONE, p.status)}>{p.status}</Badge>
+          {p.status === "Draft" && p.submittedAt && <CellSub>รอตรวจสอบ</CellSub>}
+          {p.status === "Open" && prNeedsSecondSignature(p) && <CellSub>เกินวงเงิน</CellSub>}
+          {p.status === "Approved" && p.openLines < p.itemCount && (
+            <CellSub>ยังไม่ได้สั่ง {fmt(p.openLines)} รายการ</CellSub>
+          )}
+        </>
+      ),
     },
     {
       key: "amount",
@@ -108,8 +132,10 @@ export const PR_LIST: ListSchema<PrRow> = {
       },
     ];
 
-    // Edit only while Draft or Rejected — an approved PR is locked.
-    if (pr.status === "Draft" || pr.status === "Rejected")
+    /* Edit while the requester still holds it, and while an approver is
+       reading it — the reviewer may change the quantities before opening or
+       approving, which is the whole point of putting it on their desk. */
+    if (pr.status === "Draft" || pr.status === "Rejected" || pr.status === "Open")
       acts.push({
         label: "Edit",
         icon: "edit",
@@ -118,26 +144,35 @@ export const PR_LIST: ListSchema<PrRow> = {
 
     acts.push({ sep: true });
 
-    if (pr.status === "Draft")
+    if (prCanSubmit(pr))
       acts.push({ label: "Submit for Approval", icon: "send", run: (r) => prSubmit(r, ctx) });
 
-    if (pr.status === "Pending Approval") {
+    /* Over the limit: submitted, but not open until the reviewer says so. */
+    if (prCanOpen(pr)) {
+      acts.push({ label: "ตรวจแล้ว — เปิดเอกสาร", icon: "check", run: (r) => prOpen(r, ctx) });
+      acts.push({ label: "Reject", icon: "close", danger: true, run: (r) => prReject(r, ctx) });
+    }
+
+    if (prCanApprove(pr)) {
       acts.push({ label: "Approve", icon: "check", run: (r) => prApprove(r, ctx) });
       acts.push({ label: "Reject", icon: "close", danger: true, run: (r) => prReject(r, ctx) });
     }
 
-    if (pr.status === "Approved")
+    if (prCanConvert(pr))
       acts.push({
-        label: "Convert to Purchase Order",
+        label:
+          pr.openLines < pr.itemCount
+            ? `ออกใบสั่งซื้อรอบถัดไป (${pr.openLines} รายการ)`
+            : "Convert to Purchase Order",
         icon: "purchaseOrder",
         run: (r) => prConvert(r, ctx),
       });
 
-    if (pr.status === "Converted" && pr.poRef)
+    for (const po of pr.poRefs ?? [])
       acts.push({
-        label: `ดู ${pr.poRef}`,
+        label: `ดู ${po}`,
         icon: "purchaseOrder",
-        run: () => ctx.openEntity("purchase-order", pr.poRef),
+        run: () => ctx.openEntity("purchase-order", po),
       });
 
     acts.push({ sep: true });
@@ -215,11 +250,42 @@ export const PR_DETAIL: DetailSchema<PrRow> = {
           ],
         },
         { type: "note", title: "Note", text: pr.note || DASH },
-        Boolean(pr.poRef) && {
+        pr.status === "Draft" &&
+          Boolean(pr.submittedAt) && {
+            /* A draft nobody is waiting on and a draft on somebody's desk look
+               identical in a status column. This is the difference. */
+            type: "alert",
+            tone: "warn",
+            title: "รอตรวจสอบก่อนเปิดเอกสาร",
+            message: `${pr.submittedBy} ส่งมาเมื่อ ${pr.submittedAt} — มูลค่า ${money0(
+              pr.amount,
+            )} บาท เกินวงเงินอนุมัติ ต้องตรวจสอบแล้วเปิดเอกสารก่อน จึงจะส่งให้อนุมัติได้`,
+          },
+        Boolean((pr.poRefs ?? []).length) && {
           type: "fields",
-          title: "Linked Document",
+          title: "Linked Documents",
           cols: 2,
-          items: [{ label: "Purchase Order", value: <Badge tone="info">{pr.poRef}</Badge> }],
+          items: [
+            {
+              label: (pr.poRefs ?? []).length > 1 ? "Purchase Orders" : "Purchase Order",
+              value: (
+                <span className="flex flex-wrap gap-1.5">
+                  {(pr.poRefs ?? []).map((po) => (
+                    <Badge key={po} tone="info">
+                      {po}
+                    </Badge>
+                  ))}
+                </span>
+              ),
+              span: true,
+            },
+            {
+              label: "รายการที่ยังไม่ได้สั่ง",
+              value: pr.openLines
+                ? `${fmt(pr.openLines)} จาก ${fmt(pr.itemCount)} รายการ`
+                : "ออกใบสั่งซื้อครบทุกรายการแล้ว",
+            },
+          ],
         },
         {
           type: "fields",
@@ -292,6 +358,19 @@ export const PR_DETAIL: DetailSchema<PrRow> = {
               cell: (r) =>
                 r.stStatus ? <Badge tone={r.stTone}>{r.stStatus}</Badge> : DASH,
             },
+            {
+              /* Which order each line went out on. A request ordered in
+                 instalments has no single answer at the header, and this is
+                 the column that says which half is still waiting. */
+              key: "poRef",
+              label: "Purchase Order",
+              cell: (r) =>
+                r.poRef ? (
+                  <Badge tone="info">{r.poRef}</Badge>
+                ) : (
+                  <span className="text-ink-3">ยังไม่ได้สั่ง</span>
+                ),
+            },
           ],
         },
         {
@@ -314,6 +393,43 @@ export const PR_DETAIL: DetailSchema<PrRow> = {
       key: "approval",
       label: "Approval",
       blocks: (pr) => [
+        {
+          /* The signatures this document must collect, read from the workflow
+             in Administration rather than from anything typed on the request.
+             A request under the limit shows one row; one over it shows two,
+             and the second row is what "เกินวงเงิน" actually means. */
+          type: "table",
+          title: "ขั้นการอนุมัติที่เอกสารนี้ต้องผ่าน",
+          rows: prProgress(pr),
+          empty: "ไม่มีขั้นอนุมัติสำหรับเอกสารนี้",
+          cols: [
+            { key: "seq", label: "ขั้น", align: "right", cell: (s) => fmt(s.seq) },
+            { key: "name", label: "ขั้นตอน" },
+            { key: "roleName", label: "ผู้มีอำนาจ" },
+            {
+              key: "threshold",
+              label: "เงื่อนไข",
+              muted: true,
+              cell: (s) => (s.threshold > 0 ? `ตั้งแต่ ${money0(s.threshold)} บาทขึ้นไป` : "ทุกใบ"),
+            },
+            {
+              key: "approvers",
+              label: "ผู้อนุมัติที่ใช้งานอยู่",
+              muted: true,
+              cell: (s) => s.approvers.join(", ") || "ไม่มีผู้ใช้ในบทบาทนี้",
+            },
+            {
+              key: "signed",
+              label: "สถานะ",
+              cell: (s) =>
+                s.signed ? (
+                  <Badge tone="success">ลงนามแล้ว</Badge>
+                ) : (
+                  <Badge tone="neutral">รอลงนาม</Badge>
+                ),
+            },
+          ],
+        },
         {
           type: "timeline",
           title: "Approval Flow",

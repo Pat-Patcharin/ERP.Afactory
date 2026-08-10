@@ -115,16 +115,17 @@ describe("Inventory Workspace — KPI cards", () => {
 });
 
 describe("Inventory Workspace — operations pipeline", () => {
-  it("renders the eight stages in the order the spec defines", () => {
+  it("renders the seven stages in the order the spec defines", () => {
     render(<InventoryWorkspacePage />);
     const pipeline = screen.getByTestId("inv-pipeline");
     const labels = within(pipeline)
       .getAllByRole("button")
       .map((b) => b.textContent ?? "");
 
+    /* Put Away is gone from the chain: what a goods receipt receives is
+       available, with no bin-level step in between. */
     const expected = [
       "Goods Receipt",
-      "Put Away",
       "Available Stock",
       "Reserved",
       "Picking",
@@ -132,7 +133,7 @@ describe("Inventory Workspace — operations pipeline", () => {
       "Sales Return",
       "Adjustment",
     ];
-    expect(labels).toHaveLength(8);
+    expect(labels).toHaveLength(7);
     expected.forEach((name, i) => expect(labels[i]).toContain(name));
   });
 
@@ -315,10 +316,10 @@ describe("Inventory Workspace — health and shortcuts", () => {
     }
   });
 
-  it("renders the seven shortcut panels", () => {
+  it("renders the six shortcut panels", () => {
     render(<InventoryWorkspacePage />);
     const grid = screen.getByTestId("ws-shortcut-grid");
-    expect(within(grid).getAllByRole("button")).toHaveLength(7);
+    expect(within(grid).getAllByRole("button")).toHaveLength(6);
 
     for (const title of [
       "Pending Transfers",
@@ -327,7 +328,6 @@ describe("Inventory Workspace — health and shortcuts", () => {
       "Pending QC",
       "Pending Returns",
       "Pending Supplier Claims",
-      "Pending Put Away",
     ]) {
       expect(within(grid).getByText(title)).toBeInTheDocument();
     }
@@ -491,7 +491,6 @@ describe("Navigation regression — every module still resolves", () => {
       ["Purchase Order", "/m/purchase-order"],
       ["Goods Receipt", "/m/goods-receipt"],
       ["QC Inspection", "/m/qc-inspection"],
-      ["Put Away", "/m/put-away"],
       ["Outbound Workspace", "/outbound"],
       ["Sales Order", "/m/sales-order"],
       ["Picking", "/m/picking"],

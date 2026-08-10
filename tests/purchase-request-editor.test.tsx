@@ -230,7 +230,10 @@ describe("Purchase Request — asking for less than suggested", () => {
     const saved = PURCHASE_REQUESTS.find((p) => p.code === res.code)!;
 
     expect(res.created).toBe(true);
-    expect(saved.status, "submitted, not held back").toBe("Pending Approval");
+    /* A ten-baht line is far under the approval limit, so submitting opens
+       it there and then — the reviewer's door is only for what is over. */
+    expect(saved.status, "submitted, not held back").toBe("Open");
+    expect(saved.submittedBy).toBe("Nattapong K.");
     expect(saved.items[0].qty, "and the number the requester meant is what was kept").toBe(
       under.qty,
     );

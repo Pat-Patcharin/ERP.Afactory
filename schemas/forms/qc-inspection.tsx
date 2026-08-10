@@ -640,7 +640,7 @@ export const QC_FORM: FormSchema<QcRow> = {
           : patch.result === "Partial Pass"
             ? "Partial Pass"
             : "Failed";
-      gr.status = patch.result === "Fail" ? "Partial" : "Ready for Put Away";
+      gr.status = patch.result === "Fail" ? "Partial" : "Completed";
       gr.updated = now;
       decorateGRs();
     }

@@ -59,7 +59,15 @@ export const NAV: NavGroup[] = [
       { label: "Purchase Order", href: "/m/purchase-order", icon: "purchaseOrder" },
       { label: "Goods Receipt", href: "/m/goods-receipt", icon: "goodsReceipt" },
       { label: "QC Inspection", href: "/m/qc-inspection", icon: "qc" },
-      { label: "Put Away", href: "/m/put-away", icon: "putAway" },
+      /* No Put Away.
+
+         It asked which bin each line went into, and a warehouse in this
+         system has no bins to answer with — the master stopped asking for a
+         Zone › Rack › Shelf › Bin layout, so the suggestion was always blank
+         and the step was data entry with nothing downstream reading it.
+         Receiving now ends at the goods receipt: what is received is
+         available. The module and its history are still in the codebase;
+         putting the entry back here is what turns it on again. */
       {
         label: "Supplier Claim",
         href: "/soon?m=Supplier%20Claim",

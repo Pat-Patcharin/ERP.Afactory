@@ -338,8 +338,14 @@ describe("Administration — approval workflow", () => {
   it("lets only the named role sign a step, and Super Admin always", () => {
     const step = approvalPlan("purchase-request", 10)[0];
 
-    asRole("PURCHASE_MANAGER");
+    /* The first signature on a purchase request is the general manager's —
+       see WF-PR-001. The purchasing desk raises the paperwork; it does not
+       sign it. */
+    asRole("GENERAL_MANAGER");
     expect(canApproveStep(step)).toBe(true);
+
+    asRole("PURCHASE_MANAGER");
+    expect(canApproveStep(step)).toBe(false);
 
     asRole("SALES_REP");
     expect(canApproveStep(step)).toBe(false);

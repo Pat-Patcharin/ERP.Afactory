@@ -286,8 +286,7 @@ export function invSnapshot(): InvSnapshot {
     expiredProducts: new Set(
       lots.filter((l) => l.kind === "Expired").map((l) => l.productCode),
     ).size,
-    inboundDocs:
-      openGoodsReceipts().length + openInspections().length + openPutAways().length,
+    inboundDocs: openGoodsReceipts().length + openInspections().length,
     outboundDocs:
       openPickings().length + openPackings().length + openShipments().length,
     movementDocs: onLatest.length,
@@ -385,7 +384,6 @@ function stageBadge(pending: number, busyAt: number): [string, BadgeTone] {
  */
 export function invPipeline(): InvStage[] {
   const gr = openGoodsReceipts();
-  const pa = openPutAways();
   const pick = openPickings();
   const shp = openShipments();
   const rtn = openReturns();
@@ -418,17 +416,8 @@ export function invPipeline(): InvStage[] {
       "Goods Receipt",
       "info",
     ),
-    build(
-      "pa",
-      "Put Away",
-      "putAway",
-      sum(pa, (p) => p.remainingQty),
-      lastDayCount(PUTAWAY_TASKS, (p) => parseStamp(p.updated)),
-      300,
-      "รอจัดเก็บเข้าบิน",
-      "Put Away",
-      "warning",
-    ),
+    /* No Put Away stage. Receiving ends at the goods receipt — what is
+       received is available, with no bin-level step between the two. */
     build(
       "available",
       "Available Stock",
@@ -982,7 +971,6 @@ export interface InvShortcut {
 
 /** Everything queued against Inventory, each one click from its module. */
 export function invShortcuts(): InvShortcut[] {
-  const pa = openPutAways();
   const qc = openInspections();
   const rtn = openReturns();
 
@@ -1046,16 +1034,6 @@ export function invShortcuts(): InvShortcut[] {
       desc: "เคลมของเสียกับผู้ขาย",
       goto: "Supplier Claim",
       tone: "info",
-    },
-    {
-      key: "putAway",
-      title: "Pending Put Away",
-      icon: "putAway",
-      count: pa.length,
-      unit: "ใบ",
-      desc: `${fmtInt(sum(pa, (p) => p.remainingQty))} ชิ้นรอเก็บเข้าบิน`,
-      goto: "Put Away",
-      tone: "warning",
     },
   ];
 }

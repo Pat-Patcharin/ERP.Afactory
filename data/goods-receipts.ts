@@ -85,7 +85,6 @@ export const GR_STATUS = [
   "Waiting",
   "Partial",
   "Pending QC",
-  "Ready for Put Away",
   "Completed",
   "Cancelled",
 ] as const;
@@ -499,7 +498,7 @@ export const GOODS_RECEIPTS: GoodsReceipt[] = [
     receiptDate: "10/06/2025",
     expectedDate: "11/06/2025",
     receiver: "Somchai B.",
-    status: "Ready for Put Away",
+    status: "Completed",
     qcStatus: "Passed",
     discrepancy: "None",
     deliveryNote: "DN-DC-8800",

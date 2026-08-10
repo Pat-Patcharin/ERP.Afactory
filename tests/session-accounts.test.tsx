@@ -38,6 +38,12 @@ const ADMIN = "EMP001";
 const SALES_ADMIN = "EMP013";
 const SALES_MANAGER = "EMP003";
 const WAREHOUSE = "EMP008";
+/* The inbound chairs — Pim, Praew, Max, Kie, A care. */
+const BACKOFFICE = "EMP014";
+const GENERAL_MANAGER = "EMP015";
+const MANAGING_DIRECTOR = "EMP016";
+const WAREHOUSE_ADMIN = "EMP018";
+const SUPER_ADMIN_2 = "EMP017";
 
 const SEED = JSON.parse(JSON.stringify(SALES_REQUESTS)) as SrRow[];
 
@@ -79,14 +85,29 @@ function approved(): SrRow {
 const labels = (acts: { label?: string }[]) => acts.map((a) => a.label ?? "");
 
 describe("Two accounts — who they are", () => {
-  it("offers the five chairs one order passes through, in that order", () => {
+  it("offers the chairs each order passes through, in that order", () => {
     /* This used to read "exactly the sales rep and the administrator", from
        when every outbound approval needed a manager. The sales admin desk
        exists now, and the warehouse joined it once confirming what actually
-       ships stopped being something the admin could do — so the demo carries
-       the four working chairs plus the one that reaches Administration. */
+       ships stopped being something the admin could do.
+
+       The inbound story was added beside it, in its own order: backoffice
+       raises the request, the general manager signs what is within the
+       limit, the managing director signs what is over it, and the warehouse
+       receives what arrives. Two stories, one switcher. */
     const codes = demoAccounts().map((a) => a.code);
-    expect(codes).toEqual([REP, SALES_ADMIN, SALES_MANAGER, WAREHOUSE, ADMIN]);
+    expect(codes).toEqual([
+      REP,
+      SALES_ADMIN,
+      SALES_MANAGER,
+      WAREHOUSE,
+      ADMIN,
+      BACKOFFICE,
+      GENERAL_MANAGER,
+      MANAGING_DIRECTOR,
+      WAREHOUSE_ADMIN,
+      SUPER_ADMIN_2,
+    ]);
 
     const roleOf = (i: number) => getRole(demoAccounts()[i].user.roleCode)!;
     expect(roleOf(0).code).toBe("SALES_REP");
@@ -94,6 +115,11 @@ describe("Two accounts — who they are", () => {
     expect(roleOf(2).code).toBe("SALES_MANAGER");
     expect(roleOf(3).code).toBe("WAREHOUSE_STAFF");
     expect(roleOf(4).all).toBe(true);
+    expect(roleOf(5).code).toBe("BACKOFFICE");
+    expect(roleOf(6).code).toBe("GENERAL_MANAGER");
+    expect(roleOf(7).code).toBe("MANAGEMENT");
+    expect(roleOf(8).code).toBe("WAREHOUSE_ADMIN");
+    expect(roleOf(9).all).toBe(true);
 
     /* Every one of them must be usable — a demo chair nobody can sit in is
        worse than not offering it. */

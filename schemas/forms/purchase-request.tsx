@@ -51,7 +51,7 @@ export const PR_FORM: FormSchema<PrRow> = {
   saveButton: "Save Purchase Request",
   statusBadge: {
     Draft: "neutral",
-    "Pending Approval": "warning",
+    Open: "warning",
     Approved: "success",
     Rejected: "danger",
     Converted: "info",

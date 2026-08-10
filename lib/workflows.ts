@@ -1,17 +1,11 @@
-import type { PurchaseOrder } from "@/data/purchase-orders";
-import { actingUserName } from "./domain/admin";
 import { stamp } from "./format";
 import type { ActionCtx } from "./types";
 import {
   PURCHASE_ORDERS,
-  PURCHASE_REQUESTS,
   decoratePOs,
-  decoratePRs,
-  nextPOCode,
   poRemainingQty,
   poReceivedPct,
   type PoRow,
-  type PrRow,
 } from "./domain/purchase";
 import {
   GOODS_RECEIPTS,
@@ -24,7 +18,6 @@ import {
   type PaRow,
   type QcRow,
 } from "./domain/inbound";
-import { WAREHOUSES } from "./domain/warehouse";
 
 /* ============================================================
    Document workflows. Kept out of the schemas so the state
@@ -32,145 +25,27 @@ import { WAREHOUSES } from "./domain/warehouse";
    stays a description of a screen rather than of a process.
    ============================================================ */
 
-/* ---------- Purchase Request ---------- */
+/* ---------- Purchase Request ----------
 
-export function prSubmit(pr: PrRow, ctx: ActionCtx) {
-  pr.status = "Pending Approval";
-  (pr.approvals ??= []).push({
-    step: "ผู้จัดการจัดซื้อ",
-    by: actingUserName(),
-    role: "Purchasing Manager",
-    when: "",
-    status: "pending",
-    note: "",
-  });
-  pr.updated = stamp();
-  pr.updatedBy = pr.requester;
-  decoratePRs();
-  ctx.refresh();
-  ctx.toast("ส่งขออนุมัติแล้ว", `${pr.code} — รอผู้จัดการจัดซื้ออนุมัติ`, "success");
-}
+   Moved to workflows-purchase.tsx, whole. The request grew an approval
+   plan, a review door above the limit, notifications and a line-by-line
+   split — and the confirm dialogs it needs are JSX, which a .ts file
+   cannot hold. Re-exported here so every caller keeps one import. */
 
-export function prApprove(pr: PrRow, ctx: ActionCtx) {
-  const pending = pr.approvals?.find((a) => a.status === "pending");
-  if (pending) {
-    pending.status = "done";
-    pending.when = stamp();
-    pending.note = "อนุมัติ";
-  }
-  pr.status = "Approved";
-  pr.updated = stamp();
-  pr.updatedBy = actingUserName();
-  decoratePRs();
-  ctx.refresh();
-  ctx.toast("อนุมัติแล้ว", `${pr.code} — พร้อมแปลงเป็นใบสั่งซื้อ`, "success");
-}
-
-export function prReject(pr: PrRow, ctx: ActionCtx) {
-  ctx.confirm({
-    title: "Reject this purchase request?",
-    message: `ระบุเหตุผลการปฏิเสธสำหรับ ${pr.code}`,
-    confirmText: "Reject PR",
-    onConfirm: () => {
-      const pending = pr.approvals?.find((a) => a.status === "pending");
-      if (pending) {
-        pending.status = "rejected";
-        pending.when = stamp();
-        pending.note = "ไม่อนุมัติ";
-      }
-      pr.status = "Rejected";
-      pr.updated = stamp();
-      pr.updatedBy = actingUserName();
-      decoratePRs();
-      ctx.refresh();
-      ctx.toast("ปฏิเสธใบขอซื้อแล้ว", pr.code, "danger");
-    },
-  });
-}
-
-/** Approved PR → a real Purchase Order carrying the same lines. */
-export function prConvert(pr: PrRow, ctx: ActionCtx) {
-  ctx.confirm({
-    title: "Convert to Purchase Order?",
-    message: `สร้างใบสั่งซื้อจาก ${pr.code} — ระบบจะออกเลข PO ให้อัตโนมัติ`,
-    confirmText: "Convert to PO",
-    tone: "primary",
-    onConfirm: () => {
-      const now = stamp();
-      const poCode = nextPOCode();
-      const fresh: PurchaseOrder = {
-        code: poCode,
-        supplier: pr.supplier || "",
-        warehouse: WAREHOUSES[0] ? `${WAREHOUSES[0].code} ${WAREHOUSES[0].name}` : "",
-        currency: "THB",
-        fx: 1,
-        buyer: actingUserName(),
-        payTerm: "30 Days",
-        incoterm: "FOB",
-        orderDate: now.split(" ")[0],
-        expectedDate: pr.needBy || "",
-        remark: `สร้างจากใบขอซื้อ ${pr.code}`,
-        status: "Open",
-        prRef: pr.code,
-        items: (pr.items ?? []).map((it) => ({
-          code: it.code,
-          name: it.name,
-          unit: it.unit,
-          qty: it.qty,
-          price: it.price,
-          disc: 0,
-          tax: 7,
-          recv: 0,
-        })),
-        receipts: [],
-        created: now,
-        createdBy: actingUserName(),
-        updated: now,
-        updatedBy: actingUserName(),
-      };
-      PURCHASE_ORDERS.unshift(fresh as PoRow);
-      decoratePOs();
-
-      pr.status = "Converted";
-      pr.poRef = poCode;
-      pr.updated = now;
-      pr.updatedBy = actingUserName();
-      decoratePRs();
-
-      ctx.refresh();
-      ctx.toast("แปลงเป็นใบสั่งซื้อแล้ว", `${pr.code} → ${poCode}`, "success");
-    },
-  });
-}
-
-export function prCancel(pr: PrRow, ctx: ActionCtx) {
-  ctx.confirm({
-    title: "Cancel this purchase request?",
-    message: `${pr.code} จะถูกยกเลิก`,
-    confirmText: "Cancel PR",
-    onConfirm: () => {
-      pr.status = "Cancelled";
-      decoratePRs();
-      ctx.refresh();
-      ctx.toast("ยกเลิกใบขอซื้อแล้ว", pr.code, "info");
-    },
-  });
-}
-
-export function prDelete(pr: PrRow, ctx: ActionCtx) {
-  ctx.confirm({
-    title: "Delete this purchase request?",
-    message: `${pr.code} จะถูกลบถาวร การกระทำนี้ย้อนกลับไม่ได้`,
-    confirmText: "Delete PR",
-    onConfirm: () => {
-      const i = PURCHASE_REQUESTS.indexOf(pr);
-      if (i > -1) PURCHASE_REQUESTS.splice(i, 1);
-      decoratePRs();
-      ctx.refresh();
-      ctx.toast("ลบใบขอซื้อแล้ว", pr.code, "danger");
-    },
-  });
-}
+export {
+  prApprove,
+  prCanApprove,
+  prCanConvert,
+  prCanOpen,
+  prCanSubmit,
+  prCancel,
+  prConvert,
+  prDelete,
+  prOpen,
+  prProgress,
+  prReject,
+  prSubmit,
+} from "./workflows-purchase";
 
 /* ---------- Purchase Order ---------- */
 
@@ -248,7 +123,14 @@ export function poDelete(po: PoRow, ctx: ActionCtx) {
   });
 }
 
-/* ---------- Goods Receipt ---------- */
+/* ---------- Goods Receipt ----------
+
+   RECEIVING ENDS HERE.
+
+   It used to hand the goods to a Put Away task that asked which bin each
+   line went into — a question a warehouse in this system has no bins to
+   answer. What is received is available; there is no third document
+   between the dock and the shelf. */
 
 export function grPassQC(gr: GrRow, ctx: ActionCtx) {
   ctx.confirm({
@@ -258,41 +140,18 @@ export function grPassQC(gr: GrRow, ctx: ActionCtx) {
     tone: "primary",
     onConfirm: () => {
       gr.qcStatus = "Passed";
-      gr.status = "Ready for Put Away";
+      gr.status = "Completed";
       gr.updated = stamp();
       (gr.history ??= []).unshift({
         t: "QC Passed",
-        d: "ตรวจผ่าน พร้อมจัดเก็บ",
+        d: "ตรวจผ่าน รับเข้าคลังเรียบร้อย สต๊อกพร้อมใช้งาน",
         u: "Warin S.",
         when: stamp(),
         kind: "primary",
       });
       decorateGRs();
       ctx.refresh();
-      ctx.toast("QC ผ่านแล้ว", `${gr.code} — พร้อมจัดเก็บเข้าคลัง`, "success");
-    },
-  });
-}
-
-export function grPutAway(gr: GrRow, ctx: ActionCtx) {
-  ctx.confirm({
-    title: "Put Away to inventory?",
-    message: `จัดเก็บ ${gr.code} เข้าคลัง — สต๊อกจะพร้อมใช้งานหลังจัดเก็บ`,
-    confirmText: "Put Away",
-    tone: "primary",
-    onConfirm: () => {
-      gr.status = "Completed";
-      gr.updated = stamp();
-      (gr.history ??= []).unshift({
-        t: "Put Away created",
-        d: "จัดเก็บเข้าคลังเรียบร้อย",
-        u: "Somchai B.",
-        when: stamp(),
-        kind: "primary",
-      });
-      decorateGRs();
-      ctx.refresh();
-      ctx.toast("จัดเก็บเรียบร้อย", `${gr.code} — สต๊อกพร้อมใช้งาน`, "success");
+      ctx.toast("QC ผ่านแล้ว", `${gr.code} — สต๊อกพร้อมใช้งาน`, "success");
     },
   });
 }
@@ -382,7 +241,7 @@ export function qcDecide(qc: QcRow, pass: boolean, ctx: ActionCtx) {
       const gr = GOODS_RECEIPTS.find((g) => g.code === qc.grRef);
       if (gr) {
         gr.qcStatus = pass ? "Passed" : "Failed";
-        gr.status = pass ? "Ready for Put Away" : "Partial";
+        gr.status = pass ? "Completed" : "Partial";
         gr.updated = now;
         decorateGRs();
       }

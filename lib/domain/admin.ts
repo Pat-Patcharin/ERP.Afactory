@@ -127,6 +127,36 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     purpose: "ดูแลระบบ สิทธิ์ และการตั้งค่าทั้งหมด",
     initials: "PS",
   },
+
+  /* The inbound story, in the order the work moves: backoffice raises the
+     request, the general manager signs what is within the limit and refers
+     what is over it, the managing director signs that, and the warehouse
+     receives what arrives. */
+  {
+    code: "EMP014",
+    purpose: "เปิดใบขอซื้อ — อนุมัติเองไม่ได้",
+    initials: "PM",
+  },
+  {
+    code: "EMP015",
+    purpose: "อนุมัติใบขอซื้อในวงเงิน ออกใบสั่งซื้อ และแยกใบสั่งซื้อทีละรายการได้",
+    initials: "PW",
+  },
+  {
+    code: "EMP016",
+    purpose: "อนุมัติใบขอซื้อที่เกินวงเงิน — ด่านที่ผู้จัดการทั่วไปผ่านเองไม่ได้",
+    initials: "MX",
+  },
+  {
+    code: "EMP018",
+    purpose: "รับของเข้าคลัง ตรวจ QC และจัดเก็บ",
+    initials: "KI",
+  },
+  {
+    code: "EMP017",
+    purpose: "ดูแลระบบทั้งหมด — บัญชีของฝั่ง A care",
+    initials: "AC",
+  },
 ];
 
 export const demoAccounts = () =>

@@ -11,7 +11,7 @@ import { PURCHASE_ORDERS } from "@/lib/domain/purchase";
 import { GR_QC_STATUS, GR_RECEIVERS, GR_STATUS } from "@/data/goods-receipts";
 import { GR_QC_TONE, GR_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt } from "@/lib/format";
-import { grCancel, grDelete, grPassQC, grPutAway } from "@/lib/workflows";
+import { grCancel, grDelete, grPassQC } from "@/lib/workflows";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, Thumb } from "@/components/ui";
 import { GR_FORM } from "./forms/goods-receipt";
@@ -118,7 +118,7 @@ export const GR_LIST: ListSchema<GrRow> = {
     { key: "waiting", label: "Waiting", test: (g) => g.status === "Waiting" },
     { key: "partial", label: "Partial", test: (g) => g.status === "Partial" },
     { key: "pendingqc", label: "Pending QC", test: (g) => g.status === "Pending QC" },
-    { key: "putaway", label: "Ready for Put Away", test: (g) => g.status === "Ready for Put Away" },
+    /* No "Ready for Put Away" — receiving ends at this document now. */
     { key: "completed", label: "Completed", test: (g) => g.status === "Completed" },
     { key: "discrepancy", label: "Discrepancy", test: (g) => g.discCount > 0 },
   ],
@@ -221,9 +221,6 @@ export const GR_LIST: ListSchema<GrRow> = {
 
     if (gr.status === "Pending QC")
       acts.push({ label: "Open QC", icon: "qc", run: (r) => grPassQC(r, ctx) });
-
-    if (gr.status === "Ready for Put Away")
-      acts.push({ label: "Put Away", icon: "putAway", run: (r) => grPutAway(r, ctx) });
 
     if (gr.poRef)
       acts.push({

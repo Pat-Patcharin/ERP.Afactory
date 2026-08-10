@@ -6,7 +6,7 @@ import {
   type PurchaseRequest,
 } from "@/data/purchase-requests";
 import { PO_SUPPLIERS } from "./purchase";
-import { nextPRCode } from "./purchase";
+import { decoratePRs, nextPRCode, submitPurchaseRequest, type PrRow } from "./purchase";
 import { PRODUCTS, productStock } from "./product";
 import {
   applyProduct,
@@ -356,8 +356,14 @@ export interface PrSaveResult {
 /**
  * Write the draft into the purchase request store.
  *
- * `submit` moves it to Pending Approval; without it the request stays a Draft
- * the requester can keep editing — the same split the sales request uses.
+ * `submit` hands it over; without it the request stays a Draft the requester
+ * can keep editing — the same split the sales request uses.
+ *
+ * What handing it over DOES is `submitPurchaseRequest`, shared with the
+ * Submit action on a saved document: a request within the approval limit
+ * opens straight away, one above it stays a submitted Draft until the
+ * reviewer opens it. Writing the status here as well would have been a
+ * second copy of the limit, and the editor would have been the way around it.
  */
 export function savePurchaseRequestDraft(
   draft: PurchaseRequestDraft,
@@ -398,7 +404,9 @@ export function savePurchaseRequestDraft(
 
   if (existing) {
     Object.assign(existing, patch);
-    if (submit && existing.status === "Draft") existing.status = "Pending Approval";
+    if (submit && existing.status === "Draft" && !existing.submittedAt) {
+      submitPurchaseRequest(existing as PrRow, user);
+    }
     return { code, created: false };
   }
 
@@ -407,12 +415,16 @@ export function savePurchaseRequestDraft(
   const fresh: PurchaseRequest = {
     code,
     ...patch,
-    status: submit ? "Pending Approval" : "Draft",
+    /* Always born a Draft. Whether submitting opens it is the approval
+       limit's answer, given below, not this line's. */
+    status: "Draft",
     approvals: [],
     created: now,
     createdBy: user,
   };
   PURCHASE_REQUESTS.unshift(fresh);
+  decoratePRs();
+  if (submit) submitPurchaseRequest(fresh as PrRow, user);
 
   return { code, created: true };
 }

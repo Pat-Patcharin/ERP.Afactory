@@ -224,7 +224,6 @@ describe("Dashboard — my pending tasks", () => {
       "Purchase Request รออนุมัติ",
       "Purchase Order รออนุมัติ",
       "QC รอตรวจสอบ",
-      "Put Away รอจัดเก็บ",
       "Shipment รอจัดส่ง",
       "Cycle Count รอตรวจนับ",
       "Supplier Claim รอดำเนินการ",
@@ -408,7 +407,7 @@ describe("Dashboard — business alerts", () => {
 /* ---------- Sections 5–6 ---------- */
 
 describe("Dashboard — purchase overview", () => {
-  it("renders the six purchase documents with count, today and pending", () => {
+  it("renders the five purchase documents with count, today and pending", () => {
     render(<DashboardPage />);
     const card = screen.getByTestId("dash-purchase-rows");
 
@@ -420,12 +419,14 @@ describe("Dashboard — purchase overview", () => {
       "Purchase Order",
       "Goods Receipt",
       "QC Inspection",
-      "Put Away",
       "Supplier Claim",
     ]) {
       expect(within(card).getByText(label)).toBeInTheDocument();
     }
-    expect(within(card).getAllByRole("button")).toHaveLength(6);
+    /* Put Away left the inbound chain — receiving ends at the goods
+       receipt, so there is no queue behind a row for it. */
+    expect(within(card).queryByText("Put Away")).toBeNull();
+    expect(within(card).getAllByRole("button")).toHaveLength(5);
   });
 
   it("counts no more pending than total on any row", () => {
@@ -438,7 +439,7 @@ describe("Dashboard — purchase overview", () => {
   it("shows a progress bar on every row", () => {
     render(<DashboardPage />);
     const card = screen.getByTestId("dash-purchase-rows");
-    expect(card.querySelectorAll(".rounded-pill.bg-neutral-soft")).toHaveLength(6);
+    expect(card.querySelectorAll(".rounded-pill.bg-neutral-soft")).toHaveLength(5);
   });
 });
 

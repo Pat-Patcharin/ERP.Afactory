@@ -654,7 +654,9 @@ export const GR_FORM: FormSchema<GrRow> = {
       items,
       qc: { ...(s.qc ?? {}), dueDate: isoToDmy(s.qc?.dueDate) },
       qcStatus: anyQc ? "Pending" : "Not Required",
-      status: anyQc ? "Pending QC" : fullyReceived ? "Ready for Put Away" : "Partial",
+      /* Fully received and nothing held for QC is finished — receiving
+         no longer hands the goods to a put-away task. */
+      status: anyQc ? "Pending QC" : fullyReceived ? "Completed" : "Partial",
       updated: now,
       updatedBy: FORM_USER(),
     };

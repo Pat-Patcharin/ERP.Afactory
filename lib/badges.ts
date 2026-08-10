@@ -52,7 +52,9 @@ export const WH_TYPE_TONE: Record<string, BadgeTone> = {
 
 export const PR_TONE: Record<string, BadgeTone> = {
   Draft: "neutral",
-  "Pending Approval": "warning",
+  /* Raised and waiting on a signature — the same amber the other modules
+     give "Pending Approval", because it is the same state. */
+  Open: "warning",
   Approved: "success",
   Rejected: "danger",
   Converted: "info",

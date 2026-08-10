@@ -212,9 +212,15 @@ export const ROLES: RoleDef[] = [
     createdBy: "System",
   },
   {
+    /* Renamed rather than joined by a second board-level role.
+       This role already WAS the managing director: it is the top step of
+       every approval workflow, and the seeded user carrying it is noted
+       "กรรมการผู้จัดการ". A separate MANAGING_DIRECTOR beside it would have
+       been two roles meaning one thing, and every workflow would have had to
+       pick one of them to escalate to. */
     code: "MANAGEMENT",
-    name: "Management",
-    desc: "ผู้บริหาร เห็นทุกโมดูลธุรกิจและตัวเลขกำไร แต่แก้ไขการตั้งค่าระบบไม่ได้",
+    name: "Managing Director",
+    desc: "กรรมการผู้จัดการ อนุมัติเอกสารที่เกินอำนาจผู้จัดการทั่วไป เห็นทุกโมดูลธุรกิจและตัวเลขกำไร แต่แก้ไขการตั้งค่าระบบไม่ได้",
     department: "Management",
     scope: "company",
     status: "Active",
@@ -379,6 +385,95 @@ export const ROLES: RoleDef[] = [
     },
     fields: ["cost", "margin", "profit", "credit", "bank", "inventoryValue"],
     created: "01/01/2024",
+    createdBy: "System",
+  },
+  {
+    /* ============================================================
+       THE DESK THAT RAISES THE PAPERWORK, AND THE ONE THAT SIGNS IT
+
+       Backoffice types the purchase request; the general manager signs
+       it and turns it into orders. Two roles rather than one because the
+       whole point of the request is that somebody other than its author
+       agrees to the spend — a single role holding both `create` and
+       `approve` would let one person buy anything.
+       ============================================================ */
+    code: "BACKOFFICE",
+    name: "Backoffice",
+    desc: "ธุรการสำนักงาน เปิดใบขอซื้อและติดตามเอกสาร แต่อนุมัติของตัวเองไม่ได้",
+    department: "Purchasing",
+    scope: "department",
+    status: "Active",
+    system: false,
+    perms: {
+      dashboard: ["view"],
+      "purchase-workspace": ["view"],
+      "purchase-request": OPERATE,
+      /* Reads the order that comes out of the request, does not raise one:
+         the PO is issued by whoever approved the spend. */
+      "purchase-order": VIEW_ONLY,
+      "goods-receipt": VIEW_ONLY,
+      "business-partner": VIEW_ONLY,
+      product: VIEW_ONLY,
+      "stock-inquiry": VIEW_ONLY,
+      reports: VIEW_ONLY,
+    },
+    fields: ["cost", "supplierCost"],
+    created: "10/08/2026",
+    createdBy: "System",
+  },
+  {
+    code: "GENERAL_MANAGER",
+    name: "General Manager",
+    desc: "ผู้จัดการทั่วไป อนุมัติใบขอซื้อในวงเงิน ตรวจใบที่เกินวงเงินก่อนส่ง MD และออกใบสั่งซื้อให้ผู้ขาย",
+    department: "Management",
+    scope: "company",
+    status: "Active",
+    system: false,
+    perms: {
+      dashboard: ["view"],
+      ...grant(ALL, ["Purchase"]),
+      /* Purchasing only. A general manager who could also sign sales
+         documents would quietly join the tier the price-floor rule names,
+         and that rule is about who may discount below cost — a different
+         question from who may commit the company to a spend. */
+      ...grant(VIEW_ONLY, ["Master Data", "Inventory", "Outbound", "Reports"]),
+      "business-partner": OPERATE,
+    },
+    fields: ["cost", "margin", "profit", "supplierCost", "inventoryValue"],
+    created: "10/08/2026",
+    createdBy: "System",
+  },
+  {
+    code: "WAREHOUSE_ADMIN",
+    name: "Warehouse Admin",
+    desc: "ธุรการคลัง รับของเข้า จัดเก็บ และดูแลเอกสารคลัง แต่ปรับยอดสต๊อกเองไม่ได้",
+    department: "Warehouse",
+    scope: "ownWarehouse",
+    status: "Active",
+    system: false,
+    perms: {
+      dashboard: ["view"],
+      "inventory-workspace": ["view"],
+      "purchase-order": VIEW_ONLY,
+      /* Receiving ends at the goods receipt — there is no put-away step for
+         this desk to hold. */
+      "goods-receipt": ALL,
+      "qc-inspection": OPERATE,
+      "cycle-count": OPERATE,
+      "stock-transfer": OPERATE,
+      /* Adjusting a balance is the warehouse manager's signature, not the
+         admin's — the desk that counts cannot also approve the correction. */
+      "stock-adjustment": VIEW_ONLY,
+      "stock-inquiry": VIEW_ONLY,
+      "stock-card": VIEW_ONLY,
+      "lot-tracking": VIEW_ONLY,
+      "serial-tracking": VIEW_ONLY,
+      barcode: ["view"],
+      product: VIEW_ONLY,
+      warehouse: VIEW_ONLY,
+    },
+    fields: ["inventoryValue"],
+    created: "10/08/2026",
     createdBy: "System",
   },
   {
@@ -756,6 +851,98 @@ export const USERS: UserDef[] = [
     phone: "",
     note: "เปิดใช้เฉพาะช่วงตรวจสอบประจำปี",
   },
+
+  /* ---- The inbound story: request → approve → order → receive ---- */
+  {
+    code: "EMP014",
+    username: "pim",
+    name: "Pim",
+    email: "pim@afactory.co.th",
+    department: "Purchasing",
+    roleCode: "BACKOFFICE",
+    scope: "department",
+    warehouse: "",
+    salesRep: "",
+    status: "Active",
+    lastLogin: "10/08/2026 08:20",
+    created: "10/08/2026",
+    createdBy: "System",
+    team: "",
+    phone: "081-401-1001",
+    note: "เปิดใบขอซื้อ — อนุมัติเองไม่ได้",
+  },
+  {
+    code: "EMP015",
+    username: "praew",
+    name: "Praew",
+    email: "praew@afactory.co.th",
+    department: "Management",
+    roleCode: "GENERAL_MANAGER",
+    scope: "company",
+    warehouse: "",
+    salesRep: "",
+    status: "Active",
+    lastLogin: "10/08/2026 08:35",
+    created: "10/08/2026",
+    createdBy: "System",
+    team: "",
+    phone: "081-401-1002",
+    note: "อนุมัติใบขอซื้อในวงเงิน ตรวจใบที่เกินวงเงินก่อนส่ง MD และออกใบสั่งซื้อ",
+  },
+  {
+    code: "EMP016",
+    username: "max",
+    name: "Max",
+    email: "max@afactory.co.th",
+    department: "Management",
+    roleCode: "MANAGEMENT",
+    scope: "company",
+    warehouse: "",
+    salesRep: "",
+    status: "Active",
+    lastLogin: "10/08/2026 09:10",
+    created: "10/08/2026",
+    createdBy: "System",
+    team: "",
+    phone: "081-401-1003",
+    note: "กรรมการผู้จัดการ — ด่านที่ผู้จัดการทั่วไปผ่านเองไม่ได้",
+  },
+  {
+    code: "EMP017",
+    username: "acare",
+    name: "A care",
+    email: "acare@afactory.co.th",
+    department: "Administration",
+    roleCode: "SUPER_ADMIN",
+    scope: "company",
+    warehouse: "",
+    salesRep: "",
+    status: "Active",
+    lastLogin: "10/08/2026 07:50",
+    created: "10/08/2026",
+    createdBy: "System",
+    team: "",
+    phone: "081-401-1004",
+    note: "ดูแลระบบ สิทธิ์ และการตั้งค่าทั้งหมด",
+  },
+  {
+    code: "EMP018",
+    username: "kie",
+    name: "Kie",
+    email: "kie@afactory.co.th",
+    department: "Warehouse",
+    roleCode: "WAREHOUSE_ADMIN",
+    scope: "ownWarehouse",
+    warehouse: "WH-BKK Bangkok Main Warehouse",
+    salesRep: "",
+    status: "Active",
+    lastLogin: "10/08/2026 08:05",
+    created: "10/08/2026",
+    createdBy: "System",
+    team: "",
+    phone: "081-401-1005",
+    note: "รับของเข้าคลัง ตรวจ QC และจัดเก็บ",
+  },
 ];
 
 export const USER_STATUS = ["Active", "Suspended", "Inactive"] as const;
@@ -797,10 +984,10 @@ export const WORKFLOWS: WorkflowDef[] = [
     status: "Active",
     created: "01/01/2024",
     createdBy: "System",
-    note: "ใบขอซื้อเกิน 100,000 ต้องผ่านผู้บริหาร",
+    note: "ใบขอซื้อเกิน 100,000 ต้องผ่านกรรมการผู้จัดการ",
     steps: [
-      { seq: 1, name: "หัวหน้าฝ่ายจัดซื้อ", roleCode: "PURCHASE_MANAGER", threshold: 0, mode: "Any approver", slaHours: 24 },
-      { seq: 2, name: "ผู้บริหาร", roleCode: "MANAGEMENT", threshold: 100_000, mode: "Any approver", slaHours: 48 },
+      { seq: 1, name: "ผู้จัดการทั่วไป", roleCode: "GENERAL_MANAGER", threshold: 0, mode: "Any approver", slaHours: 24 },
+      { seq: 2, name: "กรรมการผู้จัดการ", roleCode: "MANAGEMENT", threshold: 100_000, mode: "Any approver", slaHours: 48 },
     ],
   },
   {

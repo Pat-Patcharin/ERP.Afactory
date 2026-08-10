@@ -1,7 +1,7 @@
 /* eslint-disable */
 /**
  * Purchase Request — first transactional document.
- * Draft -> Pending Approval -> Approved -> Converted to PO
+ * Draft -> Open -> Approved -> Converted to PO
  *
  * AUTO-GENERATED from the original prototype dataset. Mutating these arrays
  * is how the prototype persists changes; swap for API calls when ready.
@@ -37,6 +37,15 @@ export interface PurchaseRequest {
     qty: number;
     price: number;
     note: string;
+    /**
+     * The purchase order this line went out on, once it has.
+     *
+     * Per line rather than per document because an approved request is
+     * ordered in the instalments the buyer negotiates — half now, half when
+     * the supplier has stock. Empty means still to be ordered, which is the
+     * only thing that decides what the split dialog may offer.
+     */
+    poRef?: string;
   }[];
   approvals: {
     step: string;
@@ -50,10 +59,31 @@ export interface PurchaseRequest {
   created: string;
   updatedBy: string;
   updated: string;
+  /** The first order raised from this request. Every one is in `poRefs`. */
   poRef?: string;
+  poRefs?: string[];
+  /**
+   * When the requester handed it over, and who.
+   *
+   * A request over the approval limit stays a DRAFT until the general
+   * manager has vetted it — so "Draft" alone cannot say whether anybody is
+   * waiting on it. This is the difference between a draft still being typed
+   * and one sitting in somebody's queue.
+   */
+  submittedAt?: string;
+  submittedBy?: string;
 }
 
-export const PR_STATUS = ["Draft", "Pending Approval", "Approved", "Rejected", "Converted", "Cancelled"] as const;
+/**
+ * Draft → Open → Approved → Converted.
+ *
+ * "Open" replaced "Pending Approval": the same state, named for what the
+ * document IS rather than for what is being waited on. Which signature it is
+ * waiting for is a function of its value and the approval workflow, not of
+ * its status — a request over the limit is Open on the managing director's
+ * desk and one under it is Open on the general manager's.
+ */
+export const PR_STATUS = ["Draft", "Open", "Approved", "Rejected", "Converted", "Cancelled"] as const;
 
 export const PR_PRIORITY = ["Low", "Normal", "High", "Critical"] as const;
 
@@ -88,7 +118,7 @@ export const PURCHASE_REQUESTS: PurchaseRequest[] = [
     priority: "Critical",
     date: "26/07/2025",
     needBy: "30/07/2025",
-    status: "Pending Approval",
+    status: "Open",
     warehouse: "WH-BKK Bangkok Main",
     supplier: "DentCare Co., Ltd.",
     note: "ของใกล้หมด ต้องใช้ด่วนสำหรับงานผ่าตัดสัปดาห์หน้า",
