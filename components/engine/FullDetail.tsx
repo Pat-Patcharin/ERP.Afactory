@@ -65,6 +65,8 @@ export function FullDetail<T extends RecordBase>({
   const [tab, setTab] = useState(tabs[0]?.key ?? "");
   const active = tabs.find((t) => t.key === tab) ?? tabs[0];
   const aside = active?.aside?.(record, ctx);
+  const heroPanel = schema.heroPanel?.(record, ctx, setTab);
+  const compactKpis = Boolean(schema.heroPanel);
 
   useCrumbCode(record.code);
 
@@ -226,41 +228,80 @@ export function FullDetail<T extends RecordBase>({
         data-testid="detail-sticky"
         className="sticky top-topbar z-20 border-b border-line bg-card px-6 pt-1 shadow-xs max-md:px-4"
       >
-        {/* Compact, clickable summary cards — each jumps to its related tab */}
-        {kpis.length > 0 && (
+        {/* Compact, clickable summary cards — each jumps to its related tab.
+
+            A schema that declares a hero panel gets the compact tiles: three
+            across, no icon plate, one step down in type. They are read at a
+            glance and returned to; the panel beside them is read line by line,
+            and it is the one that needs the room.
+
+            The compact form is keyed on the schema DECLARING a panel, not on
+            this record having one. A partner who is only a supplier has no
+            invoices to show and gets no panel — the tiles must not silently
+            grow back into a four-wide grid with one cell empty. */}
+        {(kpis.length > 0 || heroPanel) && (
           <div
-            data-testid="detail-kpis"
-            className="mb-4 grid grid-cols-4 gap-3 max-[1100px]:grid-cols-2 max-md:gap-2"
+            className={cn(
+              "mb-4 grid items-start gap-3",
+              heroPanel
+                ? "grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] max-[1240px]:grid-cols-1"
+                : "grid-cols-1",
+            )}
           >
-            {kpis.map((k) => (
-              <button
-                key={k.label}
-                onClick={() => k.goTab && setTab(k.goTab)}
-                title={k.goTab ? `ไปที่แท็บ ${k.goTab}` : undefined}
+            {kpis.length > 0 && (
+              <div
+                data-testid="detail-kpis"
                 className={cn(
-                  "flex min-w-0 items-center gap-3 rounded-btn border border-line bg-surface p-4 text-left",
-                  "transition-colors duration-fast max-md:p-3",
-                  k.goTab && "hover:border-line-strong hover:bg-card",
+                  "grid gap-3 max-md:gap-2",
+                  compactKpis
+                    ? "grid-cols-3 max-[560px]:grid-cols-1"
+                    : "grid-cols-4 max-[1100px]:grid-cols-2",
                 )}
               >
-                <span className="grid h-[34px] w-[34px] flex-shrink-0 place-items-center rounded-[9px] border border-line bg-card text-ink-2 max-md:hidden">
-                  <Icon name={k.icon} size={17} />
-                </span>
-                <span className="flex min-w-0 flex-col gap-px">
-                  <span className="whitespace-nowrap text-cap text-ink-2">{k.label}</span>
-                  <span
-                    title={k.value}
+                {kpis.map((k) => (
+                  <button
+                    key={k.label}
+                    onClick={() => k.goTab && setTab(k.goTab)}
+                    title={k.goTab ? `ไปที่แท็บ ${k.goTab}` : undefined}
                     className={cn(
-                      "truncate leading-tight tracking-[-0.02em] tnum",
-                      k.wide ? "text-body font-medium tracking-normal" : "text-lg font-semibold",
+                      "flex min-w-0 items-center gap-3 rounded-btn border border-line bg-surface text-left",
+                      "transition-colors duration-fast",
+                      compactKpis ? "px-3 py-2.5" : "p-4 max-md:p-3",
+                      k.goTab && "hover:border-line-strong hover:bg-card",
                     )}
                   >
-                    {esc(k.value)}
-                  </span>
-                  {k.sub && <span className="text-cap text-ink-3">{k.sub}</span>}
-                </span>
-              </button>
-            ))}
+                    {!compactKpis && (
+                      <span className="grid h-[34px] w-[34px] flex-shrink-0 place-items-center rounded-[9px] border border-line bg-card text-ink-2 max-md:hidden">
+                        <Icon name={k.icon} size={17} />
+                      </span>
+                    )}
+                    <span className="flex min-w-0 flex-col gap-px">
+                      <span className="whitespace-nowrap text-cap text-ink-2">{k.label}</span>
+                      <span
+                        title={k.value}
+                        className={cn(
+                          "truncate leading-tight tracking-[-0.02em] tnum",
+                          k.wide
+                            ? "text-body font-medium tracking-normal"
+                            : compactKpis
+                              ? "text-body font-semibold"
+                              : "text-lg font-semibold",
+                        )}
+                      >
+                        {esc(k.value)}
+                      </span>
+                      {k.sub && (
+                        <span className="truncate text-cap text-ink-3" title={k.sub}>
+                          {k.sub}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {heroPanel}
           </div>
         )}
 

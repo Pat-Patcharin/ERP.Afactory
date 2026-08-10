@@ -1,7 +1,9 @@
-import { SALES_ORDERS } from "./outbound";
+import { DELIVERY_ORDERS, SALES_ORDERS } from "./outbound";
 import { SALES_INVOICES } from "./invoice";
 import { PURCHASE_ORDERS } from "./purchase";
 import { GOODS_RECEIPTS } from "./inbound";
+import { SHIPMENTS, invoiceShipping } from "./shipment";
+import { getProduct } from "./product";
 import { bpActiveSupplierItems, bpAverageLeadTime } from "./partner";
 import type { BusinessPartner } from "@/data/partners";
 import { ceYear } from "@/lib/format";
@@ -57,6 +59,216 @@ export function bpInvoices(bp: BusinessPartner) {
   return SALES_INVOICES.filter(
     (i) => i.customerCode === bp.code || norm(i.customer) === norm(bp.nameTh),
   );
+}
+
+/* ============================================================
+   WHAT A CUSTOMER BUYS, BY CATEGORY
+
+   The product tally answers "which SKUs", which is the buyer's
+   question. "Which categories" is the account manager's — it is
+   what fits on one screen and what a conversation is actually
+   had about, because five categories are nameable and forty
+   SKUs are not.
+
+   Both measures are returned on every row rather than one per
+   call. Ranking by spend and ranking by how often they order
+   are different lists, and a reader switching between them
+   needs to see the number that did NOT move them up.
+   ============================================================ */
+
+export interface CategoryTally {
+  cat: string;
+  amount: number;
+  /** Order lines, not orders: two lines on one order are two decisions to buy. */
+  lines: number;
+  qty: number;
+}
+
+export type CategoryMeasure = "amount" | "lines";
+
+export interface CategoryBreakdown {
+  /** The ranking. Named categories only. */
+  rows: CategoryTally[];
+  /**
+   * Lines naming a product the master has never heard of.
+   *
+   * Kept out of the ranking and reported beside it. On one seeded customer
+   * these are 34 of 41 lines, so bucketing them as a category would put
+   * "unknown" at rank 1 and answer nothing — but dropping them silently would
+   * leave a Top 5 whose bars do not add up to what the customer spent.
+   * Neither: excluded from the rank, disclosed as a figure.
+   */
+  unmatched: { lines: number; amount: number };
+  /** Every line, matched or not — what the ranking is a part of. */
+  total: { lines: number; amount: number };
+}
+
+export function bpTopCategories(
+  bp: BusinessPartner,
+  measure: CategoryMeasure = "amount",
+  limit = 5,
+): CategoryBreakdown {
+  const tally = new Map<string, CategoryTally>();
+  const unmatched = { lines: 0, amount: 0 };
+  const total = { lines: 0, amount: 0 };
+
+  for (const so of bpSalesOrders(bp)) {
+    for (const it of so.items ?? []) {
+      const qty = Number(it.qty) || 0;
+      const amount = qty * (Number(it.price) || 0);
+      total.lines += 1;
+      total.amount += amount;
+
+      const cat = getProduct(it.code)?.cat;
+      if (!cat) {
+        unmatched.lines += 1;
+        unmatched.amount += amount;
+        continue;
+      }
+
+      const row = tally.get(cat) ?? { cat, amount: 0, lines: 0, qty: 0 };
+      row.qty += qty;
+      row.amount += amount;
+      row.lines += 1;
+      tally.set(cat, row);
+    }
+  }
+
+  return {
+    rows: [...tally.values()]
+      .sort((a, b) => b[measure] - a[measure] || b.amount - a.amount)
+      .slice(0, limit),
+    unmatched,
+    total,
+  };
+}
+
+/* ============================================================
+   THE LAST FEW INVOICES, WITH THE PARCEL EACH ONE TRAVELLED ON
+
+   Three separate registers have to be crossed to answer this,
+   and only one crossing is currently possible:
+
+     · Sales invoices carry CUST-000x codes, so the direct join
+       to a partner finds nothing today. It is still tried first
+       and wins when the master data is joined up.
+
+     · Delivery orders DO carry the BP code, and they carry the
+       carrier and tracking number themselves. That is the join
+       that works, so a partner reaches its parcels through its
+       deliveries rather than through its invoices.
+
+     · The partner's own recorded rows are the fallback the
+       Customer Purchase History tab already uses. They carry no
+       shipment reference and never will, so their tracking is
+       reported as absent rather than guessed at from a parcel
+       that happens to belong to the same customer.
+
+   The last point is the one worth being strict about. A
+   tracking number attached to the wrong invoice sends somebody
+   to a carrier's website to look up a parcel that is not theirs.
+   Null is the honest answer and the strip prints it as one.
+   ============================================================ */
+
+export interface BillingRow {
+  no: string;
+  /** dd/mm/yyyy as the document carries it. */
+  date: string;
+  amount: number;
+  /** Payment status in the document's own words — "Unpaid", "Paid", "Overdue". */
+  payment: string;
+  /** Null when the paperwork points at no parcel. Never inferred. */
+  parcel: { trackingNo: string; carrier: string; status: string } | null;
+}
+
+/** Deliveries raised for this partner. The one sell-side join that is by code. */
+export function bpDeliveryOrders(bp: BusinessPartner) {
+  return DELIVERY_ORDERS.filter(
+    (d) => d.customerCode === bp.code || norm(d.customer) === norm(bp.nameTh),
+  );
+}
+
+/** The parcel an invoice travelled on, or null. */
+function parcelFor(
+  inv: { code?: string; shipmentRef?: string },
+  deliveries: ReturnType<typeof bpDeliveryOrders>,
+): BillingRow["parcel"] {
+  const shipped = invoiceShipping(inv);
+  if (shipped?.trackingNo) {
+    return {
+      trackingNo: shipped.trackingNo,
+      carrier: shipped.carrier,
+      status: shipped.deliveryStatus,
+    };
+  }
+
+  /* The delivery order carries its own carrier and number, which is what the
+     warehouse typed. It is reached only through the shipment that names this
+     invoice — never by "this customer has a parcel somewhere". */
+  const viaShipment = SHIPMENTS.find((s) => s.invRef && s.invRef === inv.code);
+  const d = deliveries.find((x) => x.code === viaShipment?.doRef);
+  if (d?.trackingNo) {
+    return { trackingNo: d.trackingNo, carrier: d.carrier, status: d.status };
+  }
+  return null;
+}
+
+/**
+ * The last few invoices raised on this customer, newest first.
+ *
+ * Deduplicated by document number, because the live join and the recorded
+ * rows can name the same invoice and a header that lists it twice reads as
+ * two debts.
+ */
+export function bpRecentBilling(bp: BusinessPartner, limit = 3): BillingRow[] {
+  const deliveries = bpDeliveryOrders(bp);
+
+  const live: BillingRow[] = bpInvoices(bp).map((i) => ({
+    no: i.code,
+    date: i.invoiceDate,
+    amount: i.grandTotal,
+    payment: i.paymentStatus || i.status,
+    parcel: parcelFor(i, deliveries),
+  }));
+
+  /* Invoices this partner's own parcels name. The direct join misses these
+     because the invoice register uses different customer codes, but the
+     delivery order in between carries the BP code and the shipment carries
+     the invoice number — so the chain resolves even though neither end
+     points at the other. */
+  const viaParcel: BillingRow[] = SHIPMENTS.filter(
+    (s) => s.invRef && deliveries.some((d) => d.code === s.doRef),
+  )
+    .map((s): BillingRow | null => {
+      const inv = SALES_INVOICES.find((i) => i.code === s.invRef);
+      if (!inv) return null;
+      return {
+        no: inv.code,
+        date: inv.invoiceDate,
+        amount: inv.grandTotal,
+        payment: inv.paymentStatus || inv.status,
+        parcel: {
+          trackingNo: s.trackingNo,
+          carrier: s.carrier,
+          status: s.deliveryStatus || s.status,
+        },
+      };
+    })
+    .filter((r): r is BillingRow => r !== null);
+
+  const recorded: BillingRow[] = (bp.txn?.inv ?? []).map((r) => ({
+    no: r.no,
+    date: r.date,
+    amount: r.amount,
+    payment: r.status,
+    parcel: null,
+  }));
+
+  const seen = new Set<string>();
+  return [...live, ...viaParcel, ...recorded]
+    .filter((r) => !seen.has(r.no) && seen.add(r.no))
+    .sort((a, b) => dateTs(b.date) - dateTs(a.date))
+    .slice(0, limit);
 }
 
 /** What this customer actually buys, by value. */

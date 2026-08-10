@@ -474,6 +474,23 @@ export interface DetailSchema<T extends RecordBase = RecordBase> {
   entityLabel: string;
   identity: (rec: T) => Identity;
   kpis: (rec: T) => Kpi[];
+  /**
+   * A panel beside the KPI tiles in the sticky header — a short list where a
+   * tile would only carry one number of it.
+   *
+   * "Last transaction: 25/06/2026" was a tile, and a date on its own never
+   * answered the question somebody opens a customer to ask: what did we bill,
+   * did they pay, and where is the parcel. That is three facts about each of
+   * three documents, which is a panel and not a tile.
+   *
+   * Its presence also shrinks the tiles: the band is one row of header and the
+   * two halves share it.
+   *
+   * `goTab` is the same jump a KPI tile makes with `goTab` — the panel is
+   * inside the tab rail's own header, so sending the reader to the tab that
+   * owns the detail is the one navigation it needs.
+   */
+  heroPanel?: (rec: T, ctx: ActionCtx, goTab: (key: string) => void) => ReactNode;
   tabs: DetailTab<T>[];
   /** Extra items for the "More Actions" menu on the full detail page. */
   actions?: (rec: T, ctx: ActionCtx) => RowAction<T>[];

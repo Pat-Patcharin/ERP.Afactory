@@ -59,6 +59,7 @@ import type {
 } from "@/lib/types";
 import { Badge, CellSub, Thumb } from "@/components/ui";
 import { isPhoto } from "@/components/engine/FormFields";
+import { RecentInvoicesPanel, TopCategoriesPanel } from "@/components/partner/insights";
 import { TIER_TH, tierForPartner, tierNotices } from "@/lib/domain/price-tier";
 import { Icon, type IconName } from "@/lib/icons";
 import { BP_FORM } from "./forms/business-partner";
@@ -851,8 +852,6 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
   /* ---------- Sticky KPI summary ---------- */
   kpis: (b) => {
     const cust = b.customer;
-    const sup = b.supplier;
-    const last = bpLastPurchase(b);
     const credit = checkPermission("canViewCredit");
     /* Money owed past its due date. Read off the invoices rather than the
        partner record, because the record carries a limit and a balance and
@@ -897,18 +896,21 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
            reading this number wants to know which ones. */
         goTab: cust ? "sales-history" : undefined,
       },
-      {
-        icon: "clock",
-        label: "Last Transaction",
-        value: last.date || DASH,
-        sub: last.doc || (sup ? "ผู้ขาย" : "ยังไม่มีรายการ"),
-        wide: true,
-        /* Whichever history tab this partner actually has — for a supplier
-           the last transaction is an order WE placed. */
-        goTab: cust ? "sales-history" : sup ? "purchase-history" : undefined,
-      },
+      /*
+         "Last Transaction" was the fourth tile and carried a date.
+
+         A date on its own answers none of what a customer record is opened
+         for — what we billed, whether it was paid, and where the goods got
+         to. Those are three facts about each of three documents, which is
+         the panel beside these tiles now, not a fourth number.
+      */
     ];
   },
+
+  heroPanel: (b, _ctx, goTab) =>
+    b.customer ? (
+      <RecentInvoicesPanel partner={b} onOpen={() => goTab("sales-history")} />
+    ) : null,
 
   /* ============================================================
      FIVE TABS.
@@ -1423,6 +1425,18 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 sub: year ? `ปี ${year.year}` : "",
               },
             ],
+          },
+
+          /* What they buy, one level up from the SKU list.
+
+             Five categories are nameable in a conversation and forty SKUs are
+             not, which is what makes this the version an account manager can
+             act on. Ranked by spend or by how often they order — those are
+             different lists, and which one is being asked is the toggle. */
+          {
+            type: "node",
+            title: "Top 5 Categories",
+            node: <TopCategoriesPanel partner={b} />,
           },
 
           {
