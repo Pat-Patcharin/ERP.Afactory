@@ -255,10 +255,29 @@ function DecisionBar({ qt }: { qt: QtRow }) {
         variant: "primary" as const,
         run: () => qtApprove(qt, ctx),
       },
+    /* THE APPROVER'S OWN PENCIL.
+
+       A quantity typed wrong or a missing reference does not need a round
+       trip: sending it back costs a day and the rep fixes it by retyping
+       what the approver could have corrected in ten seconds. So the desk
+       that signs it may also edit it — the quotation stays Pending Approval
+       while they do, and they sign it themselves afterwards.
+
+       Sending it back is for a document that is wrong in a way the approver
+       should not quietly fix. Rejecting is for one that is wrong altogether,
+       and it asks for a reason. */
+    qt.status === "Pending Approval" &&
+      mayApprove && {
+        key: "edit-here",
+        label: "แก้ไขเอง",
+        icon: "edit" as const,
+        variant: "default" as const,
+        run: () => ctx.goto(`/m/quotation/${encodeURIComponent(qt.code)}/edit`),
+      },
     qt.status === "Pending Approval" &&
       mayApprove && {
         key: "revise",
-        label: "Revise — ส่งกลับแก้ไข",
+        label: "ส่งกลับให้ผู้แทนขายแก้",
         icon: "refresh" as const,
         variant: "default" as const,
         run: () => qtRequestRevision(qt, ctx),

@@ -494,7 +494,11 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
         remarks: [...config.remarks, ...(d.note ? [d.note] : [])],
         /* Only a quotation that actually cleared approval carries one. */
         ...(d.approvalStatus === "Approved" && d.approvedBy
-          ? { approval: { by: d.approvedBy, at: d.approvedAt } }
+          ? {
+              approval: { by: d.approvedBy, at: d.approvedAt },
+              /* Who wrote it, for the panel beside the approver's. */
+              preparedBy: { by: d.createdBy, at: d.created },
+            }
           : {}),
       };
     }
@@ -1028,7 +1032,12 @@ export function mapQuotationRevision(
     ),
     bank: defaultBank(d.code),
     remarks: [...config.remarks, ...(d.note ? [d.note] : [])],
-    ...(snap.approvedBy ? { approval: { by: snap.approvedBy, at: snap.approvedAt } } : {}),
+    ...(snap.approvedBy
+      ? {
+          approval: { by: snap.approvedBy, at: snap.approvedAt },
+          preparedBy: { by: d.createdBy, at: d.created },
+        }
+      : {}),
     supersededRevision: {
       revision: snap.revision,
       closedAt: snap.closedAt,

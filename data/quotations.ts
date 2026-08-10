@@ -125,6 +125,15 @@ export interface Quotation {
   priceList: string;
   channel: string;
   customerRef: string;
+  /**
+   * The customer's own purchase order, attached.
+   *
+   * A reference number says a PO exists somewhere; the file is the thing the
+   * sales admin checks the quotation against and the thing an argument about
+   * what was ordered is settled with. Held as a name, a type and a link so a
+   * real upload target can replace the link and nothing else changes.
+   */
+  customerPo?: { name: string; type: string; url: string; at: string };
   /* ----------------------------------------------------------
      HEADER CHARGES — what the document carries on top of its lines.
 

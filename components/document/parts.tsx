@@ -22,7 +22,7 @@ import {
 } from "@/lib/domain/doc-draft";
 import { billName, displayName } from "@/lib/domain/lines";
 import { bahtText } from "@/lib/print/words";
-import { AFactoryLogo, BarcodePlaceholder, QRPlaceholder } from "@/components/print/marks";
+import { AFactoryLogo, QRPlaceholder } from "@/components/print/marks";
 import { fmt, money, money0, isoToDmy } from "@/lib/format";
 import { Icon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
@@ -204,10 +204,10 @@ export function DocHeader({
               <br />
               document
             </p>
+            {/* The QR alone. It already encodes the document number, which is
+                printed beside it in 22pt — a second machine-readable copy of
+                the same string is furniture. */}
             <QRPlaceholder value={code} size={17} />
-            <div className="mt-1.5">
-              <BarcodePlaceholder value={code} width={34} height={7} />
-            </div>
           </div>
         )}
       </div>

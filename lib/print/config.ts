@@ -127,20 +127,21 @@ export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
     titleEN: "QUOTATION",
     showPayment: false,
     showDueDate: false,
-    /* Revision and approver sit on the sheet itself: a customer holding two
-       issues of the same quotation number must be able to tell them apart,
-       and "who signed this" must be answerable from the paper. */
+    /* What the customer needs to read, and nothing more.
+
+       Revision, currency, approver and the moment of approval came off the
+       printed sheet: the revision is an internal working number, everything
+       is quoted in baht, and "who approved it" is answered by the signature
+       block at the bottom — printing the name twice made the header a place
+       to scan past rather than to read. All four are still on the record and
+       still on the screen. */
     metaFields: [
       "docNo",
-      "revision",
       "docDate",
       "customerCode",
       "salesRep",
       "payTerm",
-      "currency",
       "reference",
-      "approvedBy",
-      "approvedAt",
     ],
     remarks: [
       "ราคานี้ยืนราคาตามวันที่ระบุในเอกสาร",

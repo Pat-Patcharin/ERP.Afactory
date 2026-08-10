@@ -140,56 +140,11 @@ function CompanyBlock({ job }: { job: PrintJob }) {
   );
 }
 
-/**
- * The letterhead band that closes every sheet — the company's own printed
- * footer: address on the left, the ways to reach them on the right, the
- * ALL IN · ONE lockup and the QR.
- */
-function LetterheadFooter({ job }: { job: PrintJob }) {
-  const c = job.doc.company;
-  return (
-    <div style={{ marginTop: "auto", paddingTop: "2.5mm" }}>
-      {/* The short orange rule the artwork opens with. */}
-      <div
-        style={{
-          width: "14mm",
-          height: "1.4mm",
-          background: "var(--pr-accent)",
-          borderRadius: "0.4mm",
-        }}
-      />
+/* No letterhead footer.
 
-      <div
-        style={{
-          display: "flex",
-          gap: "4mm",
-          alignItems: "flex-end",
-          justifyContent: "space-between",
-          marginTop: "1.8mm",
-        }}
-      >
-        <div style={{ fontSize: "6.9pt", lineHeight: 1.45, minWidth: 0 }} className="a4-muted">
-          <div>
-            {c.branch} : {c.address}
-          </div>
-          <div>เลขประจำตัวผู้เสียภาษี {c.taxId}</div>
-        </div>
-
-        <div style={{ display: "flex", gap: "3mm", alignItems: "flex-end", flexShrink: 0 }}>
-          <div style={{ fontSize: "6.9pt", lineHeight: 1.5, textAlign: "right" }}>
-            <div style={{ fontWeight: 700 }}>โทร. {c.phone}</div>
-            {c.line && <div className="a4-muted">LINE {c.line}</div>}
-            {c.facebook && <div className="a4-muted">Facebook {c.facebook}</div>}
-            <div style={{ color: "var(--pr-accent)", fontWeight: 700 }}>{c.website}</div>
-          </div>
-
-          {c.tagline && <AllInOneMark label={c.tagline} />}
-          {job.config.showQRCode && <QRPlaceholder value={c.website} size={13} />}
-        </div>
-      </div>
-    </div>
-  );
-}
+   It repeated the address, the tax ID, the phone, the website and a QR that
+   the letterhead at the top of the same page already carries — the reader
+   scans past both because neither is where the information lives. */
 
 function TitleBlock({ job }: { job: PrintJob }) {
   const { config, doc } = job;
@@ -237,7 +192,7 @@ function TitleBlock({ job }: { job: PrintJob }) {
 
 function MarksBlock({ job }: { job: PrintJob }) {
   const { config, doc } = job;
-  if (!config.showQRCode && !config.showBarcode) return null;
+  if (!config.showQRCode) return null;
   return (
     <div style={{ textAlign: "center", flexShrink: 0 }}>
       {config.showQRCode && (
@@ -248,14 +203,9 @@ function MarksBlock({ job }: { job: PrintJob }) {
           <QRPlaceholder value={doc.code} size={14} />
         </>
       )}
-      {config.showBarcode && (
-        <div style={{ marginTop: "1.2mm" }}>
-          <BarcodePlaceholder value={doc.code} width={30} height={6} />
-          <div style={{ fontSize: "5.8pt", letterSpacing: "0.06em" }} className="a4-dim">
-            {doc.code}
-          </div>
-        </div>
-      )}
+      {/* No barcode beside it. The QR already encodes the document number,
+          and the number is printed twice more on the same sheet — a second
+          machine-readable copy of it is furniture. */}
     </div>
   );
 }
@@ -575,6 +525,20 @@ function Signatures({ job }: { job: PrintJob }) {
       {job.config.signatureRoles.map((role) => {
         const l = SIGNATURE_LABELS[role];
         const signed = role === "approvedBy" && approval && COMPANY.signatureUrl;
+        /* The name, written. Both panels on a document that cleared approval
+           — the person who wrote it and the person who signed it off — in
+           the same hand the screen shows, because the PDF is the thing the
+           customer keeps and it must not be the blanker of the two. */
+        const penned =
+          role === "approvedBy"
+            ? approval && !signed
+              ? approval
+              : null
+            : role === "preparedBy"
+              ? approval
+                ? job.doc.preparedBy
+                : null
+              : null;
 
         return (
           <div key={role} className="a4-panel" style={{ flex: 1, minWidth: 0, paddingTop: "2mm" }}>
@@ -608,6 +572,22 @@ function Signatures({ job }: { job: PrintJob }) {
                     }}
                   />
                 )}
+              </div>
+            ) : penned ? (
+              <div style={{ height: "8mm", marginTop: "1mm" }}>
+                <div
+                  style={{
+                    fontFamily: '"Segoe Script", "Brush Script MT", cursive',
+                    fontSize: "12pt",
+                    lineHeight: "6mm",
+                    color: "var(--pr-accent)",
+                  }}
+                >
+                  {penned.by}
+                </div>
+                <div style={{ fontSize: "5.8pt" }} className="a4-dim">
+                  {penned.at}
+                </div>
               </div>
             ) : (
               <div style={{ height: "8mm" }} />
@@ -767,7 +747,6 @@ export function PrintPageView({ job, page }: { job: PrintJob; page: PrintPage })
           <Signatures job={job} />
         )}
 
-        <LetterheadFooter job={job} />
         <Footer job={job} page={page} />
       </div>
     </section>

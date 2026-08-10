@@ -171,7 +171,7 @@ describe("Quotation editor — document layout", () => {
   it("keeps the save actions in a sticky toolbar and a sticky summary", () => {
     expect(screen.getByTestId("qt-toolbar")).toHaveClass("sticky");
     expect(screen.getByTestId("qt-sticky-summary")).toHaveClass("fixed");
-    expect(within(screen.getByTestId("qt-toolbar")).getByText("Save Quotation")).toBeInTheDocument();
+    expect(within(screen.getByTestId("qt-toolbar")).getByText("Save and Request for Approve")).toBeInTheDocument();
     expect(
       within(screen.getByTestId("qt-sticky-summary")).getByText("Save Draft"),
     ).toBeInTheDocument();
@@ -847,7 +847,7 @@ describe("Quotation editor — validation", () => {
     expect(within(before).getByText(/ข้อควรทราบ/)).toBeInTheDocument();
     expect(within(before).queryByText("ยังไม่ได้เลือกลูกค้า")).not.toBeInTheDocument();
 
-    await user.click(within(screen.getByTestId("qt-toolbar")).getByText("Save Quotation"));
+    await user.click(within(screen.getByTestId("qt-toolbar")).getByText("Save and Request for Approve"));
 
     const summary = screen.getByTestId("issue-summary");
     expect(within(summary).getByText(/ต้องแก้ไข/)).toBeInTheDocument();
@@ -859,7 +859,7 @@ describe("Quotation editor — validation", () => {
   it("jumps to the offending field when an error is clicked", async () => {
     const user = userEvent.setup();
     render(<QuotationEditor />);
-    await user.click(within(screen.getByTestId("qt-toolbar")).getByText("Save Quotation"));
+    await user.click(within(screen.getByTestId("qt-toolbar")).getByText("Save and Request for Approve"));
 
     await user.click(within(screen.getByTestId("issue-summary")).getByText("ยังไม่ได้เลือกพนักงานขาย"));
     expect(document.activeElement).toBe(screen.getByLabelText("Sales Representative"));
@@ -1458,14 +1458,20 @@ describe("Quotation print — signature and stamp", () => {
     expect(c.textContent).toContain("วันที่ ____ / ____ / ______");
   });
 
-  it("carries the document number, revision and approver onto the sheet", () => {
+  it("มีเลขที่เอกสารกับชื่อผู้อนุมัติ แต่ไม่มีเลขฉบับแก้ไขบนหัวเอกสาร", () => {
     const q = approved();
     q.revision = 3;
     const c = sheet();
 
     expect(c.textContent).toContain(CODE);
-    expect(c.textContent).toContain("ฉบับที่ 3");
+    /* The approver's name is on the sheet — in the signature panel, which is
+       where a reader looks for "who signed this". It came off the header
+       meta block, where it was the same name printed twice. */
     expect(c.textContent).toContain("สมชาย ใจดี");
+
+    /* A working revision number is an internal fact. The customer holding
+       the paper has one quotation, and its number is the document number. */
+    expect(c.textContent).not.toContain("ฉบับที่ 3");
   });
 });
 
@@ -1509,7 +1515,9 @@ describe("Quotation print — an earlier revision", () => {
 
     expect(job.doc.totals!.grandTotal).toBe(1070);
     expect(job.doc.lines[0].qty, "the old quantity, not 99").toBe(10);
-    expect(c.textContent).toContain("ฉบับที่ 1");
+    /* An earlier issue is told apart by the stamp across the face of it,
+       not by a revision row in the header. */
+    expect(c.textContent).toContain("SUPERSEDED");
   });
 
   it("says on its face that it is not the current issue", () => {
@@ -1645,18 +1653,25 @@ describe("Quotation — the header carries only the document", () => {
     expect(Object.keys(blankDraft())).not.toContain("internalRef");
   });
 
-  it("keeps six rows on the paper", () => {
+  it("keeps four rows on the paper", () => {
     render(<QuotationEditor />);
     for (const label of [
       "Quotation Date",
       "Sales Representative",
       "Price List",
-      "Currency",
       "Payment Term",
-      "Delivery Date",
     ]) {
       expect(screen.getByLabelText(label), label).toBeInTheDocument();
     }
+  });
+
+  it("ไม่ถามสกุลเงินและวันส่งของบนใบเสนอราคา", () => {
+    render(<QuotationEditor />);
+    /* Everything is quoted in baht, so the currency was a one-option
+       question. And a delivery date is a promise about goods — settled on
+       the order against stock that exists, not on an offer. */
+    expect(screen.queryByLabelText("Currency")).toBeNull();
+    expect(screen.queryByLabelText("Delivery Date")).toBeNull();
   });
 });
 

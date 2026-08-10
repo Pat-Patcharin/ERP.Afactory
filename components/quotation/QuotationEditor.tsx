@@ -21,7 +21,8 @@ import {
 import type { DraftLine } from "@/lib/domain/doc-draft";
 import type { Quotation } from "@/data/quotations";
 import { buildPrintJob, getPrintConfig } from "@/lib/print";
-import { isoToDmy } from "@/lib/format";
+import { isoToDmy, stamp } from "@/lib/format";
+import { Icon } from "@/lib/icons";
 import { useActionCtx } from "@/components/engine/useActionCtx";
 import { useCrumbCode } from "@/components/layout/Topbar";
 import {
@@ -59,7 +60,6 @@ import {
   billTypeDialogTitle,
 } from "@/components/document/BillTypeNotice";
 import { PriceApprovalNotice } from "@/components/document/PriceApprovalNotice";
-import { PO_CURRENCIES } from "@/data/purchase-orders";
 import { warehouseOptions, salesRepOptions } from "@/lib/domain/outbound";
 
 /* ============================================================
@@ -116,6 +116,91 @@ const QT_SIGNATURES = [
   { en: "Approved By", th: "ผู้อนุมัติ" },
   { en: "Customer Acceptance", th: "ลูกค้าผู้รับรอง" },
 ];
+
+/**
+ * The customer's own purchase order, attached to the quotation.
+ *
+ * PDF or an image, because that is what arrives — a scan, a phone photo of a
+ * signed sheet, an emailed PDF. Held as an object URL for now: the file is
+ * real inside this browser session and goes when the tab does, which is the
+ * honest state of a prototype with no upload target behind it. Swapping the
+ * URL for one a server returns is the whole of the change later.
+ */
+function CustomerPoAttach({
+  value,
+  onChange,
+}: {
+  value: { name: string; type: string; url: string; at: string } | null;
+  onChange: (v: { name: string; type: string; url: string; at: string } | null) => void;
+}) {
+  const id = "quotation-customer-po";
+
+  return (
+    <label className="flex min-w-[210px] flex-col gap-1">
+      <span className="text-cap text-ink-2">
+        แนบ PO ลูกค้า
+        <span className="ml-1 text-ink-3">— PDF หรือรูปภาพ</span>
+      </span>
+
+      {value ? (
+        <span className="flex h-9 items-center gap-2 rounded-input border border-line bg-card px-2 text-[13px]">
+          <Icon name="file" size={15} className="flex-shrink-0 text-primary" />
+          <a
+            href={value.url}
+            target="_blank"
+            rel="noreferrer"
+            className="min-w-0 flex-1 truncate hover:underline"
+            title={value.name}
+          >
+            {value.name}
+          </a>
+          <button
+            type="button"
+            aria-label="เอาไฟล์ที่แนบออก"
+            onClick={() => onChange(null)}
+            className="flex-shrink-0 text-ink-3 hover:text-danger"
+          >
+            <Icon name="close" size={15} />
+          </button>
+        </span>
+      ) : (
+        <>
+          <input
+            id={id}
+            type="file"
+            aria-label="แนบ PO ลูกค้า"
+            accept="application/pdf,image/*"
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              /* An object URL when the browser offers one. Without it the
+                 attachment is still recorded by name and type — a file
+                 nobody can preview is better than an upload that throws. */
+              const url =
+                typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
+                  ? URL.createObjectURL(file)
+                  : "";
+              onChange({
+                name: file.name,
+                type: file.type || "application/octet-stream",
+                url,
+                at: stamp(),
+              });
+            }}
+          />
+          <label
+            htmlFor={id}
+            className="flex h-9 cursor-pointer items-center gap-2 rounded-input border border-dashed border-line-strong px-2 text-[13px] text-ink-2 hover:border-primary hover:text-primary"
+          >
+            <Icon name="upload" size={15} />
+            เลือกไฟล์
+          </label>
+        </>
+      )}
+    </label>
+  );
+}
 
 export function QuotationEditor({ record }: { record?: Quotation }) {
   const ctx = useActionCtx();
@@ -290,9 +375,15 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
       { field: "quoteDate", label: "Quotation Date", required: true, control: txt("quoteDate", "Quotation Date", "date"), read: isoToDmy(draft.quoteDate) },
       { field: "salesRep", label: "Sales Representative", required: true, control: sel("salesRep", "Sales Representative", salesRepOptions(), "— เลือกพนักงานขาย —"), read: draft.salesRep },
       { field: "priceList", label: "Price List", required: true, control: sel("priceList", "Price List", QT_PRICE_LISTS), read: draft.priceList },
-      { field: "currency", label: "Currency", required: true, control: sel("currency", "Currency", PO_CURRENCIES), read: draft.currency },
       { field: "payTerm", label: "Payment Term", control: sel("payTerm", "Payment Term", PAY_TERMS), read: draft.payTerm },
-      { field: "deliveryDate", label: "Delivery Date", control: txt("deliveryDate", "Delivery Date", "date"), read: isoToDmy(draft.deliveryDate) },
+      /* No Currency and no Delivery Date.
+
+         Everything is quoted in baht, so the currency was a one-option
+         question asked on every quotation. And a delivery date is a promise
+         about goods — it is settled on the order, against stock that exists;
+         printing one on an offer commits the warehouse to a date nobody has
+         checked. Both are still on the sales order, where they mean
+         something. */
     ];
   }, [draft, set]);
 
@@ -330,6 +421,10 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
           onChange={(customerRef) => set({ customerRef })}
         />
       </label>
+      <CustomerPoAttach
+        value={draft.customerPo}
+        onChange={(customerPo) => set({ customerPo })}
+      />
     </>
   );
 
@@ -339,7 +434,10 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
       settings={settings}
       labels={{
         entityName: "Quotation",
-        primaryAction: "Save Quotation",
+        /* It saves AND asks for approval — one button doing two things says
+           both, or somebody presses it expecting only the first. Save Draft
+           beside it is the one that does only the first. */
+        primaryAction: "Save and Request for Approve",
         noPermissionTitle: "ไม่มีสิทธิ์สร้างใบเสนอราคา",
         noPermissionBody: "บทบาทของคุณเปิดใบเสนอราคาได้ แต่แก้ไขไม่ได้",
       }}

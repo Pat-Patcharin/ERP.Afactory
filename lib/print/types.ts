@@ -269,6 +269,14 @@ export interface PrintDoc {
    */
   approval?: { by: string; at: string };
   /**
+   * Who wrote the document, for the Prepared By panel.
+   *
+   * Printed beside the approver's on a document that cleared approval: a
+   * sheet the customer holds should name both people, and the preparer is
+   * not "whoever pressed print" — which is what the page footer says.
+   */
+  preparedBy?: { by: string; at: string };
+  /**
    * Set when the sheet shows a stored earlier issue rather than the live
    * document, so the page can say so on its face. Absent on the current one.
    */

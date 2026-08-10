@@ -216,13 +216,16 @@ describe("ใบเสนอราคาเปิดดูเป็นเอก�
     expect(screen.queryByRole("button", { name: /ดาวน์โหลด PDF/ })).toBeNull();
   });
 
-  it("Sale Admin เห็น Approve / Revise / Reject บนใบที่รออนุมัติ", () => {
+  it("Sale Admin เห็นสี่ทาง: อนุมัติ แก้ไขเอง ส่งกลับ หรือปฏิเสธ", () => {
     setCurrentUser(MIN);
     const rec = qt("Pending Approval", "Pending Approval");
     render(<QuotationDocument record={rec} />);
 
     const bar = screen.getByTestId("qt-decision-bar");
-    for (const label of ["Approve", "Revise", "Reject"]) {
+    /* A quantity typed wrong does not need a round trip — the desk that
+       signs it may also correct it. Sending it back is for what the approver
+       should not quietly fix; rejecting is for what is wrong altogether. */
+    for (const label of ["Approve", "แก้ไขเอง", "ส่งกลับให้ผู้แทนขายแก้", "Reject"]) {
       expect(within(bar).getByRole("button", { name: new RegExp(label) }), label).toBeInTheDocument();
     }
   });

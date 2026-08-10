@@ -990,22 +990,25 @@ describe("Print framework — letterhead", () => {
     expect(job.doc.company.facebook).toBe(COMPANY.facebook);
   });
 
-  it("closes every sheet with the letterhead band", () => {
+  it("ไม่มีแถบท้ายกระดาษที่พูดซ้ำกับหัวจดหมายอีกแล้ว", () => {
     const job = buildPrintJob("delivery-tax-invoice", BULK_DO)!;
     render(<PrintDocument job={job} />);
 
+    /* The band repeated the address, the tax ID, the phone, the website and
+       a QR that the letterhead at the top of the same page already carries.
+       A reader scans past both when neither is where the information lives. */
     for (let p = 1; p <= job.totalPages; p++) {
       const page = within(screen.getByTestId(`print-page-${p}`));
-      expect(page.getAllByText(new RegExp(COMPANY.website)).length, `page ${p}`).toBeGreaterThan(0);
-      expect(page.getAllByText(/LINE @afactory/).length, `page ${p}`).toBeGreaterThan(0);
-      expect(page.getByLabelText(COMPANY.tagline)).toBeInTheDocument();
+      expect(page.queryAllByText(/LINE @afactory/), `page ${p}`).toHaveLength(0);
+      expect(page.queryByLabelText(COMPANY.tagline), `page ${p}`).toBeNull();
     }
   });
 
-  it("prints the tax id in both the header and the letterhead", () => {
+  it("เลขผู้เสียภาษีอยู่ที่หัวจดหมาย ที่เดียว", () => {
     const job = buildPrintJob("delivery-tax-invoice", SMALL_DO)!;
     render(<PrintDocument job={job} />);
-    expect(screen.getAllByText(new RegExp(COMPANY.taxId)).length).toBeGreaterThanOrEqual(2);
+    /* Once on the first sheet, where the letterhead is. */
+    expect(screen.getAllByText(new RegExp(COMPANY.taxId)).length).toBe(1);
   });
 
   it("uses the official logo file when Company Settings names one", () => {

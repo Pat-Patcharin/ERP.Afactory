@@ -118,6 +118,8 @@ export interface QuotationDraft {
   /** Derived from `quoteDate + validDays`. Never typed directly. */
   validUntil: string;
   customerRef: string;
+  /** The customer's own PO, attached — see the note on the record. */
+  customerPo: { name: string; type: string; url: string; at: string } | null;
   salesRep: string;
   priceList: string;
   currency: string;
@@ -247,6 +249,7 @@ export function blankDraft(): QuotationDraft {
     validDays: QT_VALIDITY_DAYS,
     validUntil: defaultValidUntil(),
     customerRef: "",
+    customerPo: null,
     salesRep: "",
     priceList: QT_PRICE_LISTS[0],
     currency: "THB",
@@ -294,6 +297,7 @@ export function draftFromQuotation(q: Quotation): QuotationDraft {
     freight: q.freight,
     otherCharges: q.otherCharges,
     customerRef: q.customerRef,
+    customerPo: q.customerPo ?? null,
     salesRep: q.salesRep,
     priceList: q.priceList,
     currency: q.currency,
@@ -611,6 +615,7 @@ export function saveQuotationDraft(
     channel: str(draft.channel),
     billType,
     customerRef: str(draft.customerRef),
+    customerPo: draft.customerPo ?? undefined,
     note: str(draft.remarks),
     /* What the header carries on top of the lines. In `patch`, so an edit
        writes them too — a freight charge removed on the second save has to
