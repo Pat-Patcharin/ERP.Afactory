@@ -1,6 +1,6 @@
 import { PRICE_LISTS as RAW, PL_PRIORITY_ENGINE, type PriceList } from "@/data/price-lists";
 import { PRICING as RAW_PRICING } from "@/data/pricing";
-import { PRODUCTS, PURCHASE_UNIT, unitFactor, type ProductRow } from "./product";
+import { PRODUCTS, PURCHASE_UNIT, productCost, unitFactor, type ProductRow } from "./product";
 import {
   priceMasterByProduct,
   priceMasterRows,
@@ -172,7 +172,7 @@ export function ensurePricing(code: string): PriceLine[] {
     return PRICING[code];
   }
 
-  const cost = p.pricing?.lastCost ?? p.pricing?.avgCost ?? 0;
+  const cost = productCost(p);
   const cur = p.pricing?.currency ?? "THB";
   const units = sellableUnits(p);
   const lines: PriceLine[] = [];

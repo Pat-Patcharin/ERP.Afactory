@@ -41,6 +41,21 @@ export const BASE_UNIT = "Base Unit";
 export const SALES_UNIT = "Sales Unit";
 export const PURCHASE_UNIT = "Purchase Unit";
 
+/**
+ * What one base unit costs, from whichever figure the product actually has.
+ *
+ * Receipts win — what was paid beats what was quoted. A product that has
+ * never been received falls back to the cost agreed with the main supplier,
+ * which is the reason that figure is typed on the master at all: without it
+ * a newly created item priced at nothing, and every GP check on it read 100%.
+ *
+ * `||` rather than `??` on purpose: a product with no receipts carries 0, not
+ * undefined, so a nullish chain never reached the fallback.
+ */
+export const productCost = (p: {
+  pricing?: { lastCost?: number; avgCost?: number; supplierCost?: number };
+}) => p.pricing?.lastCost || p.pricing?.avgCost || p.pricing?.supplierCost || 0;
+
 /** A unit row that converts one for one — a factor never means "unstated". */
 const safeFactor = (n: unknown) => {
   const v = Number(n);
@@ -357,7 +372,7 @@ export function warehouseItems(wh: string): WarehouseItem[] {
     const reserved = bal?.res ?? 0;
     const available = onHand - reserved;
     const rop = warehouseRop(p, wh);
-    const lastCost = p.pricing?.lastCost ?? p.pricing?.avgCost ?? 0;
+    const lastCost = productCost(p);
 
     out.push({
       code: p.code,
@@ -481,7 +496,7 @@ export function productStock(code: string) {
     /* No selling price on a stock row. What a warehouse holds is valued at
        cost; what it will fetch belongs to whichever list is quoting it, and
        this module cannot reach the pricing one without closing a loop. */
-    lastCost: p.pricing?.lastCost ?? p.pricing?.avgCost ?? 0,
+    lastCost: productCost(p),
     supplier: p.supplier ?? "",
     onHand,
     reserved,

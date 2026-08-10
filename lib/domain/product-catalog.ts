@@ -127,6 +127,9 @@ function toProduct(
        a catalogue product carry a price the catalogue already held. */
     pricing: {
       currency: "THB",
+      /* The price file's cost IS the quoted supplier cost — none of these
+         products has been received yet, so it is the only cost there is. */
+      supplierCost: r.cost_thb ?? 0,
       lastCost: r.cost_thb ?? 0,
       avgCost: r.cost_thb ?? 0,
       vat: "VAT 7% (exclusive)",

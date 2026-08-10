@@ -10,7 +10,7 @@ import {
   type ProductRow,
 } from "@/lib/domain/product";
 import { WAREHOUSES } from "@/lib/domain/warehouse";
-import { supplierOffers } from "@/lib/domain/partner";
+import { supplierOffers, vendorPartner } from "@/lib/domain/partner";
 import { catalogPrice } from "@/lib/domain/pricing";
 import { money, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
@@ -53,6 +53,19 @@ const NAME_LANG = [
  * way in, so every cell is a plain string the grid can show without a
  * per-column renderer.
  */
+/**
+ * The offer from the supplier this product names, if that supplier has quoted.
+ *
+ * Matched through `vendorPartner` rather than on the name string: the product
+ * carries a vendor NAME and the offer carries a partner CODE, and comparing
+ * the two spellings is the join that used to come back empty.
+ */
+const mainOffer = (s: FormState) => {
+  const code = vendorPartner(String(s.supplier ?? ""))?.code;
+  if (!code) return null;
+  return supplierOffers(String(s.code ?? "")).find((o) => o.partner === code) ?? null;
+};
+
 const costRows = (code: string, baseUnit: string): GridRow[] =>
   supplierOffers(code).map((o) => ({
     partnerName: o.preferred ? `${o.partnerName} · ผู้ขายหลัก` : o.partnerName,
@@ -93,10 +106,10 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     units: [],
     pricing: {
       currency: "THB",
-      lastCost: "",
-      avgCost: "",
+      /* The one cost a person states. `lastCost` and `avgCost` are written by
+         receipts, so a blank form has nothing to say about them. */
+      supplierCost: "",
       vat: "VAT 7% (exclusive)",
-      effective: "",
     },
     lowLevel: 0,
     /* Read-only: the supplier's own row is edited on the partner. */
@@ -151,10 +164,8 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       units: p.detail.units.filter((u) => u.type !== "Base Unit").map((u) => ({ ...u })),
       pricing: {
         currency: p.pricing.currency,
-        lastCost: p.pricing.lastCost,
-        avgCost: p.pricing.avgCost,
+        supplierCost: p.pricing.supplierCost,
         vat: p.pricing.vat,
-        effective: dmyToIso(p.pricing.effective),
       },
       lowLevel: p.lowLevel,
       offers: costRows(p.code, p.unit),
@@ -385,67 +396,24 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
        showed a single supplier instead of all of them, and repeated four
        fields the table beside it already had columns for.
 
-       What is left: the cost roll-up, which supplier is the default, and one
-       table with a row per supplier. Everything a buyer compares is in that
-       table, in one unit, in one place. */
+       Read in the order the answers arrive: pick the supplier, and the
+       currency, tax and cost that follow are that supplier's terms. The
+       three figures that used to lead — Latest Purchase Price, Moving
+       Average Cost, the cheapest offer — are all written by what happened
+       rather than typed, and they move with every exchange rate, discount
+       and receipt. A form is where a person states an agreement; those
+       belong on the read screen, which is where they still are. */
     {
       key: "supply",
       label: "Cost & Supplier",
       railLabel: "ต้นทุนและผู้ขาย",
-      labelTh: "ต้นทุนตามผู้ขายและภาษี",
+      labelTh: "ผู้ขายหลักและต้นทุนที่ตกลงไว้",
       blocks: (s) => {
         const offers = supplierOffers(String(s.code ?? ""));
-        const best = offers.find((o) => o.costPerBase > 0);
         const baseUnit = String(s.unit || "หน่วยหลัก");
+        const main = mainOffer(s);
 
         return [
-          {
-            type: "card",
-            title: "Cost",
-            cols: "3",
-            fields: [
-              {
-                type: "secure",
-                as: "static",
-                permission: "canViewCost",
-                label: "Latest Purchase Price",
-                value: (st) =>
-                  num(st.pricing?.lastCost)
-                    ? `${money(st.pricing.lastCost)} / ${baseUnit}`
-                    : "—",
-                hint: "มาจากใบรับสินค้าล่าสุด",
-              },
-              {
-                type: "secure",
-                as: "static",
-                permission: "canViewCost",
-                label: "Moving Average Cost",
-                value: (st) =>
-                  num(st.pricing?.avgCost)
-                    ? `${money(st.pricing.avgCost)} / ${baseUnit}`
-                    : "—",
-              },
-              {
-                type: "secure",
-                as: "static",
-                permission: "canViewCost",
-                label: "ต้นทุนต่ำสุดที่เสนอมา",
-                value: () =>
-                  best ? `${money(best.costPerBase)} / ${baseUnit}` : "—",
-                hint: best ? best.partnerName : "ยังไม่มีผู้ขายเสนอราคา",
-              },
-              {
-                type: "select",
-                path: "pricing.currency",
-                label: "Currency",
-                required: true,
-                options: opts(OPT.currency),
-              },
-              { type: "select", path: "pricing.vat", label: "VAT", options: opts(OPT.vat) },
-              { type: "date", path: "pricing.effective", label: "Cost Effective Date" },
-            ],
-          },
-
           /* Only what this form actually decides about the supplier: which
              one is the default, and the two terms that belong to the product
              rather than to any one vendor's quote. */
@@ -472,6 +440,34 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
                 path: "sup.country",
                 label: "Country",
                 options: opts(OPT.country),
+              },
+            ],
+          },
+
+          {
+            type: "card",
+            title: "ต้นทุนจากผู้ขายหลัก",
+            cols: "3",
+            fields: [
+              {
+                type: "select",
+                path: "pricing.currency",
+                label: "Currency",
+                required: true,
+                options: opts(OPT.currency),
+              },
+              { type: "select", path: "pricing.vat", label: "VAT", options: opts(OPT.vat) },
+              {
+                type: "secure",
+                as: "number",
+                permission: "canViewCost",
+                path: "pricing.supplierCost",
+                label: `ต้นทุนที่ตกลงไว้ / ${baseUnit}`,
+                min: 0,
+                step: "0.01",
+                hint: main
+                  ? `ตั้งต้นจากราคาที่ ${main.partnerName} เสนอไว้ — คงที่จนกว่าจะเจรจาใหม่`
+                  : "ราคาที่ตกลงกับผู้ขายหลัก คงที่จนกว่าจะเจรจาใหม่ · ต้นทุนจริงมาจากใบรับสินค้า",
               },
             ],
           },
@@ -712,6 +708,25 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     if (path === "nameTh" || path === "nameEn" || path === "nameLang") {
       s.name = productName(s);
     }
+
+    /*
+       Picking the supplier fills in what that supplier quoted, if they have
+       quoted — the point of asking who supplies it before asking what it
+       costs. Only into an empty box, so a negotiated figure is never
+       overwritten by the standing offer, and the currency comes with it: a
+       price without the currency it was quoted in is a wrong number, not a
+       partial one.
+    */
+    if (path === "supplier" && !num(s.pricing?.supplierCost)) {
+      const offer = mainOffer(s);
+      if (offer?.costPerBase) {
+        s.pricing = {
+          ...(s.pricing ?? {}),
+          supplierCost: offer.costPerBase,
+          currency: offer.currency || s.pricing?.currency || "THB",
+        };
+      }
+    }
   },
 
   newRow: (path, isFirst) => {
@@ -789,6 +804,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       </ReviewCard>
       <ReviewCard title="Supplier">
         {row("Main Supplier", s.supplier, "supply")}
+        {row("ต้นทุนที่ตกลงไว้", s.pricing?.supplierCost, "supply")}
         {row("Supplier Warranty", s.sup?.warranty, "supply")}
         {row("Country", s.sup?.country, "supply")}
       </ReviewCard>
@@ -805,15 +821,18 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     const code = String(s.code ?? "").trim();
     const existing = PRODUCTS.find((p) => p.code === code);
 
-    /* Cost is read-only on the form — it comes from receipts and from the
-       supplier item — so an existing record keeps its own figures rather
-       than having them overwritten by whatever the draft happened to hold. */
+    /* The agreed cost is the only figure this form writes. What was actually
+       paid — the last receipt, the moving average, and the date that cost
+       took effect — is written by goods receipts, so an existing record keeps
+       its own rather than having them overwritten by whatever the draft
+       happened to hold. */
     const pricing = {
       currency: String(s.pricing?.currency ?? "THB"),
-      lastCost: existing?.pricing.lastCost ?? num(s.pricing?.lastCost),
-      avgCost: existing?.pricing.avgCost ?? num(s.pricing?.avgCost),
+      supplierCost: num(s.pricing?.supplierCost),
+      lastCost: existing?.pricing.lastCost ?? 0,
+      avgCost: existing?.pricing.avgCost ?? 0,
       vat: String(s.pricing?.vat ?? ""),
-      effective: isoToDmy(s.pricing?.effective),
+      effective: existing?.pricing.effective ?? "",
     };
 
     const stocks = ((s.stocks ?? []) as GridRow[]).map((r) => ({

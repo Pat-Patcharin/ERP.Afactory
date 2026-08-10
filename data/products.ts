@@ -45,6 +45,12 @@ export interface Product {
    */
   pricing: {
     currency: string;
+    /**
+     * What the main supplier quoted, per stock unit — typed on the master and
+     * fixed until somebody renegotiates it. The only cost figure a person
+     * enters; the two below are written by what actually happened.
+     */
+    supplierCost: number;
     /** Cost of the last receipt, in the stock unit. */
     lastCost: number;
     /** Moving average cost, in the stock unit. */
@@ -297,6 +303,7 @@ export const PRODUCTS: Product[] = [
     expiry: "31/12/2026",
     pricing: {
       currency: "THB",
+      supplierCost: 68.5,
       lastCost: 68.5,
       avgCost: 71.2,
       vat: "VAT 7% (exclusive)",
@@ -439,6 +446,7 @@ export const PRODUCTS: Product[] = [
     expiry: "31/12/2026",
     pricing: {
       currency: "THB",
+      supplierCost: 68.5,
       lastCost: 68.5,
       avgCost: 70.8,
       vat: "VAT 7% (exclusive)",
@@ -542,6 +550,7 @@ export const PRODUCTS: Product[] = [
     expiry: "30/06/2027",
     pricing: {
       currency: "THB",
+      supplierCost: 88,
       lastCost: 88,
       avgCost: 88,
       vat: "VAT 7% (exclusive)",
@@ -626,6 +635,7 @@ export const PRODUCTS: Product[] = [
     expiry: "15/09/2026",
     pricing: {
       currency: "THB",
+      supplierCost: 54,
       lastCost: 54,
       avgCost: 55.4,
       vat: "VAT 7% (exclusive)",
@@ -728,6 +738,7 @@ export const PRODUCTS: Product[] = [
     expiry: "01/03/2026",
     pricing: {
       currency: "THB",
+      supplierCost: 62,
       lastCost: 62,
       avgCost: 63.5,
       vat: "VAT 7% (exclusive)",
@@ -811,6 +822,7 @@ export const PRODUCTS: Product[] = [
     expiry: "—",
     pricing: {
       currency: "THB",
+      supplierCost: 148,
       lastCost: 148,
       avgCost: 151.5,
       vat: "VAT 7% (exclusive)",
@@ -914,6 +926,7 @@ export const PRODUCTS: Product[] = [
     expiry: "—",
     pricing: {
       currency: "THB",
+      supplierCost: 86,
       lastCost: 86,
       avgCost: 87.4,
       vat: "VAT 7% (exclusive)",
@@ -1003,6 +1016,7 @@ export const PRODUCTS: Product[] = [
     expiry: "—",
     pricing: {
       currency: "THB",
+      supplierCost: 512,
       lastCost: 512,
       avgCost: 520,
       vat: "VAT 7% (exclusive)",

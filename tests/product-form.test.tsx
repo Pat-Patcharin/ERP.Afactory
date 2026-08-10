@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { MasterForm } from "@/components/engine/MasterForm";
 import { PRODUCT_FORM } from "@/schemas/forms/product";
 import { PRODUCTS, getProduct } from "@/lib/domain/product";
+import { supplierOffers, vendorPartner } from "@/lib/domain/partner";
 import { formStatus } from "@/lib/form";
 import { resetCurrentUser } from "@/lib/domain/admin";
 import type { FormBlock, FormField, FormState } from "@/lib/types";
@@ -237,6 +238,110 @@ describe("Product form — ต้นทุนและผู้ขายอย�
       .find((b) => "path" in b && b.path === "offers") as FormField;
 
     expect(grid.readonly).toBe(true);
+  });
+
+  it("ถามผู้ขายก่อน แล้วค่อยถามต้นทุนของผู้ขายรายนั้น", () => {
+    const supply = PRODUCT_FORM.steps.find((s) => s.key === "supply")!;
+    const cards = supply
+      .blocks(PRODUCT_FORM.blank())
+      .filter((b): b is Extract<FormBlock, { type: "card" }> =>
+        Boolean(b) && (b as FormBlock).type === "card",
+      );
+
+    /* Currency, VAT and the agreed cost are all terms of one supplier's
+       quote, so the question "which supplier" cannot come second. */
+    expect(cards[0].fields.map((f) => f && f.path)).toContain("supplier");
+    expect(cards[1].fields.map((f) => f && f.path)).toEqual([
+      "pricing.currency",
+      "pricing.vat",
+      "pricing.supplierCost",
+    ]);
+  });
+
+  it("ไม่ถามต้นทุนที่ระบบเขียนเอง", () => {
+    /*
+       Latest Purchase Price comes from a goods receipt, Moving Average moves
+       with every exchange rate and every discount, and the lowest offer is a
+       row in the table below. None of the three is something a person states,
+       so none of them belongs on a form.
+    */
+    const supply = PRODUCT_FORM.steps.find((s) => s.key === "supply")!;
+    const fields = supply
+      .blocks(PRODUCT_FORM.blank())
+      .filter((b): b is FormBlock => Boolean(b))
+      .flatMap((b) => ("fields" in b ? b.fields : [b]))
+      .filter((f): f is FormField => Boolean(f));
+
+    for (const gone of ["pricing.lastCost", "pricing.avgCost", "pricing.effective"]) {
+      expect(fields.map((f) => f.path), gone).not.toContain(gone);
+    }
+    for (const gone of ["Latest Purchase Price", "Moving Average Cost", "ต้นทุนต่ำสุดที่เสนอมา"]) {
+      expect(fields.map((f) => f.label), gone).not.toContain(gone);
+    }
+  });
+
+  it("เลือกผู้ขายแล้วเติมราคาที่ผู้ขายรายนั้นเสนอไว้ให้", () => {
+    const p = getProduct("AA-TH003-WL")!;
+    const offer = supplierOffers(p.code).find(
+      (o) => o.partner === vendorPartner(p.supplier)?.code,
+    );
+    /* The seed has to have an offer from the named supplier for this to mean
+       anything — otherwise the test would pass on a form that does nothing. */
+    expect(offer?.costPerBase).toBeGreaterThan(0);
+
+    const s: FormState = { ...PRODUCT_FORM.blank(), code: p.code, supplier: p.supplier };
+    PRODUCT_FORM.onChange!("supplier", s);
+    expect(s.pricing.supplierCost).toBe(offer!.costPerBase);
+    expect(s.pricing.currency).toBe(offer!.currency);
+
+    /* A negotiated figure is not overwritten by the standing offer. */
+    const typed: FormState = {
+      ...PRODUCT_FORM.blank(),
+      code: p.code,
+      supplier: p.supplier,
+      pricing: { ...PRODUCT_FORM.blank().pricing, supplierCost: 12.5 },
+    };
+    PRODUCT_FORM.onChange!("supplier", typed);
+    expect(typed.pricing.supplierCost).toBe(12.5);
+  });
+
+  it("บันทึกต้นทุนที่ตกลงไว้ โดยไม่แตะต้นทุนที่มาจากใบรับสินค้า", () => {
+    const code = "ZZ-COST-01";
+    const ctx = { goto: () => {}, toast: () => {}, refresh: () => {} } as never;
+
+    PRODUCT_FORM.save(
+      {
+        ...PRODUCT_FORM.blank(),
+        code,
+        nameTh: "สินค้าทดสอบต้นทุน",
+        nameLang: "th",
+        cat: "Dental Consumable",
+        brand: "A-FLEX",
+        unit: "Tube",
+        pricing: { currency: "THB", vat: "VAT 7% (exclusive)", supplierCost: "88.5" },
+      },
+      ctx,
+    );
+
+    const fresh = PRODUCTS.find((r) => r.code === code)!;
+    expect(fresh.pricing.supplierCost).toBe(88.5);
+    /* Nothing has been received, so there is no purchase price to state. */
+    expect(fresh.pricing.lastCost).toBe(0);
+    expect(fresh.pricing.avgCost).toBe(0);
+
+    /* And a product that HAS been received keeps its receipt figures when the
+       agreed cost is edited. */
+    const existing = getProduct("AA-TH003-WL")!;
+    const { lastCost, avgCost } = existing.pricing;
+    PRODUCT_FORM.save(
+      { ...PRODUCT_FORM.toState(existing), pricing: { ...PRODUCT_FORM.toState(existing).pricing, supplierCost: 99 } },
+      ctx,
+    );
+    expect(existing.pricing.supplierCost).toBe(99);
+    expect(existing.pricing.lastCost).toBe(lastCost);
+    expect(existing.pricing.avgCost).toBe(avgCost);
+
+    PRODUCTS.splice(PRODUCTS.indexOf(fresh), 1);
   });
 
   it("ไม่มีตารางผู้ขายสำรองที่พิมพ์แล้วหาย", () => {

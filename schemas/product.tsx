@@ -467,10 +467,19 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
             cols: 4,
             items: [
               {
+                /* What was agreed, typed on the master. First, because it is
+                   the figure a buyer is held to — the two beside it are what
+                   the exchange rate and the discounts of the day made of it. */
+                label: "ต้นทุนที่ตกลงไว้",
+                value: money(c.supplierCost),
+                unit: `${c.currency} / ${p.unit}`,
+                sub: p.supplier || "ยังไม่ได้ระบุผู้ขายหลัก",
+                tone: "accent",
+              },
+              {
                 label: "Latest Purchase Price",
                 value: money(c.lastCost),
                 unit: `${c.currency} / ${p.unit}`,
-                tone: "accent",
               },
               { label: "Moving Average Cost", value: money(c.avgCost), unit: `${c.currency} / ${p.unit}` },
               {
@@ -482,7 +491,8 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
                 unit: best ? `${best.currency} / ${p.unit}` : "",
                 sub: best ? best.partnerName : "ยังไม่มีผู้ขายเสนอราคา",
               },
-              { label: "ผู้ขายที่เสนอ", value: fmt(offers.length), sub: "ราย" },
+              /* No "ผู้ขายที่เสนอ" tile — the table directly below is titled
+                 with that same count, a centimetre away. */
             ],
           },
 
