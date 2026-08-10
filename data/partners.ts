@@ -159,10 +159,13 @@ export interface BpSupplierItem {
    */
   punitFactor?: number;
   /**
-   * Minimum order, counted in the product's STOCK unit — the unit every
-   * recorded minimum was written in ("240 Tube" on an item bought by the
-   * Carton). Not in `punit`: rendering it against the purchase unit once
-   * turned 240 tubes into "240 Carton".
+   * Minimum order, counted in `punit` — the unit the supplier states it in
+   * ("ขั้นต่ำ 10 ลัง"), which is the language the order is actually placed in.
+   *
+   * The recorded minimums were all written in the STOCK unit ("240 Tube" on
+   * an item bought by the Carton of 24) and were converted once on the way
+   * in. Every one of the fourteen divided exactly; a remainder would have
+   * been a figure nobody agreed to and is refused rather than rounded.
    */
   moq: number;
   lead: number;

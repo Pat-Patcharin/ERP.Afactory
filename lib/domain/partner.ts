@@ -552,6 +552,21 @@ export function leadingNumber(v: unknown): number {
  * "Box" converts one for one, which is the truthful reading of a unit that
  * never claimed to contain anything.
  */
+/**
+ * A minimum recorded in stock units, restated in the unit it is ordered in.
+ *
+ * One-time, like the two above. A remainder is left alone rather than
+ * rounded: "250 Tube" against a Carton of 24 is 10.4 cartons, and both
+ * roundings are a different order from the one somebody agreed to. Leaving
+ * the figure as it was keeps it visibly wrong instead of quietly wrong,
+ * which is the version a buyer can catch.
+ */
+export function toPurchaseUnits(moqInBase: number, factor: number): number {
+  if (!(moqInBase > 0) || !(factor > 1)) return moqInBase;
+  const q = moqInBase / factor;
+  return Number.isInteger(q) ? q : moqInBase;
+}
+
 export function splitPackedUnit(v: unknown): { unit: string; factor: number } {
   const raw = String(v ?? "").trim();
   const m = /^(.*?)\s*\((\d+(?:\.\d+)?)[^)]*\)$/.exec(raw);
@@ -610,7 +625,10 @@ function mergeSupplierItems() {
         /* 0 means "not stated", and for the catalogue products that is the
            truth — the price list master records a vendor and a cost, and
            has never held a minimum or a lead time. */
-        moq: leadingNumber(legacy?.moq),
+        moq: toPurchaseUnits(
+          leadingNumber(legacy?.moq),
+          stated > 0 ? stated : packed.factor,
+        ),
         lead: leadingNumber(legacy?.lead),
         currency: p.pricing?.currency || "THB",
         /* The last cost actually paid, which the pricing block does know. */
@@ -742,16 +760,15 @@ function syncProductSupplyView() {
     sup.punit = row.punit || p.unit;
     sup.punitFactor = row.punitFactor && row.punitFactor > 0 ? row.punitFactor : 1;
     /*
-       MOQ is counted in the STOCK unit, not the purchase unit.
+       MOQ is counted in the PURCHASE unit — "ขั้นต่ำ 10 ลัง" is how the
+       supplier states it and how the order goes out.
 
-       Every recorded minimum was written that way — "240 Tube" on a product
-       bought by the Carton of 24 — and this line used to render the number
-       with `row.punit`, turning 240 tubes into "240 Carton". Ten times the
-       order, from a label. The figure is not converted either: dividing a
-       recorded minimum by a pack size would be this code inventing a term
-       nobody agreed.
+       The recorded minimums were written in the stock unit and converted
+       once in mergeSupplierItems. Rendering it against the wrong unit is a
+       ten-times error either way round, so the unit shown here comes from
+       the same row as the number.
     */
-    sup.moq = row.moq > 0 ? `${row.moq} ${p.unit}`.trim() : DASH;
+    sup.moq = row.moq > 0 ? `${row.moq} ${row.punit || p.unit}`.trim() : DASH;
     sup.lead = row.lead > 0 ? `${row.lead} วัน` : DASH;
     sup.lastPrice = row.price > 0 ? `${row.price.toFixed(2)} ${row.currency}` : DASH;
 

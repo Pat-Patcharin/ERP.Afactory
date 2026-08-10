@@ -7,7 +7,12 @@ import {
   toBaseQty,
   unitFactor,
 } from "@/lib/domain/product";
-import { BUSINESS_PARTNERS, splitPackedUnit, supplyTermsFor } from "@/lib/domain/partner";
+import {
+  BUSINESS_PARTNERS,
+  splitPackedUnit,
+  supplyTermsFor,
+  toPurchaseUnits,
+} from "@/lib/domain/partner";
 
 /* ============================================================
    THREE UNITS, ONE ARITHMETIC
@@ -118,20 +123,35 @@ describe("หน่วยซื้อ — อยู่กับผู้ขา�
     expect(supplyTermsFor("AA-TH003-WL")!.row.punitFactor).toBe(24);
   });
 
-  it("MOQ นับเป็นหน่วยที่คลังนับ ไม่ใช่หน่วยซื้อ", () => {
+  it("MOQ นับเป็นหน่วยซื้อ และแสดงด้วยหน่วยเดียวกับที่นับ", () => {
     /*
-       Every recorded minimum was written in the stock unit — "240 Tube" on a
-       product bought by the Carton of 24. Rendering that number against the
-       purchase unit read "240 Carton": ten times the order, from a label.
+       Decided with the master-data design: the minimum is stated in the unit
+       the order is placed in. "240 Tube" was recorded against a Carton of 24
+       and became 10 Carton on the way in — and the label has to come from the
+       same row as the number, because getting it wrong is a ten-times error
+       in whichever direction it lands.
     */
     const p = getProduct("AA-TH003-WL")!;
-    expect(p.sup.moq).toBe("240 Tube");
-    expect(p.sup.moq).not.toContain(p.sup.punit);
+    expect(p.sup.punit).toBe("Carton");
+    expect(p.sup.moq).toBe("10 Carton");
 
     for (const q of PRODUCTS) {
       if (q.sup.moq === "—" || !q.sup.moq) continue;
-      expect(q.sup.moq.endsWith(q.unit), `${q.code} · ${q.sup.moq}`).toBe(true);
+      expect(q.sup.moq.endsWith(q.sup.punit || q.unit), `${q.code} · ${q.sup.moq}`).toBe(true);
     }
+  });
+
+  it("แปลงขั้นต่ำที่หารไม่ลงตัวไม่ได้ ก็ไม่ปัดให้", () => {
+    /*
+       Fourteen recorded minimums, every one divisible — but a rounding rule
+       would have invented a term nobody agreed to on the first one that was
+       not. Left as it was, so it reads visibly wrong rather than quietly so.
+    */
+    expect(toPurchaseUnits(240, 24)).toBe(10);
+    expect(toPurchaseUnits(50, 10)).toBe(5);
+    expect(toPurchaseUnits(250, 24)).toBe(250);
+    expect(toPurchaseUnits(240, 1)).toBe(240);
+    expect(toPurchaseUnits(0, 24)).toBe(0);
   });
 
   it("สินค้าเดียวกันซื้อจากคนละเจ้า ใช้ตัวคูณของเจ้านั้น", () => {
