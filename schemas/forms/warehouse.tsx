@@ -125,14 +125,20 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
       key: "general",
       label: "General",
       railLabel: "ข้อมูลทั่วไป",
-      labelTh: "รหัส ชื่อ และผู้ดูแล",
+      labelTh: "รหัส ชื่อ และประเภทคลัง",
       blocks: () => [
         {
           type: "card",
           title: "Warehouse Identity",
           cols: "2",
           fields: [
-            { type: "image", path: "icon", label: "Icon", span: true },
+            {
+              type: "photo",
+              path: "icon",
+              label: "Warehouse Photo",
+              icon: "warehouse",
+              span: true,
+            },
             {
               type: "text",
               path: "code",
@@ -162,7 +168,6 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
               required: true,
               placeholder: "Bangkok Main Warehouse",
             },
-            { type: "text", path: "nameTh", label: "ชื่อภาษาไทย" },
             {
               type: "select",
               path: "type",
@@ -173,22 +178,9 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
             { type: "textarea", path: "desc", label: "Description", span: true, rows: 2 },
           ],
         },
-        {
-          type: "card",
-          title: "Responsible Person",
-          cols: "3",
-          fields: [
-            {
-              type: "text",
-              path: "manager",
-              label: "Warehouse Manager",
-              required: true,
-              placeholder: "Somchai B.",
-            },
-            { type: "text", path: "phone", label: "Phone", placeholder: "02-123-4567" },
-            { type: "text", path: "email", label: "Email" },
-          ],
-        },
+        /* No Responsible Person card. A manager is a person who changes jobs,
+           and the name on the record went stale the day they did — who to
+           ring belongs to the org chart, not to the building. */
       ],
     },
 
@@ -233,7 +225,7 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
       key: "config",
       label: "Configuration",
       railLabel: "การตั้งค่า",
-      labelTh: "ธุรกรรมและการตีมูลค่า",
+      labelTh: "ธุรกรรมที่คลังนี้รองรับ",
       blocks: () => [
         {
           type: "card",
@@ -256,22 +248,9 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
         },
         {
           type: "card",
-          title: "Valuation",
+          title: "Default",
           cols: "3",
           fields: [
-            {
-              type: "select",
-              path: "config.valuation",
-              label: "Valuation Method",
-              required: true,
-              options: opts(WH_VALUATION),
-            },
-            {
-              type: "select",
-              path: "config.costing",
-              label: "Costing Method",
-              options: opts(WH_COSTING),
-            },
             {
               type: "toggle",
               path: "config.isDefault",
@@ -281,6 +260,11 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
             },
           ],
         },
+        /* Valuation is not a per-warehouse choice any more.
+           Stock is valued at moving average throughout, which is what the
+           cost figures on the product record already are — offering five
+           methods per warehouse invited two stores to value the same item
+           two ways, and nothing downstream could have honoured the answer. */
       ],
     },
 
@@ -289,7 +273,7 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
       key: "rules",
       label: "Storage Rules",
       railLabel: "เงื่อนไขจัดเก็บ",
-      labelTh: "อุณหภูมิและความจุ",
+      labelTh: "อุณหภูมิและการรักษาสภาพ",
       blocks: () => [
         {
           type: "card",
@@ -316,55 +300,27 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
         },
         {
           type: "card",
-          title: "Capacity",
-          cols: "3",
+          title: "Remarks",
+          cols: "2",
           fields: [
-            { type: "number", path: "rules.maxCap", label: "Maximum Capacity", min: 0 },
-            { type: "number", path: "rules.curCap", label: "Current Usage", min: 0 },
-            {
-              type: "select",
-              path: "rules.capUnit",
-              label: "Capacity Unit",
-              options: opts(WH_CAP_UNIT),
-            },
-            {
-              type: "static",
-              label: "Utilisation",
-              value: (s) => {
-                const max = num(s.rules?.maxCap);
-                if (!max) return "—";
-                return `${Math.round((num(s.rules?.curCap) / max) * 100)}%`;
-              },
-            },
             { type: "textarea", path: "rules.remarks", label: "Remarks", span: true, rows: 2 },
           ],
         },
+        /* No Capacity card. "Current Usage" was typed by hand beside a
+           maximum, so the utilisation figure was only ever as fresh as the
+           last person who remembered to update it — and the warehouse
+           already knows what it is holding. */
       ],
     },
 
-    /* ---------- 5. LOCATIONS ---------- */
-    {
-      key: "locations",
-      label: "Locations",
-      railLabel: "ผังจัดเก็บ",
-      labelTh: "Zone › Rack › Shelf › Bin",
-      blocks: () => [
-        {
-          type: "note",
-          label: "ผังจัดเก็บกำหนดว่ารับของเข้าคลังนี้ได้หรือไม่",
-          text: "งาน Put Away จะแนะนำ Bin จากผังนี้ — คลังที่ยังไม่มี Bin จะไม่ถูกเสนอเป็นตำแหน่งจัดเก็บ",
-        },
-        {
-          type: "tree",
-          path: "locations",
-          label: "Storage Structure",
-          required: true,
-          addLabel: "เพิ่ม Zone",
-          empty: "ยังไม่มีโครงสร้างจัดเก็บ — เพิ่ม Zone แรกเพื่อเริ่มต้น",
-          levels: WH_LEVELS,
-        },
-      ],
-    },
+    /* No Locations step.
+
+       The bin tree is still stored and still read: Put Away and Picking
+       resolve their bin lists from it. What is gone is typing a four-level
+       Zone › Rack › Shelf › Bin structure into a create form, which is a
+       warehouse layout job rather than a master-data one. A warehouse
+       created here has no bins until somebody lays it out — see the note
+       on the Location Structure tab. */
 
     {
       key: "review",
@@ -381,17 +337,9 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
     { path: "name", label: "Warehouse Name", step: "general" },
     { path: "type", label: "Warehouse Type", step: "general" },
     { path: "status", label: "Status", step: "general" },
-    { path: "manager", label: "Warehouse Manager", step: "general" },
     { path: "addr.line", label: "Address", step: "address" },
     { path: "addr.prov", label: "จังหวัด", step: "address" },
-    { path: "config.valuation", label: "Valuation Method", step: "config" },
     { path: "rules.temp", label: "Temperature", step: "rules" },
-    {
-      path: "locations",
-      label: "โครงสร้างจัดเก็บอย่างน้อย 1 Zone",
-      step: "locations",
-      test: (s) => ((s.locations ?? []) as TreeNodeState[]).some((z) => String(z.code ?? "").trim()),
-    },
   ],
 
   rules: [
@@ -400,16 +348,6 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
       step: "general",
       test: (s) =>
         !isCreate(s) || !WAREHOUSES.some((w) => w.code === String(s.code ?? "").trim()),
-    },
-    {
-      label: "อีเมลผู้ดูแลคลังต้องอยู่ในรูปแบบที่ถูกต้อง",
-      step: "general",
-      test: (s) => validEmail(String(s.email ?? "")),
-    },
-    {
-      label: "เบอร์โทรต้องอยู่ในรูปแบบที่ถูกต้อง",
-      step: "general",
-      test: (s) => validPhone(String(s.phone ?? "")),
     },
     {
       label: "รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก",
@@ -423,17 +361,6 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
         !s.config?.isDefault ||
         !WAREHOUSES.some((w) => w.config?.isDefault && w.code !== s.code),
     },
-    {
-      label: "ปริมาณที่ใช้อยู่ต้องไม่เกินความจุสูงสุด",
-      step: "rules",
-      test: (s) => !num(s.rules?.maxCap) || num(s.rules.curCap) <= num(s.rules.maxCap),
-    },
-    {
-      label: "ทุก Zone ต้องมีรหัสกำกับ",
-      step: "locations",
-      test: (s) =>
-        ((s.locations ?? []) as TreeNodeState[]).every((z) => String(z.code ?? "").trim()),
-    },
   ],
 
   findDuplicates: (s) => {
@@ -446,31 +373,12 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
 
   openDuplicate: (code, ctx) => ctx.openEntity("warehouse", code),
 
-  sidePanel: (s) => {
-    const tree = (s.locations ?? []) as TreeNodeState[];
-    const max = num(s.rules?.maxCap);
-    const util = max ? Math.round((num(s.rules?.curCap) / max) * 100) : 0;
+  /* No insight rail.
 
-    return (
-      <RailCard icon="warehouse" title="Storage Insight" tone={util > 85 ? "warn" : "default"}>
-        <RailRow label="Zone" value={countDepth(tree, 0)} />
-        <RailRow label="Rack" value={countDepth(tree, 1)} />
-        <RailRow label="Shelf" value={countDepth(tree, 2)} />
-        <RailRow label="Bin" value={countDepth(tree, 3)} />
-        <RailRow
-          label="Utilisation"
-          value={max ? `${util}%` : "—"}
-          tone={util > 85 ? "warn" : util > 0 ? "ok" : undefined}
-        />
-        <RailRow label="ความจุสูงสุด" value={max ? `${fmt(max)} ${String(s.rules?.capUnit ?? "")}` : "—"} />
-        {countDepth(tree, 3) === 0 && (
-          <p className="mt-3 text-cap leading-relaxed text-ink-2">
-            ยังไม่มี Bin — คลังนี้จะยังไม่ถูกเสนอเป็นตำแหน่งจัดเก็บในงาน Put Away
-          </p>
-        )}
-      </RailCard>
-    );
-  },
+     It counted Zones, Racks, Shelves and Bins from a tree this form no
+     longer edits, and read a utilisation off a capacity nobody keeps
+     current — four zeroes and two dashes on every new warehouse, taking a
+     third of the width to say nothing. */
 
   save: (s, ctx) => {
     const now = stamp();

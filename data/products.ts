@@ -73,7 +73,7 @@ export interface Product {
    * the second can be wrong in a way somebody should fix.
    */
   warehouses: {
-    /** "WH-01 Samut Prakan" — code and name as every document carries it. */
+    /** "WH-BKK Bangkok Main Warehouse" — code and name as every document carries it. */
     wh: string;
     /** Default put-away location in that warehouse. */
     bin: string;
@@ -305,7 +305,7 @@ export const PRODUCTS: Product[] = [
     warehouses: [],
     stocks: [
       {
-        wh: "WH-01 Samut Prakan",
+        wh: "WH-BKK Bangkok Main Warehouse",
         loc: "A-03-12",
         avail: 820,
         res: 100,
@@ -313,7 +313,7 @@ export const PRODUCTS: Product[] = [
         exp: "31/12/2027",
       },
       {
-        wh: "WH-02 Bangkok",
+        wh: "WH-CNX Chiangmai Branch",
         loc: "B-01-04",
         avail: 280,
         res: 50,
@@ -321,7 +321,7 @@ export const PRODUCTS: Product[] = [
         exp: "30/06/2027",
       },
       {
-        wh: "WH-03 Service",
+        wh: "WH-SVC Service Warehouse",
         loc: "S-02",
         avail: 0,
         res: 0,
@@ -447,7 +447,7 @@ export const PRODUCTS: Product[] = [
     warehouses: [],
     stocks: [
       {
-        wh: "WH-01 Samut Prakan",
+        wh: "WH-BKK Bangkok Main Warehouse",
         loc: "A-03-13",
         avail: 600,
         res: 40,
@@ -455,7 +455,7 @@ export const PRODUCTS: Product[] = [
         exp: "31/12/2027",
       },
       {
-        wh: "WH-02 Bangkok",
+        wh: "WH-CNX Chiangmai Branch",
         loc: "B-01-05",
         avail: 160,
         res: 20,
@@ -550,7 +550,7 @@ export const PRODUCTS: Product[] = [
     warehouses: [],
     stocks: [
       {
-        wh: "WH-01 Samut Prakan",
+        wh: "WH-BKK Bangkok Main Warehouse",
         loc: "A-04-01",
         avail: 320,
         res: 80,
@@ -634,7 +634,7 @@ export const PRODUCTS: Product[] = [
     warehouses: [],
     stocks: [
       {
-        wh: "WH-01 Samut Prakan",
+        wh: "WH-BKK Bangkok Main Warehouse",
         loc: "C-01-06",
         avail: 280,
         res: 0,
@@ -736,7 +736,7 @@ export const PRODUCTS: Product[] = [
     warehouses: [],
     stocks: [
       {
-        wh: "WH-02 Bangkok",
+        wh: "WH-CNX Chiangmai Branch",
         loc: "B-03-11",
         avail: 180,
         res: 30,
@@ -819,7 +819,7 @@ export const PRODUCTS: Product[] = [
     warehouses: [],
     stocks: [
       {
-        wh: "WH-01 Samut Prakan",
+        wh: "WH-BKK Bangkok Main Warehouse",
         loc: "D-01-02",
         avail: 380,
         res: 40,
@@ -827,7 +827,7 @@ export const PRODUCTS: Product[] = [
         exp: "—",
       },
       {
-        wh: "WH-02 Bangkok",
+        wh: "WH-CNX Chiangmai Branch",
         loc: "B-04-09",
         avail: 120,
         res: 20,
@@ -922,7 +922,7 @@ export const PRODUCTS: Product[] = [
     warehouses: [],
     stocks: [
       {
-        wh: "WH-01 Samut Prakan",
+        wh: "WH-BKK Bangkok Main Warehouse",
         loc: "D-02-05",
         avail: 1200,
         res: 0,
@@ -1011,7 +1011,7 @@ export const PRODUCTS: Product[] = [
     warehouses: [],
     stocks: [
       {
-        wh: "WH-01 Samut Prakan",
+        wh: "WH-BKK Bangkok Main Warehouse",
         loc: "E-01-03",
         avail: 64,
         res: 0,
@@ -1111,7 +1111,7 @@ export const DETAIL: ProductDetailMap = {
     serialTracked: false,
     whRows: [
       {
-        wh: "WH-01 Samut Prakan",
+        wh: "WH-BKK Bangkok Main Warehouse",
         loc: "A-03-12",
         onHand: 950,
         res: 130,
@@ -1119,7 +1119,7 @@ export const DETAIL: ProductDetailMap = {
         rop: 200,
       },
       {
-        wh: "WH-02 Bangkok",
+        wh: "WH-CNX Chiangmai Branch",
         loc: "B-01-04",
         onHand: 300,
         res: 20,
@@ -1127,7 +1127,7 @@ export const DETAIL: ProductDetailMap = {
         rop: 100,
       },
       {
-        wh: "WH-03 Service",
+        wh: "WH-SVC Service Warehouse",
         loc: "S-02",
         onHand: 0,
         res: 0,
@@ -1139,7 +1139,7 @@ export const DETAIL: ProductDetailMap = {
       {
         lot: "LT2601",
         exp: "31/12/2027",
-        wh: "WH-01 Samut Prakan",
+        wh: "WH-BKK Bangkok Main Warehouse",
         loc: "A-03-12",
         qty: 820,
         status: "Normal",
@@ -1147,7 +1147,7 @@ export const DETAIL: ProductDetailMap = {
       {
         lot: "LT2598",
         exp: "30/06/2027",
-        wh: "WH-02 Bangkok",
+        wh: "WH-CNX Chiangmai Branch",
         loc: "B-01-04",
         qty: 280,
         status: "Normal",
@@ -1155,7 +1155,7 @@ export const DETAIL: ProductDetailMap = {
       {
         lot: "LT2555",
         exp: "30/09/2026",
-        wh: "WH-01 Samut Prakan",
+        wh: "WH-BKK Bangkok Main Warehouse",
         loc: "A-03-13",
         qty: 150,
         status: "Near Expiry",

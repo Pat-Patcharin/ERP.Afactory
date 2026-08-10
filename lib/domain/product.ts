@@ -319,6 +319,66 @@ export function defaultReceivingWarehouse(p: Product): string {
   return (rows.find((w) => w.defaultReceiving) ?? rows[0])?.wh ?? "";
 }
 
+export interface WarehouseItem {
+  code: string;
+  name: string;
+  unit: string;
+  bin: string;
+  onHand: number;
+  reserved: number;
+  available: number;
+  rop: number;
+  /** Below the reorder point AT THIS WAREHOUSE, not company-wide. */
+  low: boolean;
+  lastCost: number;
+  value: number;
+  storageWarn: string | null;
+}
+
+/**
+ * What one warehouse holds, item by item.
+ *
+ * The warehouse detail used to show four aggregate figures — SKU count, total
+ * quantity, inventory value — which say how big the warehouse is and nothing
+ * about what is in it. This is the list somebody actually opens a warehouse
+ * to read.
+ *
+ * Driven by the policy rows rather than the balances, so an item cleared for
+ * this warehouse but not yet delivered still appears, at zero.
+ */
+export function warehouseItems(wh: string): WarehouseItem[] {
+  const out: WarehouseItem[] = [];
+  for (const p of PRODUCTS) {
+    const policy = (p.warehouses ?? []).find((w) => w.wh === wh && w.status === "Active");
+    if (!policy) continue;
+
+    const bal = (p.stocks ?? []).find((s) => s.wh === wh);
+    const onHand = (bal?.avail ?? 0) + (bal?.res ?? 0);
+    const reserved = bal?.res ?? 0;
+    const available = onHand - reserved;
+    const rop = warehouseRop(p, wh);
+    const lastCost = p.pricing?.lastCost ?? p.pricing?.avgCost ?? 0;
+
+    out.push({
+      code: p.code,
+      name: p.name,
+      unit: p.unit,
+      bin: policy.bin || bal?.loc || "",
+      onHand,
+      reserved,
+      available,
+      rop,
+      /* A reorder point of 0 means this store does not reorder, so it is
+         never "below" it — otherwise every empty service bay would alarm. */
+      low: rop > 0 && available <= rop,
+      lastCost,
+      value: Math.round(onHand * lastCost * 100) / 100,
+      storageWarn: storageWarning(p.detail?.cls?.storage ?? "", wh),
+    });
+  }
+  return out.sort((a, b) => Number(b.low) - Number(a.low) || b.value - a.value);
+}
+
 /**
  * Fold the price list master into the product master, once.
  *

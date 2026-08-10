@@ -284,8 +284,11 @@ describe("Detail layout — reusable by every master", () => {
     expect(keys).toContain("value");
     expect(cols.find((c) => c.key === "value")!.label).toBe("Inventory Value");
 
-    /* Manager is off the table but still findable. */
-    expect(REGISTRY["warehouse"].list.searchFields).toContain("manager");
+    /* The manager left the record entirely — a person who changes desks was
+       never a fact about the building, and the name went stale the day they
+       did. Nothing searches for one now. */
+    expect(REGISTRY["warehouse"].list.searchFields).not.toContain("manager");
+    expect(REGISTRY["warehouse"].list.searchFields).toEqual(["code", "name", "fullAddr"]);
   });
 
   it("sorts warehouses on the real inventory value, not its rendering", () => {

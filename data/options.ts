@@ -39,7 +39,7 @@ export const OPT: ProductOptions = {
   storage: ["อุณหภูมิห้อง (15–30°C)", "แช่เย็น (2–8°C)", "หลีกเลี่ยงแสงแดด", "ที่แห้ง"],
   devClass: ["Class I", "Class II", "Class III", "ไม่จัดเป็นเครื่องมือแพทย์"],
   yesno: ["Yes", "No"],
-  warehouse: ["WH-01 Samut Prakan", "WH-02 Bangkok", "WH-03 Service"],
+  warehouse: ["WH-BKK Bangkok Main Warehouse", "WH-CNX Chiangmai Branch", "WH-SVC Service Warehouse"],
   supplier: [
     "Supplier A Co., Ltd.",
     "HDX WILL Co., Ltd.",

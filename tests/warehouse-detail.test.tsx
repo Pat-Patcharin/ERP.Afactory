@@ -1,3 +1,4 @@
+import { getProduct, warehouseItems, warehouseRop } from "@/lib/domain/product";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { FullDetail } from "@/components/engine/FullDetail";
@@ -69,13 +70,10 @@ describe("Warehouse detail — header", () => {
 describe("Warehouse detail — tabs", () => {
   it("drops the tabs that moved or belong to maintenance", () => {
     const keys = detail.tabs.map((t) => t.key);
-    expect(keys).toEqual([
-      "overview",
-      "locations",
-      "inventory",
-      "documents",
-      "history",
-    ]);
+    expect(keys).toEqual(["overview", "locations", "inventory", "documents"]);
+    /* Receiving History listed the same movement rows the Stock Card shows,
+       keyed by warehouse instead of by product — one ledger read twice. */
+    expect(keys).not.toContain("history");
     for (const gone of ["config", "address", "rules"]) {
       expect(keys, gone).not.toContain(gone);
     }
@@ -90,7 +88,7 @@ describe("Warehouse detail — tabs", () => {
       .filter(Boolean)
       .map((f) => (f as { path?: string }).path);
 
-    for (const p of ["config.purchase", "config.sales", "config.valuation"]) {
+    for (const p of ["config.purchase", "config.sales", "config.transfer"]) {
       expect(paths, p).toContain(p);
     }
   });
@@ -118,8 +116,9 @@ describe("Warehouse detail — overview", () => {
     ]) {
       expect(labels, gone).not.toContain(gone);
     }
-    /* The phone belongs to the warehouse, not to a person, so it stays. */
-    expect(labels).toContain("Phone");
+    /* The phone went with them — it was the manager's line, not the
+       building's, and it went stale the day they changed desks. */
+    expect(labels).not.toContain("Phone");
   });
 
   it("keeps the storage conditions and leaves capacity behind", () => {
@@ -146,7 +145,7 @@ describe("Warehouse detail — overview", () => {
   });
 });
 
-describe("Warehouse detail — receiving history", () => {
+describe("Warehouse detail — what the warehouse holds", () => {
   it("reads what arrived from the same ledger Stock Card shows", () => {
     const rows = warehouseReceipts(MAIN);
     expect(rows.length).toBeGreaterThan(0);
@@ -170,34 +169,35 @@ describe("Warehouse detail — receiving history", () => {
     }
   });
 
-  it("replaces the record log with the goods that arrived", () => {
-    const tab = detail.tabs.find((t) => t.key === "history")!;
-    expect(tab.label).toBe("Receiving History");
+  it("lists what the warehouse is cleared to hold, item by item", () => {
+    const tab = detail.tabs.find((t) => t.key === "inventory")!;
+    expect(tab.label).toBe("Warehouse Items");
 
     const blocks = tab.blocks(wh(MAIN), makeCtx());
-    expect(titlesOf(blocks)[0]).toBe("Goods Received");
-    /* No timeline of who edited the record. */
-    expect(blocks.filter(Boolean).some((b) => b && b.type === "timeline")).toBe(false);
-
     const table = blocks.filter(Boolean).find((b) => b && b.type === "table") as {
-      rows: unknown[];
+      rows: { code: string }[];
       cols: { key: string }[];
     };
     expect(table.rows.length).toBeGreaterThan(0);
-    for (const k of ["when", "type", "sourceDoc", "product", "lot", "serial", "qtyIn"]) {
+    for (const k of ["code", "name", "bin", "onHand", "reserved", "available", "rop"]) {
       expect(table.cols.map((c) => c.key), k).toContain(k);
     }
+
+    /* Driven by the policy rows, so the list is the warehouse's own. */
+    const main = `${wh(MAIN).code} ${wh(MAIN).name}`;
+    expect(table.rows.map((r) => r.code).sort()).toEqual(
+      warehouseItems(main).map((i) => i.code).sort(),
+    );
   });
 
-  it("totals the quantity that came in", () => {
-    const blocks = detail.tabs.find((t) => t.key === "history")!.blocks(wh(MAIN), makeCtx());
-    const cards = blocks.filter(Boolean).find((b) => b && b.type === "cards") as {
-      items: { label: string; value: string }[];
-    };
-    const receipts = warehouseReceipts(MAIN);
-    expect(cards.items.find((i) => i.label === "Receipts")!.value).toBe(
-      receipts.length.toLocaleString(),
-    );
+  it("shows each item against THIS warehouse's reorder point", () => {
+    const main = `${wh(MAIN).code} ${wh(MAIN).name}`;
+    for (const i of warehouseItems(main)) {
+      const p = getProduct(i.code)!;
+      expect(i.rop, i.code).toBe(warehouseRop(p, main));
+      /* A store that does not reorder is never "below" its own zero. */
+      if (i.rop === 0) expect(i.low, i.code).toBe(false);
+    }
   });
 });
 
@@ -205,7 +205,7 @@ describe("Warehouse detail — page", () => {
   it("renders without the removed tabs", () => {
     render(<FullDetail schema={detail} record={wh(MAIN)} />);
     expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Receiving History" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Warehouse Items" })).toBeInTheDocument();
     for (const gone of ["Configuration", "Address", "Storage Rules"]) {
       expect(screen.queryByRole("tab", { name: gone }), gone).toBeNull();
     }

@@ -5,14 +5,16 @@ import {
   whTreeNodes,
   type WarehouseRow,
 } from "@/lib/domain/warehouse";
-import { warehouseReceipts } from "@/lib/domain/movement";
+import { warehouseItems } from "@/lib/domain/product";
+import { checkPermission } from "@/lib/permissions";
 import { WH_TEMPS, WH_TYPES } from "@/data/warehouses";
 import { STATUS_TONE, WH_TYPE_TONE, tone } from "@/lib/badges";
 import { canViewField } from "@/lib/domain/admin";
 import { DASH, daysUntil, fmt, money0 } from "@/lib/format";
 import type { DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
-import { Badge, CellSub } from "@/components/ui";
+import { Badge, CellSub, LinkButton } from "@/components/ui";
 import { Icon } from "@/lib/icons";
+import { isPhoto } from "@/components/engine/FormFields";
 import { WAREHOUSE_FORM } from "./forms/warehouse";
 
 /* ============================================================
@@ -20,6 +22,22 @@ import { WAREHOUSE_FORM } from "./forms/warehouse";
    Warehouse › Zone › Rack › Shelf › Bin, and bin-level flags are
    stored now so future WMS features read them without a migration.
    ============================================================ */
+
+/**
+ * The picture is an uploaded photograph now. Warehouses seeded with an emoji
+ * keep rendering as text, and one with neither falls back to the generic mark
+ * rather than an empty square — same treatment the product and partner
+ * records already get.
+ */
+function WarehouseAvatar({ value, name }: { value: string; name: string }) {
+  if (isPhoto(value)) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={value} alt={name} className="h-full w-full rounded-card object-cover" />
+    );
+  }
+  return value ? <>{value}</> : <Icon name="warehouse" size={34} className="text-ink-3" />;
+}
 
 const yesNo = (v: boolean) => (
   <span
@@ -40,20 +58,20 @@ export const WAREHOUSE_LIST: ListSchema<WarehouseRow> = {
   subtitle: "จัดการคลังสินค้า ตำแหน่งจัดเก็บ และการตั้งค่าการรับเข้า",
   crumb: "Warehouse",
   primaryLabel: "Create Warehouse",
-  searchPlaceholder: "ค้นหารหัสคลัง ชื่อคลัง ที่อยู่ หรือผู้จัดการ...",
+  searchPlaceholder: "ค้นหารหัสคลัง ชื่อคลัง หรือที่อยู่...",
   emptyTitle: "ไม่พบคลังสินค้าที่ตรงกับเงื่อนไข",
 
   source: () => WAREHOUSES,
-  searchFields: ["code", "name", "nameTh", "fullAddr", "manager"],
+  searchFields: ["code", "name", "fullAddr"],
 
   tabs: [
     { key: "all", label: "All" },
     { key: "Active", label: "Active", test: (w) => w.status === "Active" },
     { key: "Inactive", label: "Inactive", test: (w) => w.status !== "Active" },
     { key: "main", label: "Main Warehouse", test: (w) => w.type === "Main Warehouse" },
-    { key: "cold", label: "Cold Storage", test: (w) => w.type === "Cold Storage" },
-    { key: "ret", label: "Returns", test: (w) => w.type === "Returns" },
-    { key: "trn", label: "Transit", test: (w) => w.type === "Transit" },
+    { key: "branch", label: "Branch", test: (w) => w.type === "Branch Warehouse" },
+    { key: "ret", label: "Return", test: (w) => w.type === "Return Warehouse" },
+    { key: "svc", label: "Service", test: (w) => w.type === "Service Warehouse" },
   ],
 
   filters: [
@@ -91,7 +109,7 @@ export const WAREHOUSE_LIST: ListSchema<WarehouseRow> = {
       cell: (w) => (
         <>
           {w.name}
-          <CellSub>{w.nameTh}</CellSub>
+          <CellSub>{w.type}</CellSub>
         </>
       ),
     },
@@ -217,7 +235,7 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
   entityLabel: "Warehouse",
 
   identity: (w) => ({
-    image: w.icon,
+    image: <WarehouseAvatar value={w.icon} name={w.name} />,
     code: w.code,
     title: w.name,
     copyFields: [
@@ -229,7 +247,7 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
       { text: w.type, tone: tone(WH_TYPE_TONE, w.type) },
       ...(w.config.isDefault ? ([{ text: "Default", tone: "info" }] as const) : []),
     ],
-    tags: [w.nameTh, w.rules.temp, w.addr.prov].filter(Boolean),
+    tags: [w.rules.temp, w.addr.prov].filter(Boolean),
   }),
 
   /* No KPI strip. The stock figures have a tab of their own and the header
@@ -252,10 +270,8 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
             { label: "Warehouse Code", value: w.code },
             { label: "Status", value: <Badge tone={tone(STATUS_TONE, w.status)}>{w.status}</Badge> },
             { label: "Warehouse Name", value: w.name },
-            { label: "ชื่อภาษาไทย", value: w.nameTh },
             { label: "Warehouse Type", value: <Badge tone={tone(WH_TYPE_TONE, w.type)}>{w.type}</Badge> },
             { label: "Default Warehouse", value: yesNo(w.config.isDefault) },
-            { label: "Phone", value: w.phone || DASH },
           ],
         },
         { type: "note", title: "Description", text: w.desc || DASH },
@@ -308,6 +324,16 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
             { label: "Shelves", value: fmt(w.shelfCount) },
             { label: "Bins", value: fmt(w.binCount) },
           ],
+        },
+        w.binCount === 0 && {
+          /* The create form no longer asks for a four-level bin structure —
+             laying out a building is not master data entry. Saying so here
+             is what stops a warehouse quietly never appearing in Put Away. */
+          type: "alert",
+          tone: "warn",
+          title: "ยังไม่มี Bin ในคลังนี้",
+          message:
+            "งาน Put Away แนะนำตำแหน่งจัดเก็บจากผังนี้ — คลังที่ยังไม่มี Bin จะไม่ถูกเสนอ · ผังจัดเก็บกำหนดแยกจากการสร้างคลัง",
         },
         {
           type: "tree",
@@ -364,39 +390,101 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
 
     {
       key: "inventory",
-      label: "Inventory Summary",
-      blocks: (w) => [
-        {
-          type: "cards",
-          title: "Stock",
-          cols: 3,
-          items: [
-            { label: "Total SKU", value: fmt(w.inv.sku), tone: "accent" },
-            { label: "Total Quantity", value: fmt(w.inv.qty) },
-            { label: "Inventory Value", value: money0(w.inv.value), unit: "THB" },
-          ],
-        },
-        {
-          type: "cards",
-          title: "Movement",
-          items: [
-            { label: "Available", value: fmt(w.inv.available) },
-            { label: "Reserved", value: fmt(w.inv.reserved) },
-            { label: "Pending Receipt", value: fmt(w.inv.pendingIn) },
-            { label: "Pending Shipment", value: fmt(w.inv.pendingOut) },
-          ],
-        },
-        {
-          type: "fields",
-          title: "Definitions",
-          cols: 1,
-          items: [
-            { label: "Available", value: "Total Quantity − Reserved", muted: true },
-            { label: "Pending Receipt", value: "ปริมาณที่รอรับเข้าจาก PO / Transfer", muted: true },
-            { label: "Pending Shipment", value: "ปริมาณที่จองแล้วรอจ่ายออก", muted: true },
-          ],
-        },
-      ],
+      label: "Warehouse Items",
+      /* The items this warehouse is cleared to hold, and what is on the
+         shelf of each. It used to be four aggregate tiles — SKU count, total
+         quantity, inventory value — which say how big the warehouse is and
+         nothing about what is in it. */
+      blocks: (w, ctx) => {
+        const items = warehouseItems(`${w.code} ${w.name}`);
+        const low = items.filter((i) => i.low);
+        const value = items.reduce((t, i) => t + i.value, 0);
+        const canCost = checkPermission("canViewCost");
+
+        return [
+          {
+            type: "cards",
+            title: "Stock",
+            cols: 4,
+            items: [
+              { label: "รายการที่เก็บได้", value: fmt(items.length), tone: "accent" },
+              { label: "จำนวนรวม", value: fmt(items.reduce((t, i) => t + i.onHand, 0)) },
+              {
+                label: "ต่ำกว่าจุดสั่งซื้อ",
+                value: fmt(low.length),
+                tone: low.length ? "warn" : undefined,
+              },
+              canCost
+                ? { label: "มูลค่าตามต้นทุน", value: money0(value), unit: "THB" }
+                : { label: "มูลค่าตามต้นทุน", value: "••••", sub: "Restricted", tone: "locked" },
+            ],
+          },
+          {
+            type: "table",
+            title: `Warehouse Items (${items.length})`,
+            rows: items,
+            empty: "ยังไม่มีสินค้ารายการใดถูกกำหนดให้เก็บที่คลังนี้",
+            cols: [
+              {
+                key: "code",
+                label: "Product Code",
+                cell: (i) => (
+                  <LinkButton onClick={() => ctx.openEntity("product", i.code)}>
+                    {i.code}
+                  </LinkButton>
+                ),
+              },
+              { key: "name", label: "Product Name", cell: (i) => i.name },
+              { key: "bin", label: "Bin", muted: true, cell: (i) => i.bin || DASH },
+              {
+                key: "onHand",
+                label: "On Hand",
+                align: "right",
+                cell: (i) => `${fmt(i.onHand)} ${i.unit}`,
+              },
+              {
+                key: "reserved",
+                label: "Reserved",
+                align: "right",
+                muted: true,
+                cell: (i) => fmt(i.reserved),
+              },
+              {
+                key: "available",
+                label: "Available",
+                align: "right",
+                cell: (i) => (
+                  <span className={i.low ? "font-semibold text-danger" : ""}>
+                    {fmt(i.available)}
+                  </span>
+                ),
+              },
+              {
+                /* This warehouse's own figure, not the company default —
+                   which is the whole point of holding it per warehouse. */
+                key: "rop",
+                label: "Reorder Point",
+                align: "right",
+                muted: true,
+                cell: (i) => (i.rop > 0 ? fmt(i.rop) : "ไม่สั่งซื้อ"),
+              },
+              {
+                key: "value",
+                label: "Value",
+                align: "right",
+                cell: (i) => (canCost ? money0(i.value) : "••••"),
+              },
+              {
+                key: "warn",
+                label: "",
+                cell: (i) =>
+                  i.storageWarn ? <Badge tone="danger">{i.storageWarn}</Badge> : null,
+              },
+            ],
+          },
+          !canCost && { type: "restricted" },
+        ];
+      },
     },
 
     {
@@ -443,65 +531,11 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
       },
     },
 
-    {
-      key: "history",
-      label: "Receiving History",
-      /* What actually arrived here, read from the same ledger Stock Card
-         shows — not the record's own edit log. */
-      blocks: (w, ctx) => {
-        const rows = warehouseReceipts(w.code);
-        const qty = rows.reduce((t, m) => t + m.qtyIn, 0);
+    /* No Receiving History tab.
 
-        return [
-          {
-            type: "cards",
-            title: "Goods Received",
-            cols: 3,
-            items: [
-              { label: "Receipts", value: fmt(rows.length), tone: "accent" },
-              { label: "Quantity In", value: fmt(qty) },
-              { label: "Last Receipt", value: rows[0]?.date || DASH },
-            ],
-          },
-          {
-            type: "table",
-            title: `Goods Received (${rows.length})`,
-            rows: rows.slice(0, 40),
-            empty: "ยังไม่มีสินค้ารับเข้าคลังนี้",
-            cols: [
-              { key: "when", label: "Date and Time", cell: (m) => m.when },
-              { key: "code", label: "Movement", muted: true, cell: (m) => m.code },
-              { key: "type", label: "Movement Type", cell: (m) => m.type },
-              {
-                key: "sourceDoc",
-                label: "Source Document",
-                cell: (m) =>
-                  m.sourceDoc && m.sourceModule ? (
-                    <button
-                      onClick={() => ctx.openEntity(m.sourceModule, m.sourceDoc)}
-                      className="font-medium text-info hover:underline"
-                    >
-                      {m.sourceDoc}
-                    </button>
-                  ) : (
-                    m.sourceDoc || DASH
-                  ),
-              },
-              {
-                key: "product",
-                label: "Product",
-                cell: (m) => `${m.product} · ${m.productName}`,
-              },
-              { key: "lot", label: "Lot", muted: true, cell: (m) => m.lot || DASH },
-              { key: "serial", label: "Serial", muted: true, cell: (m) => m.serial || DASH },
-              { key: "toLoc", label: "Location", muted: true, cell: (m) => m.toLoc || DASH },
-              { key: "qtyIn", label: "Qty In", align: "right", cell: (m) => fmt(m.qtyIn) },
-              { key: "user", label: "User", muted: true, cell: (m) => m.user },
-            ],
-          },
-        ];
-      },
-    },
+       It listed the same movement rows the Stock Card already shows, keyed
+       by warehouse instead of by product — a second reading of one ledger,
+       on the screen least likely to be opened for it. */
   ],
 };
 

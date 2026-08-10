@@ -725,7 +725,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
       rating: "A - ดีมาก",
       preferred: true,
       wht: "หัก ณ ที่จ่าย 3%",
-      warehouse: "WH-01 Samut Prakan",
+      warehouse: "WH-BKK Bangkok Main Warehouse",
     },
     credit: {
       payTerm: "เครดิต 30 วัน",
@@ -1102,7 +1102,7 @@ export const BUSINESS_PARTNERS: BusinessPartner[] = [
       rating: "A - ดีมาก",
       preferred: true,
       wht: "หัก ณ ที่จ่าย 3%",
-      warehouse: "WH-01 Samut Prakan",
+      warehouse: "WH-BKK Bangkok Main Warehouse",
     },
     credit: {
       payTerm: "เครดิต 45 วัน",

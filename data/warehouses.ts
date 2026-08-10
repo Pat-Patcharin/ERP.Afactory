@@ -111,17 +111,23 @@ export interface Warehouse {
   updatedBy: string;
 }
 
+/**
+ * What a warehouse is FOR.
+ *
+ * Named for the job rather than the fabric of the building: "Cold Storage"
+ * and "Quarantine" described a condition and a state, which the temperature
+ * rule and the stock's own status already say. These eight say what goes in
+ * and why, which is the question somebody picking a destination is asking.
+ */
 export const WH_TYPES = [
   "Main Warehouse",
   "Branch Warehouse",
-  "Transit",
-  "Returns",
-  "Quarantine",
-  "Cold Storage",
-  "Service",
-  "Consignment",
-  "Manufacturing",
-  "Other",
+  "Demo Warehouse",
+  "Service Warehouse",
+  "Spare Parts Warehouse",
+  "Return Warehouse",
+  "Damaged Warehouse",
+  "Expired Warehouse",
 ] as const;
 
 export const WH_TEMPS = ["Ambient", "Cold (2–8 °C)", "Frozen (−18 °C)", "Controlled"] as const;
@@ -394,7 +400,7 @@ export const WAREHOUSES: Warehouse[] = [
     code: "WH-BKK-COLD",
     name: "Bangkok Cold Storage",
     nameTh: "ห้องเย็น กรุงเทพฯ",
-    type: "Cold Storage",
+    type: "Branch Warehouse",
     icon: "❄️",
     status: "Active",
     desc: "ห้องเย็นสำหรับวัสดุที่ต้องควบคุมอุณหภูมิ",
@@ -602,7 +608,7 @@ export const WAREHOUSES: Warehouse[] = [
     code: "WH-RET",
     name: "Returns Warehouse",
     nameTh: "คลังสินค้ารับคืน",
-    type: "Returns",
+    type: "Return Warehouse",
     icon: "↩️",
     status: "Active",
     desc: "พักสินค้ารับคืนจากลูกค้าก่อนตรวจสอบ",
@@ -701,7 +707,7 @@ export const WAREHOUSES: Warehouse[] = [
     code: "WH-QTY",
     name: "Quarantine Warehouse",
     nameTh: "คลังกักกันสินค้า",
-    type: "Quarantine",
+    type: "Damaged Warehouse",
     icon: "🚧",
     status: "Active",
     desc: "กักกันสินค้ารอผลตรวจ QC",
@@ -800,7 +806,7 @@ export const WAREHOUSES: Warehouse[] = [
     code: "WH-TRN",
     name: "Transit Warehouse",
     nameTh: "คลังสินค้าระหว่างทาง",
-    type: "Transit",
+    type: "Branch Warehouse",
     icon: "🚚",
     status: "Active",
     desc: "สินค้าระหว่างการขนย้ายระหว่างคลัง",
@@ -869,7 +875,7 @@ export const WAREHOUSES: Warehouse[] = [
     code: "WH-SVC",
     name: "Service Warehouse",
     nameTh: "คลังอะไหล่บริการ",
-    type: "Service",
+    type: "Service Warehouse",
     icon: "🔧",
     status: "Active",
     desc: "อะไหล่สำหรับงานซ่อมและบริการหลังการขาย",
