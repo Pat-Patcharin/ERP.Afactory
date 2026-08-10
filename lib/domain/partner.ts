@@ -241,9 +241,13 @@ function normalise(bp: BusinessPartner) {
   if (!bp.docs?.length) bp.docs = ATTACHMENT_SEED[bp.code] ?? bp.docs ?? [];
   bp.supplierItems ??= SUPPLIER_ITEMS[bp.code] ?? [];
   /* Purchase unit joined the line after the seeds were written; the product
-     master already knows it, so an older row does not read blank. */
+     master already knows it, so an older row does not read blank. A row that
+     quotes in our own base unit converts one for one, which is what an
+     unstated factor means — never 0, which would multiply every receipt to
+     nothing. */
   for (const i of bp.supplierItems) {
     i.punit ||= PRODUCTS.find((p) => p.code === i.product)?.unit ?? "";
+    if (!i.punitFactor || i.punitFactor <= 0) i.punitFactor = 1;
   }
   bp.images ??= PARTNER_IMAGES[bp.code] ?? [];
 
@@ -540,6 +544,22 @@ export function leadingNumber(v: unknown): number {
 }
 
 /**
+ * "Carton (24 Tube)" → { unit: "Carton", factor: 24 }.
+ *
+ * Same one-time role as `leadingNumber`. The old seed wrote a purchase unit
+ * with its conversion in brackets, which reads perfectly and computes not at
+ * all; this splits the two apart so the number can be multiplied by. A plain
+ * "Box" converts one for one, which is the truthful reading of a unit that
+ * never claimed to contain anything.
+ */
+export function splitPackedUnit(v: unknown): { unit: string; factor: number } {
+  const raw = String(v ?? "").trim();
+  const m = /^(.*?)\s*\((\d+(?:\.\d+)?)[^)]*\)$/.exec(raw);
+  if (!m) return { unit: raw, factor: 1 };
+  return { unit: m[1].trim() || raw, factor: Number(m[2]) || 1 };
+}
+
+/**
  * Give every partner the rows for the products the master says they supply.
  *
  * Never overwrites a row that already exists: the hand-written seeds in
@@ -572,13 +592,21 @@ function mergeSupplierItems() {
     for (const p of mine) {
       if (held.has(p.code)) continue;
       const legacy = (p as { sup?: Record<string, unknown> }).sup;
+      /* The oldest records wrote the pack size into the unit's NAME —
+         "Carton (24 Tube)". Split that once, here, so the row stores a unit
+         and a number rather than a sentence. A record that already states the
+         factor outright wins over re-reading the name, because the name is
+         the thing being migrated away from. */
+      const packed = splitPackedUnit(legacy?.punit);
+      const stated = Number(legacy?.punitFactor);
       bp.supplierItems!.push({
         product: p.code,
         productName: p.name,
         /* The vendor's own code, where the product carried one. */
         sku: String(legacy?.itemCode ?? ""),
         supName: p.name,
-        punit: p.unit,
+        punit: packed.unit || p.unit,
+        punitFactor: stated > 0 ? stated : packed.factor,
         /* 0 means "not stated", and for the catalogue products that is the
            truth — the price list master records a vendor and a cost, and
            has never held a minimum or a lead time. */
@@ -626,7 +654,11 @@ function mergeSupplierItems() {
         productName: p.name,
         sku: "",
         supName: p.name,
+        /* The alt list never recorded a pack size either, so this second
+           source is taken to quote in our base unit until somebody says
+           otherwise. */
         punit: p.unit,
+        punitFactor: 1,
         /* The alt list never recorded a minimum. 0 is "not stated", which is
            the truth, rather than borrowing the default supplier's figure. */
         moq: 0,
@@ -708,7 +740,18 @@ function syncProductSupplyView() {
     sup.code = partner.code;
     sup.itemCode = row.sku;
     sup.punit = row.punit || p.unit;
-    sup.moq = row.moq > 0 ? `${row.moq} ${row.punit || p.unit}`.trim() : DASH;
+    sup.punitFactor = row.punitFactor && row.punitFactor > 0 ? row.punitFactor : 1;
+    /*
+       MOQ is counted in the STOCK unit, not the purchase unit.
+
+       Every recorded minimum was written that way — "240 Tube" on a product
+       bought by the Carton of 24 — and this line used to render the number
+       with `row.punit`, turning 240 tubes into "240 Carton". Ten times the
+       order, from a label. The figure is not converted either: dividing a
+       recorded minimum by a pack size would be this code inventing a term
+       nobody agreed.
+    */
+    sup.moq = row.moq > 0 ? `${row.moq} ${p.unit}`.trim() : DASH;
     sup.lead = row.lead > 0 ? `${row.lead} วัน` : DASH;
     sup.lastPrice = row.price > 0 ? `${row.price.toFixed(2)} ${row.currency}` : DASH;
 
@@ -745,6 +788,7 @@ function syncProductSupplyView() {
         name: bp.nameTh || bp.nameEn,
         code: bp.code,
         punit: r.punit || p.unit,
+        punitFactor: r.punitFactor && r.punitFactor > 0 ? r.punitFactor : 1,
         moq: r.moq > 0 ? String(r.moq) : DASH,
         lead: r.lead > 0 ? `${r.lead} วัน` : DASH,
         price: r.price,

@@ -1,6 +1,13 @@
 import type { Product } from "@/data/products";
 import { OPT } from "@/data/options";
-import { PRODUCTS, decorateProducts, type ProductRow } from "@/lib/domain/product";
+import {
+  BASE_UNIT,
+  PRODUCTS,
+  SALES_UNIT,
+  conversionText,
+  decorateProducts,
+  type ProductRow,
+} from "@/lib/domain/product";
 import { WAREHOUSES } from "@/lib/domain/warehouse";
 import { marginPct, markupPct } from "@/lib/domain/pricing";
 import { money, stamp, isoToDmy, dmyToIso } from "@/lib/format";
@@ -56,7 +63,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     brand: "",
     series: "",
     status: "Draft",
-    demo: false,
+    demoAllowed: false,
     desc: "",
     cls: { devClass: "", storage: "" },
     unit: "",
@@ -82,6 +89,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       code: "",
       itemCode: "",
       punit: "",
+      punitFactor: 1,
       moq: "",
       lead: "",
       lastPrice: "",
@@ -115,7 +123,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       brand: p.brand,
       series: p.series,
       status: p.status,
-      demo: p.demo,
+      demoAllowed: p.demoAllowed,
       desc: p.desc,
       cls: { ...p.detail.cls },
       unit: p.unit,
@@ -256,12 +264,19 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
               label: "Storage Condition",
               options: opts(OPT.storage),
             },
+            /*
+               Not "this is a demo product" — every product in the master is a
+               normal product. The switch says whether this one MAY go out as
+               a demo, which is a permission the sales side asks of it, not a
+               kind of thing it is. Read the old way it also implied a stock
+               of demo units that does not exist.
+            */
             {
               type: "toggle",
-              path: "demo",
-              label: "Demo Product",
-              onText: "เป็นสินค้าตัวอย่าง",
-              offText: "สินค้าปกติ",
+              path: "demoAllowed",
+              label: "Demo Allowed",
+              onText: "เบิกเป็นสินค้า Demo ได้",
+              offText: "เบิกเป็นสินค้า Demo ไม่ได้",
             },
           ],
         },
@@ -274,10 +289,10 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       label: "Units & Barcode",
       railLabel: "หน่วยนับ",
       labelTh: "หน่วยนับและบาร์โค้ด",
-      blocks: () => [
+      blocks: (s) => [
         {
           type: "card",
-          title: "Base Unit",
+          title: "Stock Unit",
           cols: "3",
           fields: [
             {
@@ -286,7 +301,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
               label: "Base Unit",
               required: true,
               options: opts(OPT.unit),
-              hint: "หน่วยที่ใช้นับสต๊อก",
+              hint: "หน่วยต่ำสุดที่คลังนับ — ยอดคงเหลือทุกที่อยู่ในหน่วยนี้",
             },
             { type: "text", path: "weight", label: "Weight", placeholder: "12 g" },
             { type: "text", path: "dim", label: "Dimension", placeholder: "22 × 22 × 88 mm" },
@@ -305,11 +320,37 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
           label: "Alternative Units",
           addLabel: "เพิ่มหน่วยนับ",
           empty: "มีเฉพาะหน่วยนับหลัก",
-          hint: "หน่วยขายหรือหน่วยซื้อที่แปลงกลับเป็นหน่วยหลักได้",
+          hint: "หน่วยขายหรือหน่วยซื้อที่แปลงกลับเป็นหน่วยหลักได้ · หน่วยซื้อของผู้ขายแต่ละรายกำหนดที่ Business Partner → Supplier Items",
           cols: [
             { key: "unit", label: "Unit", type: "select", options: opts(OPT.unit), required: true },
             { key: "type", label: "Unit Type", type: "select", options: opts(OPT.unitType) },
-            { key: "conv", label: "Conversion", type: "text", placeholder: "1 Box = 12 Tube" },
+            /*
+               A number, not the sentence it used to be.
+
+               "1 Box = 12 Tube" read perfectly and computed not at all, so a
+               sale of one Box could not decrement the twelve tubes it holds.
+               The typed value is the count of base units; the sentence is
+               rebuilt beside it, from the number, so nothing can drift.
+            */
+            {
+              key: "factor",
+              label: `จำนวน ${String(s.unit ?? "หน่วยหลัก")} ต่อ 1 หน่วย`,
+              type: "number",
+              align: "right",
+              required: true,
+              width: "150px",
+            },
+            {
+              key: "conv",
+              label: "Conversion",
+              type: "computed",
+              muted: true,
+              width: "170px",
+              get: (r) =>
+                r.unit
+                  ? conversionText(String(s.unit ?? ""), String(r.unit), num(r.factor))
+                  : "—",
+            },
             { key: "barcode", label: "Barcode", type: "text", placeholder: "8850001234570" },
             { key: "active", label: "Active", type: "check", align: "right", width: "70px" },
           ],
@@ -510,7 +551,22 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
             */
             { type: "static", path: "sup.code", label: "Supplier Code" },
             { type: "static", path: "sup.itemCode", label: "Supplier Item Code" },
-            { type: "static", path: "sup.punit", label: "Purchase Unit" },
+            {
+              /* The unit this supplier ships in, and what it is worth in the
+                 unit the warehouse counts. Both come from their supplier
+                 item, because the next supplier packs the same product
+                 differently and a figure held here would be wrong for them. */
+              type: "static",
+              label: "Purchase Unit",
+              value: (s) =>
+                s.sup?.punit
+                  ? conversionText(
+                      String(s.unit ?? ""),
+                      String(s.sup.punit),
+                      num(s.sup.punitFactor),
+                    )
+                  : "—",
+            },
             {
               type: "static",
               path: "sup.moq",
@@ -683,7 +739,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
   newRow: (path, isFirst) => {
     switch (path) {
       case "units":
-        return { unit: "", type: "Sales Unit", conv: "", barcode: "", active: true };
+        return { unit: "", type: SALES_UNIT, factor: 1, barcode: "", active: true };
       case "tiers":
         return { min: isFirst ? 1 : "", max: "", price: "" };
       case "stocks":
@@ -799,7 +855,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       unit: String(s.unit ?? ""),
       weight: String(s.weight ?? ""),
       dim: String(s.dim ?? ""),
-      demo: Boolean(s.demo),
+      demoAllowed: Boolean(s.demoAllowed),
       price: num(s.price),
       lowLevel: num(s.lowLevel),
       status: String(s.status ?? "Draft"),
@@ -815,6 +871,9 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         lead: String(s.sup?.lead ?? ""),
         moq: String(s.sup?.moq ?? ""),
         punit: String(s.sup?.punit ?? ""),
+        /* Read-only on this form: the buying terms belong to the supplier
+           item, and syncProductSupplyView writes this view from that row. */
+        punitFactor: Math.max(1, num(s.sup?.punitFactor)),
         lastPrice: String(s.sup?.lastPrice ?? ""),
         warranty: String(s.sup?.warranty ?? ""),
         country: String(s.sup?.country ?? ""),
@@ -881,17 +940,19 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         storage: String(s.cls?.storage ?? ""),
       };
       rec.detail.units = [
+        /* The stock unit is always the first row and always converts one for
+           one — it is what the other factors are counted in. */
         {
           unit: patch.unit,
-          type: "Base Unit",
-          conv: `1 ${patch.unit}`,
+          type: BASE_UNIT,
+          factor: 1,
           barcode: patch.barcode,
           active: true,
         },
         ...((s.units ?? []) as GridRow[]).map((u) => ({
           unit: String(u.unit ?? ""),
-          type: String(u.type ?? "Sales Unit"),
-          conv: String(u.conv ?? ""),
+          type: String(u.type ?? SALES_UNIT),
+          factor: Math.max(1, num(u.factor)),
           barcode: String(u.barcode ?? ""),
           active: Boolean(u.active),
         })),

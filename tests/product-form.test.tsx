@@ -46,9 +46,16 @@ describe("Product form — คำถามที่ตัดออก", () => {
     expect(paths()).not.toContain("cls.origin");
   });
 
-  it("เหลือช่องติ๊กอันเดียวคือสินค้า Demo", () => {
+  it("เหลือช่องติ๊กอันเดียว คือเบิกเป็น Demo ได้หรือไม่", () => {
     const toggles = allFields().filter((f) => f.type === "toggle");
-    expect(toggles.map((f) => f.path)).toEqual(["demo"]);
+    expect(toggles.map((f) => f.path)).toEqual(["demoAllowed"]);
+
+    /* The wording is the point: every product in the master is a normal
+       product, and the switch is a permission asked of it — not a kind of
+       thing it is. "เป็นสินค้าตัวอย่าง" said the second. */
+    const [demo] = toggles;
+    expect(demo.onText).toBe("เบิกเป็นสินค้า Demo ได้");
+    expect(demo.offText).toBe("เบิกเป็นสินค้า Demo ไม่ได้");
   });
 
   it("ไม่มีการ์ดสรุปด้านข้าง", () => {
@@ -73,7 +80,7 @@ describe("Product form — grouping กับ classification อยู่หั�
     const grouping = cards.find((c) => c.fields.some((f) => f && f.path === "cat"))!;
     const inCard = grouping.fields.map((f) => f && f.path);
 
-    for (const p of ["cat", "brand", "series", "cls.devClass", "cls.storage", "demo"]) {
+    for (const p of ["cat", "brand", "series", "cls.devClass", "cls.storage", "demoAllowed"]) {
       expect(inCard, p).toContain(p);
     }
   });

@@ -18,6 +18,7 @@ import {
   validThaiTaxId,
   type BpRow,
 } from "@/lib/domain/partner";
+import { conversionText, getProduct } from "@/lib/domain/product";
 import {
   bpCustomerKpi,
   bpGoodsReceipts,
@@ -1339,7 +1340,7 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
             title: `Supplier Items (${items.length})`,
             rows: items,
             empty: "ยังไม่มีรายการสินค้าที่เสนอราคา",
-            /* The same nine columns the form edits, in the same order. */
+            /* The same columns the form edits, in the same order. */
             cols: [
               { key: "product", label: "Product Code" },
               {
@@ -1353,6 +1354,18 @@ export const BP_DETAIL: DetailSchema<BpRow> = {
                 label: "Purchase Unit",
                 muted: true,
                 cell: (i) => i.punit || DASH,
+              },
+              {
+                /* What one of those is worth in the unit the warehouse counts.
+                   "Carton" on its own does not say, and this is the figure a
+                   buyer checking the row is actually checking. */
+                key: "punitFactor",
+                label: "หน่วยหลักต่อ 1 หน่วยซื้อ",
+                align: "right",
+                muted: true,
+                cell: (i) =>
+                  conversionText(getProduct(i.product)?.unit ?? "", i.punit ?? "", i.punitFactor ?? 1) ||
+                  DASH,
               },
               { key: "moq", label: "MOQ", align: "right", cell: (i) => fmt(i.moq) },
               {

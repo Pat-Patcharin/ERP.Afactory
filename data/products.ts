@@ -20,7 +20,7 @@ export interface Product {
   unit: string;
   weight: string;
   dim: string;
-  demo: boolean;
+  demoAllowed: boolean;
   price: number;
   stock: number;
   onHand: number;
@@ -57,12 +57,24 @@ export interface Product {
     lot: string;
     exp: string;
   }[];
+  /**
+   * The buying terms, rendered. The truth is the `supplierItems` row on the
+   * partner — see syncProductSupplyView.
+   */
   sup: {
     code: string;
     itemCode: string;
     lead: string;
     moq: string;
+    /**
+     * The unit the supplier quotes in. Just the unit: the seed wrote
+     * "Carton (24 Tube)" and buried the conversion factor inside the unit's
+     * own NAME, where no arithmetic could reach it. The number moved to
+     * `punitFactor`; this is the word again.
+     */
     punit: string;
+    /** Base units in one purchase unit. 1 when they quote in our base unit. */
+    punitFactor: number;
     lastPrice: string;
     warranty: string;
     country: string;
@@ -139,7 +151,18 @@ export type ProductDetailMap = Record<string, {
   units: {
     unit: string;
     type: string;
-    conv: string;
+    /**
+     * Base units in ONE of this unit. The base unit's own row is 1.
+     *
+     * This was `conv`, a free-text string, and it was written three
+     * incompatible ways in this repo alone — "12 Tubes" in the seed,
+     * "1 Box = 12 Tube" as the form's placeholder, `1 ${unit}` from the
+     * generator. None of them could be multiplied by, so a sale of one Box
+     * could not decrement the Tubes it contains and a Carton received could
+     * not be counted into stock. The sentence a reader wants is built from
+     * this number; the number is what the arithmetic uses.
+     */
+    factor: number;
     barcode: string;
     active: boolean;
   }[];
@@ -189,6 +212,8 @@ export type ProductDetailMap = Record<string, {
     name: string;
     code: string;
     punit: string;
+    /** Base units in one of that supplier's purchase units. */
+    punitFactor: number;
     moq: string;
     lead: string;
     price: number;
@@ -240,7 +265,7 @@ export const PRODUCTS: Product[] = [
     unit: "Tube",
     weight: "48 g",
     dim: "22 × 22 × 128 mm",
-    demo: false,
+    demoAllowed: false,
     price: 120,
     stock: 1100,
     onHand: 1250,
@@ -300,7 +325,8 @@ export const PRODUCTS: Product[] = [
       itemCode: "AFX-PU40-WH",
       lead: "21 วัน",
       moq: "240 Tube",
-      punit: "Carton (24 Tube)",
+      punit: "Carton",
+      punitFactor: 24,
       lastPrice: "68.50 THB",
       warranty: "12 เดือน",
       country: "ประเทศไทย",
@@ -388,7 +414,7 @@ export const PRODUCTS: Product[] = [
     unit: "Tube",
     weight: "48 g",
     dim: "22 × 22 × 128 mm",
-    demo: false,
+    demoAllowed: false,
     price: 120,
     stock: 760,
     onHand: 820,
@@ -437,7 +463,8 @@ export const PRODUCTS: Product[] = [
       itemCode: "AFX-PU40-GR",
       lead: "21 วัน",
       moq: "240 Tube",
-      punit: "Carton (24 Tube)",
+      punit: "Carton",
+      punitFactor: 24,
       lastPrice: "68.50 THB",
       warranty: "12 เดือน",
       country: "ประเทศไทย",
@@ -494,7 +521,7 @@ export const PRODUCTS: Product[] = [
     unit: "Tube",
     weight: "52 g",
     dim: "22 × 22 × 128 mm",
-    demo: true,
+    demoAllowed: true,
     price: 150,
     stock: 320,
     onHand: 400,
@@ -535,7 +562,8 @@ export const PRODUCTS: Product[] = [
       itemCode: "AFX-PU50-BK",
       lead: "21 วัน",
       moq: "120 Tube",
-      punit: "Carton (24 Tube)",
+      punit: "Carton",
+      punitFactor: 24,
       lastPrice: "88.00 THB",
       warranty: "12 เดือน",
       country: "ประเทศไทย",
@@ -580,7 +608,7 @@ export const PRODUCTS: Product[] = [
     unit: "Tube",
     weight: "60 g",
     dim: "25 × 25 × 130 mm",
-    demo: false,
+    demoAllowed: false,
     low: true,
     price: 95,
     stock: 280,
@@ -622,7 +650,8 @@ export const PRODUCTS: Product[] = [
       itemCode: "HDX-AC100-W",
       lead: "35 วัน",
       moq: "200 Tube",
-      punit: "Carton (20 Tube)",
+      punit: "Carton",
+      punitFactor: 20,
       lastPrice: "54.00 THB",
       warranty: "6 เดือน",
       country: "เกาหลีใต้",
@@ -686,7 +715,7 @@ export const PRODUCTS: Product[] = [
     unit: "Tube",
     weight: "300 g",
     dim: "55 × 55 × 165 mm",
-    demo: false,
+    demoAllowed: false,
     price: 110,
     stock: 180,
     onHand: 210,
@@ -727,7 +756,8 @@ export const PRODUCTS: Product[] = [
       itemCode: "AND-SL300-CL",
       lead: "28 วัน",
       moq: "50 Tube",
-      punit: "Box (10 Tube)",
+      punit: "Box",
+      punitFactor: 10,
       lastPrice: "62.00 THB",
       warranty: "6 เดือน",
       country: "มาเลเซีย",
@@ -772,7 +802,7 @@ export const PRODUCTS: Product[] = [
     unit: "Box",
     weight: "620 g",
     dim: "240 × 120 × 65 mm",
-    demo: false,
+    demoAllowed: false,
     price: 250,
     stock: 500,
     onHand: 560,
@@ -824,7 +854,8 @@ export const PRODUCTS: Product[] = [
       itemCode: "AF-GLV-LTX-M",
       lead: "14 วัน",
       moq: "100 Box",
-      punit: "Carton (10 Box)",
+      punit: "Carton",
+      punitFactor: 10,
       lastPrice: "148.00 THB",
       warranty: "—",
       country: "ประเทศไทย",
@@ -881,7 +912,7 @@ export const PRODUCTS: Product[] = [
     unit: "Box",
     weight: "320 g",
     dim: "195 × 100 × 95 mm",
-    demo: false,
+    demoAllowed: false,
     price: 150,
     stock: 1200,
     onHand: 1200,
@@ -922,7 +953,8 @@ export const PRODUCTS: Product[] = [
       itemCode: "AF-MSK-3P",
       lead: "14 วัน",
       moq: "200 Box",
-      punit: "Carton (20 Box)",
+      punit: "Carton",
+      punitFactor: 20,
       lastPrice: "86.00 THB",
       warranty: "—",
       country: "ประเทศไทย",
@@ -972,7 +1004,7 @@ export const PRODUCTS: Product[] = [
     unit: "Set",
     weight: "95 g",
     dim: "120 × 80 × 20 mm",
-    demo: false,
+    demoAllowed: false,
     low: true,
     price: 890,
     stock: 64,
@@ -1014,7 +1046,8 @@ export const PRODUCTS: Product[] = [
       itemCode: "DGS-BRD12",
       lead: "45 วัน",
       moq: "50 Set",
-      punit: "Box (10 Set)",
+      punit: "Box",
+      punitFactor: 10,
       lastPrice: "512.00 THB",
       warranty: "6 เดือน",
       country: "ญี่ปุ่น",
@@ -1075,21 +1108,21 @@ export const DETAIL: ProductDetailMap = {
       {
         unit: "Tube",
         type: "Base Unit",
-        conv: "1 Tube",
+        factor: 1,
         barcode: "8850000001003",
         active: true,
       },
       {
         unit: "Box",
         type: "Sales Unit",
-        conv: "12 Tubes",
+        factor: 12,
         barcode: "8850000001010",
         active: true,
       },
       {
         unit: "Carton",
         type: "Purchase Unit",
-        conv: "120 Tubes",
+        factor: 120,
         barcode: "8850000001027",
         active: true,
       },
@@ -1224,7 +1257,8 @@ export const DETAIL: ProductDetailMap = {
       {
         name: "HDX WILL Co., Ltd.",
         code: "",
-        punit: "Carton (24)",
+        punit: "Carton",
+        punitFactor: 24,
         moq: "240 Tube",
         lead: "35 วัน",
         price: 71,
@@ -1233,7 +1267,8 @@ export const DETAIL: ProductDetailMap = {
       {
         name: "Andaman Medical",
         code: "",
-        punit: "Box (10)",
+        punit: "Box",
+        punitFactor: 10,
         moq: "100 Tube",
         lead: "28 วัน",
         price: 73.2,

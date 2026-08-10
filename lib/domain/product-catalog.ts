@@ -98,7 +98,7 @@ function toProduct(
     unit,
     weight: DASH,
     dim: DASH,
-    demo: false,
+    demoAllowed: false,
 
     /* The catalogue price is the private tier. Government is the same
        product at +10%, not a different selling price. */
@@ -141,6 +141,9 @@ function toProduct(
       lead: DASH,
       moq: DASH,
       punit: unit,
+      /* The price file records a cost per unit and no packaging at all, so
+         one for one is what it actually says — not a guess at a carton. */
+      punitFactor: 1,
       lastPrice: r.cost_thb === null ? DASH : String(r.cost_thb),
       warranty: DASH,
       country: DASH,
@@ -207,7 +210,7 @@ function toDetail(r: PriceMasterRow, p: Product, date: string): ProductDetail {
       devClass: DASH,
       storage: DASH,
     },
-    units: [{ unit: p.unit, type: "Base Unit", conv: `1 ${p.unit}`, barcode: "", active: true }],
+    units: [{ unit: p.unit, type: "Base Unit", factor: 1, barcode: "", active: true }],
     rfid: false,
     priceLists: [
       tier("ราคาราชการ", r.price_government),

@@ -784,6 +784,21 @@ export const BP_FORM: FormSchema<BpRow> = {
             { key: "sku", label: "Vendor Product Code", type: "text", width: "150px" },
             { key: "productName", label: "Product Name", type: "static", muted: true, width: "200px" },
             { key: "punit", label: "Purchase Unit", type: "text", width: "110px" },
+            /*
+               How many stock units are in one of those.
+
+               It belongs on this row and not on the product: the same item
+               arrives from one supplier by the Carton of 24 and from another
+               by the Box of 10, so a single figure held on the product has to
+               be wrong for one of them. Blank means one for one.
+            */
+            {
+              key: "punitFactor",
+              label: "หน่วยหลักต่อ 1 หน่วยซื้อ",
+              type: "number",
+              align: "right",
+              width: "150px",
+            },
             { key: "moq", label: "MOQ", type: "number", align: "right", width: "90px" },
             { key: "lead", label: "Lead (วัน)", type: "number", align: "right", width: "100px" },
             { key: "currency", label: "Currency", type: "select", options: [...PO_CURRENCIES] },
@@ -1556,6 +1571,9 @@ export const BP_FORM: FormSchema<BpRow> = {
           productName: "",
           sku: "",
           punit: "",
+          /* One for one until somebody says otherwise — never 0, which would
+             multiply a received quantity down to nothing. */
+          punitFactor: 1,
           moq: 1,
           lead: 7,
           currency: "THB",
@@ -1777,6 +1795,10 @@ export const BP_FORM: FormSchema<BpRow> = {
       supplierItems: isSupplier(s)
         ? ((s.supplierItems ?? []) as GridRow[]).map((i) => ({
             ...i,
+            /* A blank or zero pack size means the supplier quotes in our own
+               stock unit. Stored as 1 rather than left falsy, so nothing
+               downstream has to remember to guard the multiplication. */
+            punitFactor: Math.max(1, num(i.punitFactor)),
             /* Dates are carried, not edited — an older row keeps its own. */
             effective: i.effective ? isoToDmy(i.effective) : "",
             expiry: i.expiry ? isoToDmy(i.expiry) : "",

@@ -148,6 +148,22 @@ export interface BpSupplierItem {
   supName: string;
   /** Unit the vendor quotes and we buy in. */
   punit?: string;
+  /**
+   * Base units in one of those. 24 when they ship a Carton of 24 Tube and we
+   * stock in Tube; 1 when they quote in our own base unit.
+   *
+   * Per supplier and not per product, which is the whole reason it lives on
+   * this row: the same product comes from one vendor by the Carton and from
+   * another by the Box, and a single factor on the product has to be wrong
+   * for one of them.
+   */
+  punitFactor?: number;
+  /**
+   * Minimum order, counted in the product's STOCK unit — the unit every
+   * recorded minimum was written in ("240 Tube" on an item bought by the
+   * Carton). Not in `punit`: rendering it against the purchase unit once
+   * turned 240 tubes into "240 Carton".
+   */
   moq: number;
   lead: number;
   currency: string;

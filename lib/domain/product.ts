@@ -16,6 +16,61 @@ export interface ProductRow extends Product {
   projected: number;
 }
 
+/* ============================================================
+   THE THREE UNITS A PRODUCT IS COUNTED IN
+
+   Stock unit — the smallest thing the warehouse counts, and the
+   only unit a balance is ever held in. `product.unit`.
+
+   Purchase unit — what a supplier ships. Per (supplier ×
+   product), because the same item arrives from one vendor by the
+   Carton and from another by the Box. Lives on the supplier item
+   with its own factor.
+
+   Sales unit — what a customer can order. On the product, in
+   `detail.units`, because it is the same offer to everybody.
+
+   All three convert through the stock unit and nothing converts
+   directly between two of the others: a Carton is 24 Tube and a
+   Box is 12 Tube, so a Carton is two Boxes by arithmetic rather
+   than by a rule anybody has to maintain.
+   ============================================================ */
+
+export const BASE_UNIT = "Base Unit";
+export const SALES_UNIT = "Sales Unit";
+export const PURCHASE_UNIT = "Purchase Unit";
+
+/** A unit row that converts one for one — a factor never means "unstated". */
+const safeFactor = (n: unknown) => {
+  const v = Number(n);
+  return Number.isFinite(v) && v > 0 ? v : 1;
+};
+
+/** Base units in one `unit` of this product. 1 for the base unit itself. */
+export function unitFactor(p: ProductRow, unit: string): number {
+  if (!unit || unit === p.unit) return 1;
+  const row = p.detail?.units?.find((u) => u.unit === unit);
+  return safeFactor(row?.factor);
+}
+
+/** Quantity in `unit`, expressed in the unit the warehouse counts. */
+export const toBaseQty = (qty: number, factor: number) =>
+  (Number(qty) || 0) * safeFactor(factor);
+
+/**
+ * "1 Box = 12 Tube" — the sentence the old free-text field was trying to be,
+ * built from the number rather than typed beside it.
+ *
+ * The base unit's own row reads "1 Tube" rather than "1 Tube = 1 Tube", which
+ * is true and says nothing.
+ */
+export function conversionText(baseUnit: string, unit: string, factor: number): string {
+  const f = safeFactor(factor);
+  if (!unit) return "";
+  if (unit === baseUnit || f === 1) return `1 ${unit}`;
+  return `1 ${unit} = ${f.toLocaleString("en-US")} ${baseUnit}`;
+}
+
 /**
  * Fallback detail payload so every product opens cleanly, including the
  * deliberately sparse states (no supplier / no docs / no warehouse).
@@ -29,15 +84,7 @@ function detailFor(p: Product): ProductDetail {
       ...DEFAULT_CLASS,
       devClass: p.cat === "Accessory" ? "Class I" : "Class II",
     },
-    units: [
-      {
-        unit: p.unit,
-        type: "Base Unit",
-        conv: `1 ${p.unit}`,
-        barcode: p.barcode,
-        active: true,
-      },
-    ],
+    units: [{ unit: p.unit, type: BASE_UNIT, factor: 1, barcode: p.barcode, active: true }],
     rfid: false,
     priceLists: [
       {
@@ -98,7 +145,11 @@ function detailFor(p: Product): ProductDetail {
     altSupRows: p.altSuppliers.map((a) => ({
       name: a.name,
       code: a.code,
-      punit: "Carton",
+      /* Placeholder rows: syncProductSupplyView rebuilds these from the
+         partner's own supplier item as soon as that module has loaded, and
+         the real unit and factor arrive with it. */
+      punit: p.unit,
+      punitFactor: 1,
       moq: DASH,
       lead: a.lead,
       price: parseFloat(a.price),

@@ -1639,7 +1639,7 @@ describe("BP Master — form revisions", () => {
     }
   });
 
-  it("shows exactly the nine supplier item columns, in order", () => {
+  it("shows exactly the ten supplier item columns, in order", () => {
     const grid = fieldsOf("supplier", { roles: { supplier: true } }).find(
       (f) => f.path === "supplierItems",
     )!;
@@ -1648,6 +1648,7 @@ describe("BP Master — form revisions", () => {
       "sku",
       "productName",
       "punit",
+      "punitFactor",
       "moq",
       "lead",
       "currency",
@@ -1659,6 +1660,7 @@ describe("BP Master — form revisions", () => {
       "Vendor Product Code",
       "Product Name",
       "Purchase Unit",
+      "หน่วยหลักต่อ 1 หน่วยซื้อ",
       "MOQ",
       "Lead (วัน)",
       "Currency",
@@ -1667,7 +1669,18 @@ describe("BP Master — form revisions", () => {
     ]);
     /* A new line carries only what the grid can edit. */
     expect(Object.keys(BP_FORM.newRow!("supplierItems", true)!).sort()).toEqual(
-      ["currency", "lead", "moq", "price", "productName", "product", "punit", "sku", "status"].sort(),
+      [
+        "currency",
+        "lead",
+        "moq",
+        "price",
+        "productName",
+        "product",
+        "punit",
+        "punitFactor",
+        "sku",
+        "status",
+      ].sort(),
     );
   });
 
@@ -1679,7 +1692,7 @@ describe("BP Master — form revisions", () => {
     }
   });
 
-  it("mirrors the same nine columns on the detail page", () => {
+  it("mirrors the same ten columns on the detail page", () => {
     const supplierTab = detail.tabs.find((t) => t.key === "supplier")!;
     const table = supplierTab
       .blocks(bp(SUPPLIER), makeCtx())
@@ -1692,6 +1705,7 @@ describe("BP Master — form revisions", () => {
       "sku",
       "productName",
       "punit",
+      "punitFactor",
       "moq",
       "lead",
       "currency",

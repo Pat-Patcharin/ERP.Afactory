@@ -1,5 +1,6 @@
 import {
   PRODUCTS,
+  conversionText,
   getProduct,
   isStocked,
   productStock,
@@ -232,7 +233,9 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
     ],
     badges: [
       { text: p.status, tone: tone(STATUS_TONE, p.status) },
-      ...(p.demo ? ([{ text: "Demo", tone: "info" }] as const) : []),
+      /* "Demo ได้", not "Demo": the badge sits beside the status and a bare
+         "Demo" there reads as what this product IS. It is a permission. */
+      ...(p.demoAllowed ? ([{ text: "Demo ได้", tone: "info" }] as const) : []),
       ...(isStocked(p) && p.availTotal <= p.lowLevel
         ? ([{ text: "Low stock", tone: "warning" }] as const)
         : []),
@@ -351,7 +354,11 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
                 value: <Badge tone={tone(STATUS_TONE, p.status)}>{p.status}</Badge>,
               },
               { label: "Category", value: p.cat },
-              { label: "Demo Product", value: p.demo ? "Yes" : "No", muted: !p.demo },
+              {
+                label: "Demo Allowed",
+                value: p.demoAllowed ? "เบิกเป็น Demo ได้" : "เบิกเป็น Demo ไม่ได้",
+                muted: !p.demoAllowed,
+              },
               { label: "Description", value: p.desc, span: true },
             ],
           },
@@ -385,7 +392,11 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
             cols: [
               { key: "unit", label: "Unit" },
               { key: "type", label: "Unit Type", muted: true },
-              { key: "conv", label: "Conversion" },
+              {
+                key: "factor",
+                label: "Conversion",
+                cell: (r) => conversionText(p.unit, r.unit, r.factor),
+              },
               {
                 key: "barcode",
                 label: "Barcode",
@@ -825,8 +836,13 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
               { label: "Supplier Item Code", value: s.itemCode },
               { label: "Purchase Unit", value: s.punit },
               {
+                /* This used to read the factor back out of the unit's name
+                   with a regex — `"Carton (24 Tube)".match(/\((.+)\)/)`. A
+                   supplier whose unit was typed without brackets silently
+                   reported 1, and nothing downstream could multiply by it
+                   anyway. The row carries a number now. */
                 label: "Conversion Rate",
-                value: s.punit.match(/\((.+)\)/)?.[1] ?? `1 ${p.unit}`,
+                value: conversionText(p.unit, s.punit, s.punitFactor),
               },
               { label: "MOQ", value: s.moq },
               { label: "Lead Time", value: s.lead },
@@ -861,7 +877,12 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
                   </LinkButton>
                 ),
               },
-              { key: "punit", label: "Purchase Unit", muted: true },
+              {
+                key: "punit",
+                label: "Purchase Unit",
+                muted: true,
+                cell: (r) => conversionText(p.unit, r.punit, r.punitFactor),
+              },
               { key: "moq", label: "MOQ", muted: true },
               { key: "lead", label: "Lead Time", muted: true },
               {
