@@ -868,7 +868,7 @@ describe("BP Master — More Filters drawer", () => {
       expect(drawer.contains(el), `${label} is in the drawer`).toBe(true);
     }
 
-    for (const label of ["Province", "Sales Rep", "Status", "BP Type"]) {
+    for (const label of ["Province", "Sales Rep", "Status", "Categories"]) {
       const el = screen.getByLabelText(label);
       expect(drawer.contains(el), `${label} is on the toolbar`).toBe(false);
     }

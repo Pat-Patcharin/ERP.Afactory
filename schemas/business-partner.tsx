@@ -475,8 +475,10 @@ export const BP_LIST: ListSchema<BpRow> = {
       },
     },
     {
+      /* Named for the column it filters. Left as "BP Type" it would sit on the
+         same toolbar as a column of that name and narrow a different one. */
       id: "type",
-      label: "BP Type",
+      label: "Categories",
       options: () => [...BP_TYPES],
       test: (b, v) => b.type === v,
     },
@@ -567,10 +569,15 @@ export const BP_LIST: ListSchema<BpRow> = {
         </>
       ),
     },
-    { key: "type", label: "BP Type", muted: true, cell: (b) => b.type },
+    /* "Categories" is what a clinic / hospital / company / individual is —
+       what kind of organisation we are dealing with. "BP Type" is the column
+       beside it, which is what they are to US: somebody we sell to, buy from,
+       or both. The two headings were the other way round, and the shorter,
+       more official-sounding one sat on the less important column. */
+    { key: "type", label: "Categories", muted: true, cell: (b) => b.type },
     {
       key: "bpMode",
-      label: "Customer / Supplier",
+      label: "BP Type",
       cell: (b) => (
         <Badge
           tone={b.bpMode === "Both" ? "primary" : b.bpMode === "Supplier" ? "info" : "success"}
@@ -580,9 +587,9 @@ export const BP_LIST: ListSchema<BpRow> = {
       ),
     },
     /* Roles, Tax ID, the primary contact and the phone number are off the
-       table — the Customer / Supplier column already carries the role, and
-       who to ring is a detail-page fact nobody scans a list for. All of them
-       stay searchable. */
+       table — the BP Type column already carries the role, and who to ring is
+       a detail-page fact nobody scans a list for. All of them stay
+       searchable. */
     {
       key: "province",
       label: "Province",
