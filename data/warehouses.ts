@@ -31,7 +31,6 @@ export interface Warehouse {
     production: boolean;
     returns: boolean;
     negative: boolean;
-    isDefault: boolean;
     valuation: string;
     costing: string;
   };
@@ -182,7 +181,6 @@ export const WAREHOUSES: Warehouse[] = [
       production: false,
       returns: true,
       negative: false,
-      isDefault: true,
       valuation: "Moving Average",
       costing: "FIFO",
     },
@@ -414,7 +412,6 @@ export const WAREHOUSES: Warehouse[] = [
       production: false,
       returns: false,
       negative: false,
-      isDefault: false,
       valuation: "FIFO",
       costing: "FIFO",
     },
@@ -523,7 +520,6 @@ export const WAREHOUSES: Warehouse[] = [
       production: false,
       returns: true,
       negative: false,
-      isDefault: false,
       valuation: "Moving Average",
       costing: "FIFO",
     },
@@ -622,7 +618,6 @@ export const WAREHOUSES: Warehouse[] = [
       production: false,
       returns: true,
       negative: false,
-      isDefault: false,
       valuation: "Moving Average",
       costing: "FIFO",
     },
@@ -721,7 +716,6 @@ export const WAREHOUSES: Warehouse[] = [
       production: false,
       returns: false,
       negative: false,
-      isDefault: false,
       valuation: "Moving Average",
       costing: "FIFO",
     },
@@ -820,7 +814,6 @@ export const WAREHOUSES: Warehouse[] = [
       production: false,
       returns: false,
       negative: true,
-      isDefault: false,
       valuation: "Moving Average",
       costing: "FIFO",
     },
@@ -889,7 +882,6 @@ export const WAREHOUSES: Warehouse[] = [
       production: false,
       returns: true,
       negative: false,
-      isDefault: false,
       valuation: "FIFO",
       costing: "FIFO",
     },
@@ -988,7 +980,6 @@ export const WAREHOUSES: Warehouse[] = [
       production: false,
       returns: false,
       negative: false,
-      isDefault: false,
       valuation: "Moving Average",
       costing: "FIFO",
     },

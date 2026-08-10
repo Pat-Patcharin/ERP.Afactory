@@ -82,7 +82,6 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
       production: false,
       returns: false,
       negative: false,
-      isDefault: false,
       valuation: "Moving Average",
       costing: "FIFO",
     },
@@ -246,20 +245,12 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
             },
           ],
         },
-        {
-          type: "card",
-          title: "Default",
-          cols: "3",
-          fields: [
-            {
-              type: "toggle",
-              path: "config.isDefault",
-              label: "Default Warehouse",
-              onText: "คลังหลักของระบบ",
-              offText: "คลังทั่วไป",
-            },
-          ],
-        },
+        /* No Default Warehouse switch.
+
+           A single system-wide default is a company setting wearing a
+           warehouse's clothes: it lived on eight records so that seven of
+           them could say "no", and nothing downstream ever read it —
+           every document picks its warehouse explicitly. */
         /* Valuation is not a per-warehouse choice any more.
            Stock is valued at moving average throughout, which is what the
            cost figures on the product record already are — offering five
@@ -319,8 +310,7 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
        resolve their bin lists from it. What is gone is typing a four-level
        Zone › Rack › Shelf › Bin structure into a create form, which is a
        warehouse layout job rather than a master-data one. A warehouse
-       created here has no bins until somebody lays it out — see the note
-       on the Location Structure tab. */
+       created here has no bins until somebody lays it out. */
 
     {
       key: "review",
@@ -353,13 +343,6 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
       label: "รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก",
       step: "address",
       test: (s) => validZip(String(s.addr?.zip ?? "")),
-    },
-    {
-      label: "มีคลังหลักของระบบได้เพียงคลังเดียว",
-      step: "config",
-      test: (s) =>
-        !s.config?.isDefault ||
-        !WAREHOUSES.some((w) => w.config?.isDefault && w.code !== s.code),
     },
   ],
 
@@ -456,13 +439,6 @@ export const WAREHOUSE_FORM: FormSchema<WarehouseRow> = {
       updated: now,
       updatedBy: FORM_USER(),
     };
-
-    /* A new default warehouse demotes the previous one. */
-    if (s.config?.isDefault) {
-      for (const w of WAREHOUSES) {
-        if (w.code !== code && w.config) w.config.isDefault = false;
-      }
-    }
 
     if (existing) {
       Object.assign(existing, patch);

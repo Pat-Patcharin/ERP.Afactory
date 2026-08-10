@@ -1,10 +1,4 @@
-import {
-  WAREHOUSES,
-  decorateWarehouses,
-  flattenBins,
-  whTreeNodes,
-  type WarehouseRow,
-} from "@/lib/domain/warehouse";
+import { WAREHOUSES, decorateWarehouses, type WarehouseRow } from "@/lib/domain/warehouse";
 import { warehouseItems } from "@/lib/domain/product";
 import { checkPermission } from "@/lib/permissions";
 import { WH_TEMPS, WH_TYPES } from "@/data/warehouses";
@@ -200,7 +194,6 @@ export const WAREHOUSE_LIST: ListSchema<WarehouseRow> = {
         ? { label: "Deactivate", icon: "circleSlash", run: (r) => setStatus(r, "Inactive", "ปิดใช้งานแล้ว", "info") }
         : { label: "Activate", icon: "checkCircle", run: (r) => setStatus(r, "Active", "เปิดใช้งานแล้ว") },
       { label: "Stock Overview", icon: "box", run: (r) => ctx.goto(`/m/warehouse/${r.code}`) },
-      { label: "Location Structure", icon: "grid", run: (r) => ctx.goto(`/m/warehouse/${r.code}`) },
       { sep: true },
       {
         label: "Delete",
@@ -245,7 +238,6 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
     badges: [
       { text: w.status, tone: tone(STATUS_TONE, w.status) },
       { text: w.type, tone: tone(WH_TYPE_TONE, w.type) },
-      ...(w.config.isDefault ? ([{ text: "Default", tone: "info" }] as const) : []),
     ],
     tags: [w.rules.temp, w.addr.prov].filter(Boolean),
   }),
@@ -271,7 +263,6 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
             { label: "Status", value: <Badge tone={tone(STATUS_TONE, w.status)}>{w.status}</Badge> },
             { label: "Warehouse Name", value: w.name },
             { label: "Warehouse Type", value: <Badge tone={tone(WH_TYPE_TONE, w.type)}>{w.type}</Badge> },
-            { label: "Default Warehouse", value: yesNo(w.config.isDefault) },
           ],
         },
         { type: "note", title: "Description", text: w.desc || DASH },
@@ -311,82 +302,13 @@ export const WAREHOUSE_DETAIL: DetailSchema<WarehouseRow> = {
       ],
     },
 
-    {
-      key: "locations",
-      label: "Location Structure",
-      blocks: (w) => [
-        {
-          type: "cards",
-          title: "Structure Summary",
-          items: [
-            { label: "Zones", value: fmt(w.zoneCount), tone: "accent" },
-            { label: "Racks", value: fmt(w.rackCount) },
-            { label: "Shelves", value: fmt(w.shelfCount) },
-            { label: "Bins", value: fmt(w.binCount) },
-          ],
-        },
-        w.binCount === 0 && {
-          /* The create form no longer asks for a four-level bin structure —
-             laying out a building is not master data entry. Saying so here
-             is what stops a warehouse quietly never appearing in Put Away. */
-          type: "alert",
-          tone: "warn",
-          title: "ยังไม่มี Bin ในคลังนี้",
-          message:
-            "งาน Put Away แนะนำตำแหน่งจัดเก็บจากผังนี้ — คลังที่ยังไม่มี Bin จะไม่ถูกเสนอ · ผังจัดเก็บกำหนดแยกจากการสร้างคลัง",
-        },
-        {
-          type: "tree",
-          title: "Warehouse › Zone › Rack › Shelf › Bin",
-          nodes: whTreeNodes(w),
-          empty: "ยังไม่ได้กำหนดโครงสร้างตำแหน่งจัดเก็บ",
-        },
-        {
-          type: "table",
-          title: "Bin Locations",
-          rows: flattenBins(w),
-          empty: "ยังไม่มีตำแหน่งจัดเก็บสินค้า",
-          cols: [
-            { key: "path", label: "Location Path", cell: (r) => <span className="tnum">{r.path}</span> },
-            { key: "name", label: "Bin Name" },
-            { key: "binType", label: "Bin Type", cell: (r) => <Badge tone="neutral">{r.binType}</Badge> },
-            {
-              key: "cap",
-              label: "Capacity",
-              align: "right",
-              cell: (r) => `${fmt(r.cap)} ${r.capUnit}`,
-            },
-            { key: "temp", label: "Temperature", muted: true },
-            {
-              key: "pick",
-              label: "Pick",
-              cell: (r) =>
-                r.pick ? <span className="text-success-text">✓</span> : <span className="text-ink-2">{DASH}</span>,
-            },
-            {
-              key: "putaway",
-              label: "Put Away",
-              cell: (r) =>
-                r.putaway ? <span className="text-success-text">✓</span> : <span className="text-ink-2">{DASH}</span>,
-            },
-            {
-              key: "status",
-              label: "Status",
-              cell: (r) => (
-                <Badge tone={r.status === "Active" ? "success" : "neutral"}>{r.status}</Badge>
-              ),
-            },
-          ],
-        },
-        {
-          type: "planned",
-          title: "WMS Features",
-          label: "Barcode · QR · RFID · Wave Picking · Cycle Count",
-          message:
-            "โครงสร้าง Location Path พร้อมรองรับแล้ว — ฟีเจอร์จะเปิดใช้งานใน Phase ถัดไป",
-        },
-      ],
-    },
+    /* No Location Structure tab.
+
+       Four counters, a tree and a bin table read a layout this master no
+       longer edits — a warehouse built here has no bins at all, so the tab
+       was a page of zeroes on every record a user actually creates. The
+       tree is still stored and still read: Put Away and Picking resolve
+       their bin lists from it through `flattenBins`. */
 
     {
       key: "inventory",

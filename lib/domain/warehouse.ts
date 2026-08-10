@@ -1,13 +1,8 @@
 import { WAREHOUSES as RAW, type Warehouse } from "@/data/warehouses";
-import type { TreeNode } from "@/lib/types";
-import type { IconName } from "@/lib/icons";
-import { fmt } from "@/lib/format";
 
 export interface WarehouseRow extends Warehouse {
   util: number;
-  zoneCount: number;
-  rackCount: number;
-  shelfCount: number;
+  /** Bins are what Put Away and Picking need to know exist. */
   binCount: number;
   fullAddr: string;
   /** A warehouse holding stock must never be hard-deleted. */
@@ -35,9 +30,6 @@ export const WAREHOUSES = RAW as WarehouseRow[];
 export function decorateWarehouses() {
   for (const w of WAREHOUSES) {
     w.util = w.rules.maxCap ? Math.round((w.rules.curCap / w.rules.maxCap) * 100) : 0;
-    w.zoneCount = countLevel(w.locations as Node[], 0);
-    w.rackCount = countLevel(w.locations as Node[], 1);
-    w.shelfCount = countLevel(w.locations as Node[], 2);
     w.binCount = countLevel(w.locations as Node[], 3);
     w.fullAddr = [w.addr.line, w.addr.sub, w.addr.dist, w.addr.prov, w.addr.zip]
       .filter(Boolean)
@@ -104,17 +96,5 @@ export function flattenBins(w: WarehouseRow): BinRow[] {
   return out;
 }
 
-const LEVEL_ICON: IconName[] = ["layers", "box", "layers", "tag"];
-
-/** Nodes for the read-only tree viewer. */
-export function whTreeNodes(w: WarehouseRow): TreeNode[] {
-  const map = (n: Node, depth: number): TreeNode => ({
-    label: String(n.code),
-    sub: String(n.name ?? ""),
-    icon: LEVEL_ICON[depth] ?? "box",
-    badge: depth === 3 ? (n.binType as string) : undefined,
-    meta: depth === 3 && n.cap ? `${fmt(n.cap as number)} ${n.capUnit ?? ""}` : undefined,
-    children: (n.children ?? []).map((c) => map(c, depth + 1)),
-  });
-  return ((w.locations ?? []) as Node[]).map((z) => map(z, 0));
-}
+/* No `whTreeNodes`. The warehouse page no longer renders the location tree,
+   and the tree that is stored is consumed as flat bin rows everywhere else. */

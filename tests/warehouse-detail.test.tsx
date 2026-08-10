@@ -70,11 +70,12 @@ describe("Warehouse detail — header", () => {
 describe("Warehouse detail — tabs", () => {
   it("drops the tabs that moved or belong to maintenance", () => {
     const keys = detail.tabs.map((t) => t.key);
-    expect(keys).toEqual(["overview", "locations", "inventory", "documents"]);
+    expect(keys).toEqual(["overview", "inventory", "documents"]);
     /* Receiving History listed the same movement rows the Stock Card shows,
        keyed by warehouse instead of by product — one ledger read twice. */
     expect(keys).not.toContain("history");
-    for (const gone of ["config", "address", "rules"]) {
+    /* Location Structure read a layout this master does not edit. */
+    for (const gone of ["config", "address", "rules", "locations"]) {
       expect(keys, gone).not.toContain(gone);
     }
   });
