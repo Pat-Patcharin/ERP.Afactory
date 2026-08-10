@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { MasterForm } from "@/components/engine/MasterForm";
 import { PRODUCT_FORM } from "@/schemas/forms/product";
-import { PRODUCTS, getProduct } from "@/lib/domain/product";
+import { PRODUCTS, getProduct, productStock } from "@/lib/domain/product";
+import { WAREHOUSES } from "@/lib/domain/warehouse";
 import { BUSINESS_PARTNERS, supplierOffers } from "@/lib/domain/partner";
 import { formStatus } from "@/lib/form";
 import { resetCurrentUser } from "@/lib/domain/admin";
@@ -430,5 +431,97 @@ describe("Product form — ต้นทุนและผู้ขายอย�
        load, so anything typed into it was gone before it was read back. */
     expect(PRODUCT_FORM.newRow!("altSuppliers", true)).toEqual({});
     expect(paths()).not.toContain("altSuppliers");
+  });
+});
+
+/* ============================================================
+   MIN, MAX, AND THE TWO GRIDS THAT WENT
+   ============================================================ */
+
+describe("Product form — จุดสั่งซื้อเป็นคู่ Min/Max", () => {
+  const stockFields = () =>
+    PRODUCT_FORM.steps
+      .find((st) => st.key === "stock")!
+      .blocks(PRODUCT_FORM.blank())
+      .filter((b): b is FormBlock => Boolean(b))
+      .flatMap((b) => ("fields" in b ? b.fields : [b]))
+      .filter((f): f is FormField => Boolean(f));
+
+  it("ถาม Min กับ Max และบังคับกรอกทั้งคู่", () => {
+    const paths = stockFields().map((f) => f.path);
+    expect(paths).toContain("lowLevel");
+    expect(paths).toContain("maxLevel");
+
+    const required = PRODUCT_FORM.required.map((r) => r.path);
+    expect(required).toContain("lowLevel");
+    expect(required).toContain("maxLevel");
+  });
+
+  it("ไม่มี Suggested Target ที่คำนวณ 1.5 เท่าให้อีกแล้ว", () => {
+    /* It was arithmetic presented as a decision — nobody could disagree with
+       it, because there was nowhere to type the real figure. */
+    expect(stockFields().map((f) => f.label)).not.toContain("Suggested Target");
+  });
+
+  it("Max ต้องมากกว่า Min", () => {
+    const rule = PRODUCT_FORM.rules!.find((r) => r.label.startsWith("Max ต้องมากกว่า Min"))!;
+    expect(rule.step).toBe("stock");
+    expect(rule.test!({ lowLevel: 100, maxLevel: 300 })).toBe(true);
+    expect(rule.test!({ lowLevel: 100, maxLevel: 100 }), "เท่ากันก็สั่งได้ศูนย์").toBe(false);
+    expect(rule.test!({ lowLevel: 100, maxLevel: 50 })).toBe(false);
+    /* Not yet typed is not yet wrong. */
+    expect(rule.test!({ lowLevel: 100, maxLevel: 0 })).toBe(true);
+  });
+
+  it("ระดับที่สั่งเติมถึง อ่าน Max ที่กรอกไว้ ไม่ใช่เดาจากจุดสั่งซื้อ", () => {
+    const p = getProduct("AA-TH003-WL")!;
+    const was = p.maxLevel;
+
+    p.maxLevel = 999;
+    expect(productStock(p.code)!.target).toBe(999);
+
+    /* Records from before the field existed keep the old guess. */
+    p.maxLevel = 0;
+    expect(productStock(p.code)!.target).toBe(Math.round(p.lowLevel * 1.5));
+    p.maxLevel = was;
+  });
+});
+
+describe("Product form — คลังที่เก็บสินค้านี้ได้", () => {
+  const grid = (path: string) =>
+    PRODUCT_FORM.steps
+      .find((st) => st.key === "stock")!
+      .blocks(PRODUCT_FORM.blank())
+      .filter((b): b is FormBlock => Boolean(b))
+      .flatMap((b) => ("fields" in b ? b.fields : [b]))
+      .filter((f): f is FormField => Boolean(f))
+      .find((f) => f.path === path);
+
+  it("สินค้าใหม่ขึ้นทุกคลังไว้ก่อน แล้วค่อยลบคลังที่เก็บไม่ได้ออก", () => {
+    const rows = PRODUCT_FORM.blank().warehouses as { wh: string; defaultReceiving: boolean }[];
+    const active = WAREHOUSES.filter((w) => w.status === "Active");
+
+    expect(rows).toHaveLength(active.length);
+    for (const w of active) {
+      expect(rows.some((r) => r.wh === `${w.code} ${w.name}`), w.code).toBe(true);
+    }
+    /* One landing place, not all of them. */
+    expect(rows.filter((r) => r.defaultReceiving)).toHaveLength(1);
+  });
+
+  it("ไม่ถาม Reorder Point กับ Max Qty ซ้ำในตารางคลัง", () => {
+    const cols = grid("warehouses")!.cols!.map((c) => c.key);
+    expect(cols).toContain("wh");
+    expect(cols).toContain("bin");
+    /* The same two numbers as the card above, asked a second time. */
+    expect(cols).not.toContain("rop");
+    expect(cols).not.toContain("maxQty");
+  });
+
+  it("ไม่มีกรอบยอดคงเหลือตามคลังให้พิมพ์แล้ว", () => {
+    /* A balance is written by a goods receipt and read on the stock card.
+       Typing one here made the master disagree with the ledger the moment
+       anything moved. */
+    expect(grid("stocks")).toBeUndefined();
   });
 });

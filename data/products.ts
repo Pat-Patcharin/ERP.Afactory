@@ -25,7 +25,24 @@ export interface Product {
   onHand: number;
   reserved: number;
   onOrder: number;
+  /**
+   * MIN — the level that triggers a reorder, company-wide.
+   *
+   * Named `lowLevel` since the first version and left alone: renaming a field
+   * eight screens read to gain a synonym is a migration that buys nothing.
+   * The label on the form says Min, which is the word the warehouse uses.
+   */
   lowLevel: number;
+  /**
+   * MAX — the level a reorder tops the stock back up to.
+   *
+   * The pair is the whole replenishment rule: fall below Min and buy enough
+   * to reach Max. It replaced a "suggested target" the form computed as 1.5×
+   * the reorder point — an arithmetic guess presented as a decision, which
+   * nobody could disagree with because there was nowhere to type the real
+   * number.
+   */
+  maxLevel: number;
   status: string;
   created: string;
   updated: string;
@@ -293,6 +310,7 @@ export const PRODUCTS: Product[] = [
     reserved: 150,
     onOrder: 600,
     lowLevel: 200,
+    maxLevel: 600,
     status: "Active",
     created: "12/03/2024 09:41",
     updated: "08/07/2026 14:22",
@@ -436,6 +454,7 @@ export const PRODUCTS: Product[] = [
     reserved: 60,
     onOrder: 240,
     lowLevel: 200,
+    maxLevel: 600,
     status: "Active",
     created: "12/03/2024 09:44",
     updated: "08/07/2026 14:22",
@@ -540,6 +559,7 @@ export const PRODUCTS: Product[] = [
     reserved: 80,
     onOrder: 0,
     lowLevel: 150,
+    maxLevel: 450,
     status: "Draft",
     created: "02/06/2026 13:15",
     updated: "19/07/2026 09:02",
@@ -625,6 +645,7 @@ export const PRODUCTS: Product[] = [
     reserved: 0,
     onOrder: 0,
     lowLevel: 400,
+    maxLevel: 1200,
     status: "Active",
     created: "05/08/2024 15:20",
     updated: "12/06/2026 11:10",
@@ -728,6 +749,7 @@ export const PRODUCTS: Product[] = [
     reserved: 30,
     onOrder: 0,
     lowLevel: 100,
+    maxLevel: 300,
     status: "Inactive",
     created: "18/11/2023 10:00",
     updated: "01/03/2026 17:45",
@@ -812,6 +834,7 @@ export const PRODUCTS: Product[] = [
     reserved: 60,
     onOrder: 1200,
     lowLevel: 200,
+    maxLevel: 600,
     status: "Active",
     created: "09/01/2024 08:15",
     updated: "15/07/2026 16:00",
@@ -916,6 +939,7 @@ export const PRODUCTS: Product[] = [
     reserved: 0,
     onOrder: 0,
     lowLevel: 300,
+    maxLevel: 900,
     status: "Active",
     created: "09/01/2024 08:20",
     updated: "02/05/2026 10:30",
@@ -1006,6 +1030,7 @@ export const PRODUCTS: Product[] = [
     reserved: 0,
     onOrder: 120,
     lowLevel: 80,
+    maxLevel: 240,
     status: "Active",
     created: "22/02/2025 14:00",
     updated: "30/06/2026 09:15",

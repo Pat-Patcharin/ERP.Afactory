@@ -110,6 +110,8 @@ function toProduct(
     reserved: 0,
     onOrder: 0,
     lowLevel: 0,
+    /* Never stocked, so neither level has been decided yet. */
+    maxLevel: 0,
 
     status: r.status === "OK" ? "Active" : "Draft",
     created: date,

@@ -60,18 +60,25 @@ describe("จุดสั่งซื้อรายคลัง", () => {
     wh.rop = was;
   });
 
-  it("ศูนย์บนแถวนโยบายแปลว่าไม่สั่งซื้อ ไม่ใช่ยังไม่ได้ตั้ง", () => {
+  it("ศูนย์บนแถวนโยบายแปลว่ายังไม่ได้ตั้ง จึงใช้ Min ของสินค้า", () => {
     /*
-       The seeded service store carries 0 and means it — it holds nothing and
-       reorders nothing. Treating that as "unset" would hang a 200-unit alert
-       on a store that has never held one.
+       This used to read the other way: 0 meant "this store never reorders".
+       The product form stopped asking for a level per warehouse — Min and Max
+       are one rule for the item — so a zero on a row is now an unanswered
+       question rather than an answer, and the product's Min applies.
+
+       A row that carries its own figure still wins, which is what keeps the
+       seeded per-store levels working.
     */
     const p = getProduct(STOCKED)!;
     const wh = productWarehouses(p)[0]!;
     const was = wh.rop;
 
     wh.rop = 0;
-    expect(warehouseRop(p, wh.wh)).toBe(0);
+    expect(warehouseRop(p, wh.wh)).toBe(p.lowLevel);
+
+    wh.rop = 25;
+    expect(warehouseRop(p, wh.wh)).toBe(25);
     wh.rop = was;
   });
 

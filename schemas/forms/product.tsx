@@ -12,7 +12,7 @@ import {
 import { WAREHOUSES } from "@/lib/domain/warehouse";
 import { BUSINESS_PARTNERS, isSupplierRole, supplierOffers } from "@/lib/domain/partner";
 import { catalogPrice } from "@/lib/domain/pricing";
-import { DASH, money, stamp, isoToDmy, dmyToIso } from "@/lib/format";
+import { DASH, fmt, money, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
 import type { FormSchema, FormState, GridRow } from "@/lib/types";
 import { FORM_USER, ReviewCard, isCreate, opts, saved } from "./common";
@@ -26,6 +26,26 @@ import { FORM_USER, ReviewCard, isCreate, opts, saved } from "./common";
 const num = (v: unknown) => Number(v) || 0;
 
 const whOptions = () => WAREHOUSES.map((w) => `${w.code} ${w.name}`);
+
+/**
+ * Every warehouse, ready to have the exceptions removed.
+ *
+ * "Everywhere except the two that cannot" is true of almost every product,
+ * and an empty list is worse than a full one to leave lying around: a product
+ * cleared for no warehouse cannot be received anywhere, and nothing on the
+ * form says so until a receipt is refused.
+ */
+const allWarehouseRows = (): GridRow[] =>
+  WAREHOUSES.filter((w) => w.status === "Active").map((w, i) => ({
+    wh: `${w.code} ${w.name}`,
+    bin: "",
+    rop: 0,
+    maxQty: 0,
+    /* The first one is where goods land until somebody says otherwise. */
+    defaultReceiving: i === 0,
+    defaultIssuing: i === 0,
+    status: "Active",
+  }));
 
 /**
  * The product name is one of the two language fields, never a third string
@@ -152,9 +172,12 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       vat: "VAT 7% (exclusive)",
     },
     lowLevel: 0,
+    maxLevel: 0,
     /* One row per supplier of this product — see the note on the section. */
     suppliers: [],
-    warehouses: [],
+    /* Every warehouse, ticked. The exceptions are taken out; the rule is
+       not typed in one store at a time. */
+    warehouses: allWarehouseRows(),
     stocks: [],
     supplier: "",
     sup: {
@@ -208,6 +231,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         vat: p.pricing.vat,
       },
       lowLevel: p.lowLevel,
+      maxLevel: p.maxLevel,
       suppliers: supplierRows(p.code),
       warehouses: (p.warehouses ?? []).map((w) => ({ ...w })),
       stocks: p.stocks.map((s) => ({ ...s, exp: dmyToIso(s.exp) })),
@@ -595,6 +619,13 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       labelTh: "จุดสั่งซื้อและคลัง",
       blocks: (s) => [
         {
+          /* MIN AND MAX ARE ONE RULE.
+
+             Fall below Min and buy enough to reach Max. Two numbers a person
+             decides, replacing a "Suggested Target" the form worked out as
+             1.5× the reorder point — arithmetic presented as a decision,
+             which nobody could disagree with because there was nowhere to
+             type the real figure. */
           type: "card",
           title: "Replenishment",
           cols: "3",
@@ -602,38 +633,53 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
             {
               type: "number",
               path: "lowLevel",
-              label: "Reorder Point (ค่าตั้งต้น)",
+              label: "Min — จุดสั่งซื้อ",
               required: true,
               min: 0,
-              hint: "ใช้กับคลังที่ยังไม่ได้ตั้งจุดสั่งซื้อของตัวเอง",
+              hint: "ต่ำกว่านี้เมื่อไหร่ ถึงเวลาสั่งซื้อ",
+            },
+            {
+              type: "number",
+              path: "maxLevel",
+              label: "Max — สั่งเติมถึง",
+              required: true,
+              min: 0,
+              hint: "สั่งให้พอเติมกลับถึงระดับนี้",
             },
             {
               type: "static",
-              label: "Suggested Target",
-              value: (st) => `${Math.round(num(st.lowLevel) * 1.5)} ${st.unit ?? ""}`,
-              hint: "1.5 เท่าของจุดสั่งซื้อ",
+              label: "สั่งครั้งละประมาณ",
+              value: (st) =>
+                num(st.maxLevel) > num(st.lowLevel)
+                  ? `${fmt(num(st.maxLevel) - num(st.lowLevel))} ${st.unit ?? ""}`
+                  : DASH,
+              hint: "ส่วนต่างระหว่าง Max กับ Min",
             },
           ],
         },
 
-        /* ---- Policy: which warehouses may hold this at all ----
+        /* ---- Which warehouses may hold this at all ----
 
-           Separate grid from the balances below, because they answer
-           different questions. This one can be filled in before a single
-           unit exists, which is what a purchase order needs in order to
-           know where to deliver. */
+           Opens with every warehouse ticked and the exceptions taken out,
+           because "everywhere except the two that cannot" is what is true of
+           almost every product — and an empty list means the item cannot be
+           received anywhere, which is a worse default to leave lying around.
+
+           No reorder point or max per warehouse: they are the same two
+           numbers as the card above, asked a second time. A product that
+           genuinely needs different levels per store is a product with a
+           different reorder rule per store, and that is not what this list
+           is for. */
         {
           type: "grid",
           path: "warehouses",
           label: "คลังที่เก็บสินค้านี้ได้",
           addLabel: "เพิ่มคลัง",
           empty: "ยังไม่ได้กำหนดคลัง — สินค้าจะยังรับเข้าไม่ได้",
-          hint: "จุดสั่งซื้อรายคลังใช้แทนค่าตั้งต้นด้านบน · คลังบริการกับคลังหลักไม่ควรใช้ตัวเลขเดียวกัน",
+          hint: "ขึ้นทุกคลังไว้ก่อน ลบคลังที่เก็บสินค้านี้ไม่ได้ออก · Min/Max ใช้ค่าเดียวกันทุกคลัง ตามที่ตั้งไว้ด้านบน",
           cols: [
             { key: "wh", label: "Warehouse", type: "select", options: whOptions(), required: true },
             { key: "bin", label: "Default Bin", type: "text", placeholder: "A-01-02" },
-            { key: "rop", label: "Reorder Point", type: "number", align: "right" },
-            { key: "maxQty", label: "Max Qty", type: "number", align: "right" },
             {
               key: "warn",
               label: "เงื่อนไขการเก็บ",
@@ -642,7 +688,8 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
               /* Both facts already exist — the product states a storage
                  condition and the warehouse states a temperature. Nothing
                  compared them, so a 2–8 °C item could be assigned to an
-                 ambient store and only the box would know. */
+                 ambient store and only the box would know. Kept because it
+                 is the one thing this row can be WRONG about. */
               get: (r) => storageWarning(String(s.cls?.storage ?? ""), String(r.wh ?? "")) || "—",
             },
             { key: "defaultReceiving", label: "รับเข้า", type: "radio", align: "right", width: "80px" },
@@ -650,23 +697,12 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
           ],
         },
 
-        /* ---- Balances: what is actually there ---- */
-        {
-          type: "grid",
-          path: "stocks",
-          label: "ยอดคงเหลือตามคลัง",
-          addLabel: "เพิ่มยอดคงเหลือ",
-          empty: "ยังไม่มียอดคงเหลือ",
-          hint: "ยอดจริงมาจากการรับเข้า-จ่ายออก แก้ที่นี่เฉพาะตอนตั้งต้นระบบ",
-          cols: [
-            { key: "wh", label: "Warehouse", type: "select", options: whOptions(), required: true },
-            { key: "loc", label: "Location", type: "text", placeholder: "A-01-02" },
-            { key: "avail", label: "Available", type: "number", align: "right" },
-            { key: "res", label: "Reserved", type: "number", align: "right", muted: true },
-            { key: "lot", label: "Lot", type: "text" },
-            { key: "exp", label: "Expiry", type: "date" },
-          ],
-        },
+        /* No balances grid.
+
+           It asked somebody to type what the warehouse is holding, on the
+           screen that decides what the product IS. A balance is written by a
+           goods receipt and read on the stock card; typing one here made the
+           master disagree with the ledger the moment anything moved. */
       ],
     },
 
@@ -749,10 +785,19 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     { path: "brand", label: "Brand", step: "general" },
     { path: "unit", label: "Base Unit", step: "units" },
     { path: "pricing.currency", label: "Currency", step: "supply" },
-    { path: "lowLevel", label: "Reorder Point", step: "stock" },
+    { path: "lowLevel", label: "Min — จุดสั่งซื้อ", step: "stock" },
+    { path: "maxLevel", label: "Max — สั่งเติมถึง", step: "stock" },
   ],
 
   rules: [
+    {
+      /* Max at or below Min is not a stricter rule, it is a broken one: the
+         order quantity it implies is zero or negative, so the reorder never
+         buys anything and the item sits below Min for ever. */
+      label: "Max ต้องมากกว่า Min — ไม่งั้นสั่งซื้อแล้วได้ศูนย์",
+      step: "stock",
+      test: (s) => !num(s.maxLevel) || num(s.maxLevel) > num(s.lowLevel),
+    },
     {
       label: "รหัสสินค้าต้องไม่ซ้ำกับสินค้าที่มีอยู่",
       step: "general",
@@ -938,6 +983,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       dim: String(s.dim ?? ""),
       demoAllowed: Boolean(s.demoAllowed),
       lowLevel: num(s.lowLevel),
+      maxLevel: num(s.maxLevel),
       status: String(s.status ?? "Draft"),
       desc: String(s.desc ?? ""),
       supplier: String(s.supplier ?? ""),

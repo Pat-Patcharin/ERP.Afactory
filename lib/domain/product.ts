@@ -225,6 +225,10 @@ export function decorateProducts() {
   for (const p of PRODUCTS) {
     ensureWarehousePolicy(p);
     const d = detailFor(p);
+    /* The reorder point on the detail table is READ from the policy, never
+       carried beside it. A seeded payload seeded its own copy, and the two
+       parted company the moment the rule they both describe changed. */
+    for (const row of d.whRows) row.rop = warehouseRop(p, row.wh);
     p.detail = d;
     p.onHandTotal = d.whRows.reduce((s, r) => s + r.onHand, 0) || p.onHand;
     p.resTotal = d.whRows.reduce((s, r) => s + r.res, 0);
@@ -323,9 +327,18 @@ export const productWarehouses = (p: Product) =>
  * that has never held one. The product's company-wide figure applies only
  * where no policy row exists at all.
  */
+/**
+ * The reorder point in force at one warehouse.
+ *
+ * A row's own figure when it has one, the product's Min otherwise. Zero on a
+ * row now means "use the product's rule" rather than "never reorder here":
+ * the product form stopped asking for a per-warehouse level, so a zero is an
+ * unanswered question rather than an answer. Rows that carry a real figure —
+ * the seeded ones — still win.
+ */
 export function warehouseRop(p: Product, wh: string): number {
   const row = (p.warehouses ?? []).find((w) => w.wh === wh);
-  return row ? row.rop : p.lowLevel;
+  return row && row.rop > 0 ? row.rop : p.lowLevel;
 }
 
 /** Where goods land by default, or the first warehouse cleared to hold them. */
@@ -477,7 +490,10 @@ export function productStock(code: string) {
   const rop = p.lowLevel ?? 0;
   const available = onHand - reserved;
   const projected = available - backOrder + onOrder;
-  const target = Math.round(rop * 1.5);
+  /* The level a reorder tops back up to. `maxLevel` is what somebody
+     decided; the 1.5× is what the form used to guess before there was
+     anywhere to type it, kept only for records that predate the field. */
+  const target = p.maxLevel > 0 ? p.maxLevel : Math.round(rop * 1.5);
   const suggested = Math.max(0, target - projected);
 
   const { status, tone } =
