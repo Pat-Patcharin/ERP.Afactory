@@ -10,9 +10,9 @@ import {
   type ProductRow,
 } from "@/lib/domain/product";
 import { WAREHOUSES } from "@/lib/domain/warehouse";
-import { supplierOffers, vendorPartner } from "@/lib/domain/partner";
+import { BUSINESS_PARTNERS, isSupplierRole, supplierOffers } from "@/lib/domain/partner";
 import { catalogPrice } from "@/lib/domain/pricing";
-import { money, stamp, isoToDmy, dmyToIso } from "@/lib/format";
+import { DASH, money, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
 import type { FormSchema, FormState, GridRow } from "@/lib/types";
 import { FORM_USER, ReviewCard, isCreate, opts, saved } from "./common";
@@ -53,29 +53,69 @@ const NAME_LANG = [
  * way in, so every cell is a plain string the grid can show without a
  * per-column renderer.
  */
+/* ============================================================
+   THE SUPPLIER LIST
+
+   One row per supplier of this product, main and alternative
+   alike. Each row IS the `supplierItems` row on that partner —
+   read from it on the way in, written back to it on save — so
+   the product master and the Business Partner screen cannot say
+   different things about the same MOQ.
+   ============================================================ */
+
 /**
- * The offer from the supplier this product names, if that supplier has quoted.
+ * Suppliers that may be offered, by CODE.
  *
- * Matched through `vendorPartner` rather than on the name string: the product
- * carries a vendor NAME and the offer carries a partner CODE, and comparing
- * the two spellings is the join that used to come back empty.
+ * The code and not the name: a name is spelled three ways across a seed and
+ * matching on one is what left purchase history unable to find its own
+ * supplier. The name is beside it, computed, so nobody has to recognise
+ * BP000121 by sight.
  */
-const mainOffer = (s: FormState) => {
-  const code = vendorPartner(String(s.supplier ?? ""))?.code;
-  if (!code) return null;
-  return supplierOffers(String(s.code ?? "")).find((o) => o.partner === code) ?? null;
+const supplierCodes = () => BUSINESS_PARTNERS.filter(isSupplierRole).map((bp) => bp.code);
+
+const supplierNameOf = (code: string) => {
+  const bp = BUSINESS_PARTNERS.find((b) => b.code === code);
+  return bp ? bp.nameTh || bp.nameEn : "";
 };
 
-const costRows = (code: string, baseUnit: string): GridRow[] =>
-  supplierOffers(code).map((o) => ({
-    partnerName: o.preferred ? `${o.partnerName} · ผู้ขายหลัก` : o.partnerName,
-    sku: o.sku || "—",
-    conv: conversionText(baseUnit, o.punit, o.punitFactor),
-    price: `${money(o.price)} ${o.currency}`,
-    costPerBase: money(o.costPerBase),
-    moqText: o.moq > 0 ? `${o.moq} ${o.punit}` : "—",
-    leadText: o.lead > 0 ? `${o.lead} วัน` : "—",
-  }));
+/**
+ * The price in the unit the warehouse counts.
+ *
+ * The only figure that compares across suppliers: one quotes by the Carton of
+ * 24 and the next by the Tube, and the two per-purchase-unit prices are not
+ * the same measurement.
+ */
+const rowCostPerBase = (r: { price?: unknown; punitFactor?: unknown }) => {
+  const factor = num(r.punitFactor) > 0 ? num(r.punitFactor) : 1;
+  return Math.round((num(r.price) / factor) * 100) / 100;
+};
+
+/** The ticked row, or the only row when nobody has ticked one yet. */
+const mainRow = (s: FormState): GridRow | null => {
+  const rows = (s.suppliers ?? []) as GridRow[];
+  return rows.find((r) => r.main) ?? (rows.length === 1 ? rows[0] : null);
+};
+
+/** The partner rows for this product, flattened into the grid's shape. */
+const supplierRows = (code: string): GridRow[] =>
+  supplierOffers(code).map((o) => {
+    const bp = BUSINESS_PARTNERS.find((b) => b.code === o.partner);
+    const row = (bp?.supplierItems ?? []).find((i) => i.product === code);
+    return {
+      main: o.preferred,
+      supplierCode: o.partner,
+      supplierName: o.partnerName,
+      sku: o.sku,
+      punit: o.punit,
+      punitFactor: o.punitFactor,
+      price: o.price,
+      moq: o.moq,
+      lead: o.lead,
+      warranty: row?.warranty ?? "",
+      country: row?.country ?? "",
+      status: o.status || "Active",
+    };
+  });
 
 export const PRODUCT_FORM: FormSchema<ProductRow> = {
   key: "product",
@@ -112,8 +152,8 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       vat: "VAT 7% (exclusive)",
     },
     lowLevel: 0,
-    /* Read-only: the supplier's own row is edited on the partner. */
-    offers: [],
+    /* One row per supplier of this product — see the note on the section. */
+    suppliers: [],
     warehouses: [],
     stocks: [],
     supplier: "",
@@ -168,7 +208,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         vat: p.pricing.vat,
       },
       lowLevel: p.lowLevel,
-      offers: costRows(p.code, p.unit),
+      suppliers: supplierRows(p.code),
       warehouses: (p.warehouses ?? []).map((w) => ({ ...w })),
       stocks: p.stocks.map((s) => ({ ...s, exp: dmyToIso(s.exp) })),
       supplier: p.supplier,
@@ -409,44 +449,25 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       railLabel: "ต้นทุนและผู้ขาย",
       labelTh: "ผู้ขายหลักและต้นทุนที่ตกลงไว้",
       blocks: (s) => {
-        const offers = supplierOffers(String(s.code ?? ""));
         const baseUnit = String(s.unit || "หน่วยหลัก");
-        const main = mainOffer(s);
 
         return [
-          /* Only what this form actually decides about the supplier: which
-             one is the default, and the two terms that belong to the product
-             rather than to any one vendor's quote. */
-          {
-            type: "card",
-            title: "Main Supplier",
-            cols: "3",
-            fields: [
-              {
-                type: "select",
-                path: "supplier",
-                label: "Supplier",
-                options: opts(OPT.supplier),
-                hint: "ผู้ขายหลัก — ใช้เป็นค่าตั้งต้นตอนเปิดใบสั่งซื้อ",
-              },
-              {
-                type: "text",
-                path: "sup.warranty",
-                label: "Supplier Warranty",
-                placeholder: "12 เดือน",
-              },
-              {
-                type: "select",
-                path: "sup.country",
-                label: "Country",
-                options: opts(OPT.country),
-              },
-            ],
-          },
+          /* ---- ONE FRAME, ONE ROW PER SUPPLIER ----
 
+             The main supplier and the alternatives are the same thing filled
+             in the same way, so they are one list with a tick rather than a
+             card and a table that ask for different fields. Whoever is ticked
+             is the default on a purchase order; everybody else is a second
+             source, on identical terms.
+
+             What is edited here is the supplier item on the PARTNER, not a
+             copy of it — the product master is the door, the partner is the
+             room. Two doors, one set of numbers: change the MOQ here and the
+             Business Partner screen shows the change, because it is the same
+             row. */
           {
             type: "card",
-            title: "ต้นทุนจากผู้ขายหลัก",
+            title: "ผู้ขายและต้นทุน",
             cols: "3",
             fields: [
               {
@@ -459,40 +480,97 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
               { type: "select", path: "pricing.vat", label: "VAT", options: opts(OPT.vat) },
               {
                 type: "secure",
-                as: "number",
+                as: "static",
                 permission: "canViewCost",
-                path: "pricing.supplierCost",
                 label: `ต้นทุนที่ตกลงไว้ / ${baseUnit}`,
-                min: 0,
-                step: "0.01",
-                hint: main
-                  ? `ตั้งต้นจากราคาที่ ${main.partnerName} เสนอไว้ — คงที่จนกว่าจะเจรจาใหม่`
-                  : "ราคาที่ตกลงกับผู้ขายหลัก คงที่จนกว่าจะเจรจาใหม่ · ต้นทุนจริงมาจากใบรับสินค้า",
+                /* Read, not typed: it IS the ticked supplier's price converted
+                   to the stock unit. Typing a second figure beside the row it
+                   comes from is how the two start disagreeing. */
+                value: (st) => {
+                  const row = mainRow(st);
+                  return row
+                    ? `${money(rowCostPerBase(row))} / ${baseUnit} · ${row.supplierName || row.supplierCode}`
+                    : "ยังไม่ได้ติ๊กผู้ขายหลัก";
+                },
+                hint: "มาจากผู้ขายที่ติ๊กว่าเป็นผู้ขายหลัก · ต้นทุนจริงมาจากใบรับสินค้า",
               },
-            ],
-          },
-
-          /* ---- One row per supplier, every price in the same unit ---- */
-          {
-            type: "grid",
-            path: "offers",
-            readonly: true,
-            label: `ต้นทุนตามผู้ขาย (${offers.length})`,
-            empty: "ยังไม่มีผู้ขายรายใดเสนอราคาสินค้านี้",
-            hint: `ผู้ขายแต่ละรายเสนอราคาในหน่วยของตัวเอง คอลัมน์ "ต้นทุนต่อ ${baseUnit}" แปลงกลับให้แล้ว จึงเป็นช่องเดียวที่เทียบข้ามผู้ขายได้ · แก้ที่ Business Partner → Supplier Items`,
-            cols: [
-              { key: "partnerName", label: "Supplier", type: "static" },
-              { key: "sku", label: "Vendor Code", type: "static", muted: true },
-              { key: "conv", label: "Purchase Unit", type: "static" },
-              { key: "price", label: "ราคาต่อหน่วยซื้อ", type: "static", align: "right" },
               {
-                key: "costPerBase",
-                label: `ต้นทุนต่อ ${baseUnit}`,
-                type: "static",
-                align: "right",
+                type: "grid",
+                path: "suppliers",
+                label: "รายชื่อผู้ขายสินค้านี้",
+                addLabel: "เพิ่มผู้ขายทางเลือก",
+                empty: "ยังไม่มีผู้ขายสินค้านี้ — เพิ่มอย่างน้อย 1 ราย แล้วติ๊กว่าเป็นผู้ขายหลัก",
+                layout: "stacked",
+                rowLabel: "ผู้ขาย",
+                span: true,
+                hint: `ติ๊ก "ผู้ขายหลัก" ได้รายเดียว ที่เหลือคือผู้ขายทางเลือก · ผู้ขายแต่ละรายเสนอราคาในหน่วยของตัวเอง ช่อง "ต้นทุนต่อ ${baseUnit}" แปลงกลับให้แล้ว จึงเป็นช่องเดียวที่เทียบข้ามผู้ขายได้`,
+                cols: [
+                  {
+                    key: "main",
+                    label: "ผู้ขายหลัก",
+                    type: "radio",
+                    align: "right",
+                    width: "110px",
+                  },
+                  {
+                    key: "supplierCode",
+                    label: "Supplier Code",
+                    type: "select",
+                    options: supplierCodes(),
+                    required: true,
+                    width: "150px",
+                  },
+                  {
+                    key: "supplierName",
+                    label: "Supplier Name",
+                    type: "computed",
+                    muted: true,
+                    width: "200px",
+                    get: (r) => supplierNameOf(String(r.supplierCode ?? "")) || DASH,
+                  },
+                  { key: "sku", label: "Vendor Code", type: "text", width: "140px" },
+                  { key: "punit", label: "Purchase Unit", type: "text", width: "120px" },
+                  {
+                    key: "punitFactor",
+                    label: `${baseUnit} ต่อ 1 หน่วยซื้อ`,
+                    type: "number",
+                    align: "right",
+                    width: "150px",
+                  },
+                  {
+                    key: "price",
+                    label: "ราคาต่อหน่วยซื้อ",
+                    type: "number",
+                    align: "right",
+                    width: "130px",
+                  },
+                  {
+                    key: "costPerBase",
+                    label: `ต้นทุนต่อ ${baseUnit}`,
+                    type: "computed",
+                    align: "right",
+                    width: "130px",
+                    get: (r) => money(rowCostPerBase(r)),
+                  },
+                  { key: "moq", label: "MOQ (หน่วยซื้อ)", type: "number", align: "right", width: "130px" },
+                  { key: "lead", label: "Lead Time (วัน)", type: "number", align: "right", width: "130px" },
+                  { key: "warranty", label: "Supplier Warranty", type: "text", width: "140px" },
+                  {
+                    key: "country",
+                    label: "Country",
+                    type: "select",
+                    options: [...OPT.country],
+                    width: "140px",
+                  },
+                  {
+                    key: "status",
+                    label: "Status",
+                    type: "select",
+                    options: ["Active", "Inactive"],
+                    width: "120px",
+                  },
+                ],
               },
-              { key: "moqText", label: "MOQ", type: "static", align: "right", muted: true },
-              { key: "leadText", label: "Lead Time", type: "static", align: "right", muted: true },
             ],
           },
 
@@ -709,28 +787,28 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       s.name = productName(s);
     }
 
-    /*
-       Picking the supplier fills in what that supplier quoted, if they have
-       quoted — the point of asking who supplies it before asking what it
-       costs. Only into an empty box, so a negotiated figure is never
-       overwritten by the standing offer, and the currency comes with it: a
-       price without the currency it was quoted in is a wrong number, not a
-       partial one.
-    */
-    if (path === "supplier" && !num(s.pricing?.supplierCost)) {
-      const offer = mainOffer(s);
-      if (offer?.costPerBase) {
-        s.pricing = {
-          ...(s.pricing ?? {}),
-          supplierCost: offer.costPerBase,
-          currency: offer.currency || s.pricing?.currency || "THB",
-        };
-      }
-    }
+    /* No supplier prefill any more. It filled a cost box from the standing
+       offer; the cost box IS the standing offer now — one row, typed once. */
   },
 
   newRow: (path, isFirst) => {
     switch (path) {
+      case "suppliers":
+        /* The first supplier a product gets is its main one — there is
+           nothing else for it to be. Ticking a later row moves it. */
+        return {
+          main: isFirst,
+          supplierCode: "",
+          sku: "",
+          punit: "",
+          punitFactor: 1,
+          price: 0,
+          moq: 0,
+          lead: 0,
+          warranty: "",
+          country: "ประเทศไทย",
+          status: "Active",
+        };
       case "units":
         return { unit: "", type: SALES_UNIT, factor: 1, barcode: "", active: true };
       case "stocks":
@@ -939,6 +1017,77 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         ],
       };
       PRODUCTS.push(fresh as ProductRow);
+    }
+
+    /* ---- The supplier list goes back where it came from ----
+
+       Each row is a `supplierItems` row on a partner, so saving writes it
+       there rather than onto the product: one set of numbers, reachable from
+       two screens. A supplier dropped from the list loses its row for THIS
+       product only — everything else that partner supplies is untouched. */
+    const supplierRowsIn = ((s.suppliers ?? []) as GridRow[]).filter((r) =>
+      String(r.supplierCode ?? "").trim(),
+    );
+    const listed = new Set(supplierRowsIn.map((r) => String(r.supplierCode).trim()));
+    const prodName = String(s.name ?? "").trim() || code;
+
+    for (const bp of BUSINESS_PARTNERS) {
+      bp.supplierItems ??= [];
+      const held = bp.supplierItems.findIndex((i) => i.product === code);
+
+      if (!listed.has(bp.code)) {
+        /* Was a supplier of this product and is not on the list any more. */
+        if (held > -1) bp.supplierItems.splice(held, 1);
+        continue;
+      }
+
+      const row = supplierRowsIn.find((r) => String(r.supplierCode).trim() === bp.code)!;
+      const patch = {
+        product: code,
+        productName: prodName,
+        sku: String(row.sku ?? ""),
+        supName: bp.nameTh || bp.nameEn,
+        punit: String(row.punit ?? ""),
+        punitFactor: num(row.punitFactor) > 0 ? num(row.punitFactor) : 1,
+        moq: num(row.moq),
+        lead: num(row.lead),
+        currency: String(s.pricing?.currency ?? "THB"),
+        price: num(row.price),
+        preferred: Boolean(row.main),
+        status: String(row.status ?? "Active"),
+        warranty: String(row.warranty ?? ""),
+        country: String(row.country ?? ""),
+      };
+
+      if (held > -1) {
+        /* Kept: effective and expiry are the partner screen's to set, and an
+           edit made from the product side has no opinion about them. */
+        Object.assign(bp.supplierItems[held], patch);
+      } else {
+        bp.supplierItems.push({ ...patch, effective: "", expiry: "" });
+      }
+    }
+
+    /* The main row decides what the rest of the system calls "the supplier"
+       of this product, and what it costs. Derived here rather than typed
+       twice — see the read-only field on the form. */
+    const main = supplierRowsIn.find((r) => r.main) ?? supplierRowsIn[0];
+    const target = PRODUCTS.find((p) => p.code === code);
+    if (target) {
+      target.supplier = main ? supplierNameOf(String(main.supplierCode)) : "";
+      target.sup = {
+        ...target.sup,
+        code: main ? String(main.supplierCode) : "",
+        itemCode: main ? String(main.sku ?? "") : "",
+        punit: main ? String(main.punit ?? "") : "",
+        punitFactor: main && num(main.punitFactor) > 0 ? num(main.punitFactor) : 1,
+        moq: main ? String(num(main.moq)) : "",
+        lead: main ? String(num(main.lead)) : "",
+        lastPrice: main ? String(num(main.price)) : "",
+        warranty: main ? String(main.warranty ?? "") : "",
+        country: main ? String(main.country ?? "") : "",
+      };
+      target.pricing.supplierCost = main ? rowCostPerBase(main) : 0;
     }
 
     decorateProducts();

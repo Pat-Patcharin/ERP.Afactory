@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { MasterForm } from "@/components/engine/MasterForm";
 import { PRODUCT_FORM } from "@/schemas/forms/product";
 import { PRODUCTS, getProduct } from "@/lib/domain/product";
-import { supplierOffers, vendorPartner } from "@/lib/domain/partner";
+import { BUSINESS_PARTNERS, supplierOffers } from "@/lib/domain/partner";
 import { formStatus } from "@/lib/form";
 import { resetCurrentUser } from "@/lib/domain/admin";
 import type { FormBlock, FormField, FormState } from "@/lib/types";
@@ -209,139 +209,220 @@ describe("Product form — ต้นทุนและผู้ขายอย�
     expect(PRODUCT_FORM.steps.map((s) => s.key)).not.toContain("price");
   });
 
-  it("ไม่ถามซ้ำสิ่งที่ตารางผู้ขายบอกอยู่แล้ว", () => {
-    const supply = PRODUCT_FORM.steps.find((s) => s.key === "supply")!;
-    const paths = supply
+  /** The single supplier grid the section is built around. */
+  const supplierGrid = (state: FormState = PRODUCT_FORM.blank()): FormField => {
+    const supply = PRODUCT_FORM.steps.find((st) => st.key === "supply")!;
+    return supply
+      .blocks(state)
+      .filter((b): b is FormBlock => Boolean(b))
+      .flatMap((b) => ("fields" in b ? b.fields : [b]))
+      .filter((f): f is FormField => Boolean(f))
+      .find((f) => f.path === "suppliers")!;
+  };
+
+  it("ผู้ขายหลักกับผู้ขายทางเลือกอยู่ในกรอบเดียวกัน กรอกเหมือนกัน", () => {
+    /*
+       They used to be a card of three fields and a read-only table of seven
+       columns — the same subject asked for twice, in two shapes, and an
+       alternative supplier could not be given the terms the main one had.
+       One list, one set of fields, a tick to say which is which.
+    */
+    const cols = supplierGrid().cols!.map((c) => c.key);
+    for (const asked of [
+      "main",
+      "supplierCode",
+      "supplierName",
+      "moq",
+      "lead",
+      "price",
+      "warranty",
+      "country",
+    ]) {
+      expect(cols, asked).toContain(asked);
+    }
+
+    /* Exactly one tick decides the main supplier — a checkbox per row would
+       let two of them be the default. */
+    expect(supplierGrid().cols!.find((c) => c.key === "main")!.type).toBe("radio");
+  });
+
+  it("ไม่มีช่อง sup.* ค้างอยู่ข้างตารางให้ขัดกันเอง", () => {
+    const paths = PRODUCT_FORM.steps
+      .find((st) => st.key === "supply")!
       .blocks(PRODUCT_FORM.blank())
       .filter((b): b is FormBlock => Boolean(b))
       .flatMap((b) => ("fields" in b ? b.fields : [b]))
       .filter((f): f is FormField => Boolean(f))
       .map((f) => f.path);
 
-    /* Every one of these is a column of the table below. */
-    for (const gone of ["sup.code", "sup.itemCode", "sup.moq", "sup.lead", "sup.lastPrice"]) {
+    /* Every one of these is now a column of the one grid. A field beside it
+       would be a second copy of the same fact. */
+    for (const gone of [
+      "supplier",
+      "sup.code",
+      "sup.itemCode",
+      "sup.moq",
+      "sup.lead",
+      "sup.lastPrice",
+      "sup.warranty",
+      "sup.country",
+    ]) {
       expect(paths, gone).not.toContain(gone);
     }
-    /* What the form still decides: which supplier is the default, and the
-       two terms that belong to the product rather than to one quote. */
-    expect(paths).toContain("supplier");
-    expect(paths).toContain("sup.warranty");
   });
 
-  it("ตารางต้นทุนตามผู้ขายแก้ไม่ได้จากที่นี่", () => {
-    /* The rows belong to the partner. An Add button here would promise a
-       write that the next load discards. */
-    const supply = PRODUCT_FORM.steps.find((s) => s.key === "supply")!;
-    const grid = supply
-      .blocks(PRODUCT_FORM.blank())
-      .filter((b): b is FormBlock => Boolean(b))
-      .find((b) => "path" in b && b.path === "offers") as FormField;
-
-    expect(grid.readonly).toBe(true);
-  });
-
-  it("ถามผู้ขายก่อน แล้วค่อยถามต้นทุนของผู้ขายรายนั้น", () => {
-    const supply = PRODUCT_FORM.steps.find((s) => s.key === "supply")!;
-    const cards = supply
-      .blocks(PRODUCT_FORM.blank())
-      .filter((b): b is Extract<FormBlock, { type: "card" }> =>
-        Boolean(b) && (b as FormBlock).type === "card",
-      );
-
-    /* Currency, VAT and the agreed cost are all terms of one supplier's
-       quote, so the question "which supplier" cannot come second. */
-    expect(cards[0].fields.map((f) => f && f.path)).toContain("supplier");
-    expect(cards[1].fields.map((f) => f && f.path)).toEqual([
-      "pricing.currency",
-      "pricing.vat",
-      "pricing.supplierCost",
-    ]);
-  });
-
-  it("ไม่ถามต้นทุนที่ระบบเขียนเอง", () => {
-    /*
-       Latest Purchase Price comes from a goods receipt, Moving Average moves
-       with every exchange rate and every discount, and the lowest offer is a
-       row in the table below. None of the three is something a person states,
-       so none of them belongs on a form.
-    */
-    const supply = PRODUCT_FORM.steps.find((s) => s.key === "supply")!;
-    const fields = supply
+  it("ต้นทุนที่ตกลงไว้อ่านจากผู้ขายที่ติ๊ก ไม่ได้พิมพ์ซ้ำ", () => {
+    const paths = PRODUCT_FORM.steps
+      .find((st) => st.key === "supply")!
       .blocks(PRODUCT_FORM.blank())
       .filter((b): b is FormBlock => Boolean(b))
       .flatMap((b) => ("fields" in b ? b.fields : [b]))
-      .filter((f): f is FormField => Boolean(f));
+      .filter((f): f is FormField => Boolean(f))
+      .map((f) => f.path);
 
-    for (const gone of ["pricing.lastCost", "pricing.avgCost", "pricing.effective"]) {
-      expect(fields.map((f) => f.path), gone).not.toContain(gone);
-    }
-    for (const gone of ["Latest Purchase Price", "Moving Average Cost", "ต้นทุนต่ำสุดที่เสนอมา"]) {
-      expect(fields.map((f) => f.label), gone).not.toContain(gone);
+    /* It IS the ticked row's price converted to the stock unit. A box to
+       type it in beside that row is how the two start disagreeing. */
+    expect(paths).not.toContain("pricing.supplierCost");
+    expect(paths).toContain("pricing.currency");
+    expect(paths).toContain("pricing.vat");
+  });
+
+  it("ตารางผู้ขายแก้ได้จากที่นี่ และเขียนกลับไปที่คู่ค้า", () => {
+    /* The rows still belong to the partner — but the product master is now
+       a door into them rather than a window onto them. */
+    expect(supplierGrid().readonly).toBeFalsy();
+    expect(supplierGrid().addLabel).toBeTruthy();
+  });
+
+  it("ผู้ขายรายแรกที่เพิ่ม เป็นผู้ขายหลักโดยอัตโนมัติ", () => {
+    expect(PRODUCT_FORM.newRow!("suppliers", true)!.main).toBe(true);
+    expect(PRODUCT_FORM.newRow!("suppliers", false)!.main).toBe(false);
+  });
+
+  it("อ่านสินค้าเดิมมาแล้วได้ผู้ขายครบทุกราย พร้อมติ๊กผู้ขายหลัก", () => {
+    /* This replaced a prefill: choosing a supplier used to copy their quote
+       into a cost box beside the list. The list IS the quote now, so there is
+       nothing to copy — it is read straight off the partner's rows. */
+    const p = PRODUCTS.find((x) => supplierOffers(x.code).length > 0)!;
+    const rows = PRODUCT_FORM.toState(p).suppliers as {
+      supplierCode: string;
+      main: boolean;
+      moq: number;
+      lead: number;
+    }[];
+
+    const offers = supplierOffers(p.code);
+    expect(rows).toHaveLength(offers.length);
+    for (const o of offers) {
+      const row = rows.find((r) => r.supplierCode === o.partner)!;
+      expect(row, o.partner).toBeTruthy();
+      expect(row.moq).toBe(o.moq);
+      expect(row.lead).toBe(o.lead);
+      expect(row.main).toBe(o.preferred);
     }
   });
 
-  it("เลือกผู้ขายแล้วเติมราคาที่ผู้ขายรายนั้นเสนอไว้ให้", () => {
-    const p = getProduct("AA-TH003-WL")!;
-    const offer = supplierOffers(p.code).find(
-      (o) => o.partner === vendorPartner(p.supplier)?.code,
-    );
-    /* The seed has to have an offer from the named supplier for this to mean
-       anything — otherwise the test would pass on a form that does nothing. */
-    expect(offer?.costPerBase).toBeGreaterThan(0);
-
-    const s: FormState = { ...PRODUCT_FORM.blank(), code: p.code, supplier: p.supplier };
-    PRODUCT_FORM.onChange!("supplier", s);
-    expect(s.pricing.supplierCost).toBe(offer!.costPerBase);
-    expect(s.pricing.currency).toBe(offer!.currency);
-
-    /* A negotiated figure is not overwritten by the standing offer. */
-    const typed: FormState = {
-      ...PRODUCT_FORM.blank(),
-      code: p.code,
-      supplier: p.supplier,
-      pricing: { ...PRODUCT_FORM.blank().pricing, supplierCost: 12.5 },
-    };
-    PRODUCT_FORM.onChange!("supplier", typed);
-    expect(typed.pricing.supplierCost).toBe(12.5);
-  });
-
-  it("บันทึกต้นทุนที่ตกลงไว้ โดยไม่แตะต้นทุนที่มาจากใบรับสินค้า", () => {
-    const code = "ZZ-COST-01";
+  it("บันทึกแล้วเขียนกลับไปที่คู่ค้า ไม่ได้เก็บสำเนาไว้บนสินค้า", () => {
+    const code = "ZZ-SUP-01";
     const ctx = { goto: () => {}, toast: () => {}, refresh: () => {} } as never;
+    const bp = BUSINESS_PARTNERS.find((b) => b.roles?.supplier)!;
+    const alt = BUSINESS_PARTNERS.filter((b) => b.roles?.supplier && b.code !== bp.code)[0]!;
 
     PRODUCT_FORM.save(
       {
         ...PRODUCT_FORM.blank(),
         code,
-        nameTh: "สินค้าทดสอบต้นทุน",
+        nameTh: "สินค้าทดสอบผู้ขาย",
         nameLang: "th",
         cat: "Dental Consumable",
         brand: "A-FLEX",
         unit: "Tube",
-        pricing: { currency: "THB", vat: "VAT 7% (exclusive)", supplierCost: "88.5" },
+        pricing: { currency: "THB", vat: "VAT 7% (exclusive)" },
+        suppliers: [
+          {
+            main: true,
+            supplierCode: bp.code,
+            sku: "V-001",
+            punit: "Carton",
+            punitFactor: 24,
+            price: 2400,
+            moq: 5,
+            lead: 14,
+            warranty: "12 เดือน",
+            country: "ประเทศไทย",
+            status: "Active",
+          },
+          {
+            main: false,
+            supplierCode: alt.code,
+            sku: "V-002",
+            punit: "Tube",
+            punitFactor: 1,
+            price: 105,
+            moq: 20,
+            lead: 30,
+            warranty: "6 เดือน",
+            country: "ประเทศจีน",
+            status: "Active",
+          },
+        ],
       },
       ctx,
     );
 
+    /* The row lands on the PARTNER — one copy, reachable from two screens. */
+    const mainRow = bp.supplierItems!.find((i) => i.product === code)!;
+    expect(mainRow.moq).toBe(5);
+    expect(mainRow.lead).toBe(14);
+    expect(mainRow.warranty).toBe("12 เดือน");
+    expect(mainRow.preferred).toBe(true);
+
+    const altRow = alt.supplierItems!.find((i) => i.product === code)!;
+    expect(altRow.preferred, "ผู้ขายทางเลือกไม่ใช่ผู้ขายหลัก").toBe(false);
+    expect(altRow.moq).toBe(20);
+    expect(altRow.country).toBe("ประเทศจีน");
+
     const fresh = PRODUCTS.find((r) => r.code === code)!;
-    expect(fresh.pricing.supplierCost).toBe(88.5);
+    /* The agreed cost is the ticked row's price in the STOCK unit: a carton
+       of 24 at 2,400 is 100 a tube, which is the only figure that compares
+       with the alternative's 105. */
+    expect(fresh.pricing.supplierCost).toBe(100);
+    expect(fresh.supplier).toBe(bp.nameTh || bp.nameEn);
     /* Nothing has been received, so there is no purchase price to state. */
     expect(fresh.pricing.lastCost).toBe(0);
     expect(fresh.pricing.avgCost).toBe(0);
 
-    /* And a product that HAS been received keeps its receipt figures when the
-       agreed cost is edited. */
-    const existing = getProduct("AA-TH003-WL")!;
-    const { lastCost, avgCost } = existing.pricing;
+    /* Reading it back gives both suppliers, with the tick where it was. */
+    const back = PRODUCT_FORM.toState(fresh).suppliers as { supplierCode: string; main: boolean }[];
+    expect(back).toHaveLength(2);
+    expect(back.filter((r) => r.main)).toHaveLength(1);
+    expect(back.find((r) => r.main)!.supplierCode).toBe(bp.code);
+
+    /* Dropping a supplier takes its row for THIS product and nothing else. */
+    const otherProducts = alt.supplierItems!.filter((i) => i.product !== code).length;
     PRODUCT_FORM.save(
-      { ...PRODUCT_FORM.toState(existing), pricing: { ...PRODUCT_FORM.toState(existing).pricing, supplierCost: 99 } },
+      {
+        ...PRODUCT_FORM.toState(fresh),
+        suppliers: [(PRODUCT_FORM.toState(fresh).suppliers as unknown[])[0]],
+      },
       ctx,
     );
-    expect(existing.pricing.supplierCost).toBe(99);
-    expect(existing.pricing.lastCost).toBe(lastCost);
-    expect(existing.pricing.avgCost).toBe(avgCost);
+    expect(alt.supplierItems!.some((i) => i.product === code)).toBe(false);
+    expect(alt.supplierItems!.length).toBe(otherProducts);
 
     PRODUCTS.splice(PRODUCTS.indexOf(fresh), 1);
+    bp.supplierItems = bp.supplierItems!.filter((i) => i.product !== code);
+  });
+
+  it("ต้นทุนที่มาจากใบรับสินค้าไม่ถูกแตะ", () => {
+    const ctx = { goto: () => {}, toast: () => {}, refresh: () => {} } as never;
+    const existing = getProduct("AA-TH003-WL")!;
+    const { lastCost, avgCost } = existing.pricing;
+
+    PRODUCT_FORM.save(PRODUCT_FORM.toState(existing), ctx);
+
+    expect(existing.pricing.lastCost).toBe(lastCost);
+    expect(existing.pricing.avgCost).toBe(avgCost);
   });
 
   it("ไม่มีตารางผู้ขายสำรองที่พิมพ์แล้วหาย", () => {

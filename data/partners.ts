@@ -175,6 +175,17 @@ export interface BpSupplierItem {
   status: string;
   effective: string;
   expiry: string;
+  /**
+   * Terms that belong to (this supplier × this product), not to either alone.
+   *
+   * Warranty is negotiated per vendor — the same item carries twelve months
+   * from one and six from another — and the country is where THAT vendor
+   * ships it from, which decides the lead time beside it. They used to sit on
+   * the product as a single pair, which could only ever describe one supplier
+   * of it.
+   */
+  warranty?: string;
+  country?: string;
 }
 
 export interface BusinessPartner {
