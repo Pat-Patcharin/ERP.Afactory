@@ -226,7 +226,6 @@ describe("Dashboard — my pending tasks", () => {
       "QC รอตรวจสอบ",
       "Shipment รอจัดส่ง",
       "Cycle Count รอตรวจนับ",
-      "Supplier Claim รอดำเนินการ",
       "Sales Return รออนุมัติ",
       "Credit Note รออนุมัติ",
       "Supplier Invoice รออนุมัติ",
@@ -263,8 +262,12 @@ describe("Dashboard — my pending tasks", () => {
     render(<DashboardPage />);
     const list = screen.getByTestId("dash-task-list");
 
+    /* The QC queue now opens the Goods Receipt, which is where the
+       inspection is decided from — QC Inspection is hidden from the sidebar,
+       and a row that led to a Coming Soon page would be a dead end carrying
+       a real count. */
     await user.click(within(list).getByText("QC รอตรวจสอบ").closest("button")!);
-    expect(routerPush).toHaveBeenCalledWith(pageHref("QC Inspection"));
+    expect(routerPush).toHaveBeenCalledWith(pageHref("Goods Receipt"));
   });
 });
 
@@ -360,17 +363,16 @@ describe("Dashboard — the task box follows the chair", () => {
 /* ---------- Section 4 ---------- */
 
 describe("Dashboard — business alerts", () => {
-  it("renders the eight alerts the spec lists", () => {
+  it("renders the seven alerts the spec lists", () => {
     render(<DashboardPage />);
     const list = screen.getByTestId("dash-alert-list");
-    expect(within(list).getAllByRole("listitem")).toHaveLength(8);
+    expect(within(list).getAllByRole("listitem")).toHaveLength(7);
 
     for (const title of [
       "สินค้าคงเหลือต่ำกว่าจุดสั่งซื้อ",
       "สินค้าใกล้หมดอายุ",
       "QC ไม่ผ่านการตรวจสอบ",
       "การจัดส่งล่าช้า",
-      "Supplier Claim รอปิดเรื่อง",
       "ผลนับสต๊อกมีผลต่าง",
       "สต๊อกถูกกันไว้ (QC / Return Hold)",
       "ปรับปรุงยอดมูลค่าสูง",
@@ -407,7 +409,7 @@ describe("Dashboard — business alerts", () => {
 /* ---------- Sections 5–6 ---------- */
 
 describe("Dashboard — purchase overview", () => {
-  it("renders the five purchase documents with count, today and pending", () => {
+  it("renders the four purchase documents with count, today and pending", () => {
     render(<DashboardPage />);
     const card = screen.getByTestId("dash-purchase-rows");
 
@@ -419,14 +421,15 @@ describe("Dashboard — purchase overview", () => {
       "Purchase Order",
       "Goods Receipt",
       "QC Inspection",
-      "Supplier Claim",
     ]) {
       expect(within(card).getByText(label)).toBeInTheDocument();
     }
+    /* Hidden from the sidebar, so nothing here may lead to it. */
+    expect(within(card).queryByText("Supplier Claim")).toBeNull();
     /* Put Away left the inbound chain — receiving ends at the goods
        receipt, so there is no queue behind a row for it. */
     expect(within(card).queryByText("Put Away")).toBeNull();
-    expect(within(card).getAllByRole("button")).toHaveLength(5);
+    expect(within(card).getAllByRole("button")).toHaveLength(4);
   });
 
   it("counts no more pending than total on any row", () => {
@@ -439,7 +442,7 @@ describe("Dashboard — purchase overview", () => {
   it("shows a progress bar on every row", () => {
     render(<DashboardPage />);
     const card = screen.getByTestId("dash-purchase-rows");
-    expect(card.querySelectorAll(".rounded-pill.bg-neutral-soft")).toHaveLength(5);
+    expect(card.querySelectorAll(".rounded-pill.bg-neutral-soft")).toHaveLength(4);
   });
 });
 
@@ -855,6 +858,9 @@ describe("Dashboard — read model", () => {
 
   it("marks the queues that belong to unbuilt modules", () => {
     const future = dashPendingTasks().filter((t) => t.future).map((t) => t.key);
-    expect(future.sort()).toEqual(["claim", "supplierInvoice"]);
+    /* Supplier Claim was one of these and is now hidden entirely — a queue
+       for an unbuilt module is worth showing; one for a module that has been
+       taken off the sidebar is not. */
+    expect(future.sort()).toEqual(["supplierInvoice"]);
   });
 });

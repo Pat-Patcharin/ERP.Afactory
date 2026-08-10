@@ -581,7 +581,8 @@ export function dashPendingTasks(): DashTask[] {
       title: "QC รอตรวจสอบ",
       count: QC_INSPECTIONS.filter((q) => q.status === "Waiting" || q.status === "Hold").length,
       priority: "Critical",
-      goto: "QC Inspection",
+      /* Hidden module: the work is done from the receipt. */
+      goto: "Goods Receipt",
       tone: "danger",
       needs: { module: "qc-inspection", action: "edit" },
     },
@@ -612,17 +613,8 @@ export function dashPendingTasks(): DashTask[] {
       tone: "info",
       needs: { module: "cycle-count", action: "approve" },
     },
-    {
-      key: "claim",
-      icon: "shield",
-      title: "Supplier Claim รอดำเนินการ",
-      count: FUTURE_QUEUES.supplierClaim,
-      priority: "Medium",
-      goto: "Supplier Claim",
-      tone: "info",
-      future: true,
-      needs: { module: "purchase-order", action: "create" },
-    },
+    /* No Supplier Claim queue — the module is hidden and not built, so the
+       tile was an entry point to a Coming Soon page carrying a made-up count. */
     {
       key: "return",
       icon: "return",
@@ -714,7 +706,8 @@ export function dashAlerts(): DashAlert[] {
       count: QC_INSPECTIONS.filter((q) => q.result === "Fail" || q.result === "Partial Pass").length,
       unit: "ใบ",
       severity: "Critical",
-      goto: "QC Inspection",
+      /* Hidden module: the work is done from the receipt. */
+      goto: "Goods Receipt",
       tone: "danger",
     },
     {
@@ -726,16 +719,6 @@ export function dashAlerts(): DashAlert[] {
       severity: "Critical",
       goto: "Shipment",
       tone: "danger",
-    },
-    {
-      key: "supplierClaim",
-      icon: "shield",
-      title: "Supplier Claim รอปิดเรื่อง",
-      count: FUTURE_QUEUES.supplierClaim,
-      unit: "เรื่อง",
-      severity: "Medium",
-      goto: "Supplier Claim",
-      tone: "info",
     },
     {
       key: "countVariance",
@@ -826,17 +809,9 @@ export function dashPurchaseOverview(): DashOverviewRow[] {
     row("pr", "Purchase Request", "purchaseRequest", PURCHASE_REQUESTS, OPEN_PR, (r) => r.updated, "Purchase Request", "info"),
     row("po", "Purchase Order", "purchaseOrder", PURCHASE_ORDERS, OPEN_PO, (r) => r.updated, "Purchase Order", "info"),
     row("gr", "Goods Receipt", "goodsReceipt", GOODS_RECEIPTS, OPEN_GR, (r) => r.updated, "Goods Receipt", "success"),
-    row("qc", "QC Inspection", "qc", QC_INSPECTIONS, ["Waiting", "In Progress", "Hold"], (r) => r.updated, "QC Inspection", "danger"),
-    {
-      key: "claim",
-      label: "Supplier Claim",
-      icon: "shield",
-      total: FUTURE_QUEUES.supplierClaim,
-      today: 0,
-      pending: FUTURE_QUEUES.supplierClaim,
-      goto: "Supplier Claim",
-      tone: "warning",
-    },
+    row("qc", "QC Inspection", "qc", QC_INSPECTIONS, ["Waiting", "In Progress", "Hold"], (r) => r.updated, "Goods Receipt", "danger"),
+    /* No Supplier Claim row — hidden module, and the count behind it was a
+       declared figure rather than anything the system holds. */
   ];
 }
 
@@ -870,7 +845,7 @@ export function dashInventoryOverview(): DashInventoryStat[] {
     { key: "value", label: "Inventory Value", icon: "pricing", value: compactBaht(snap.value), unit: "", goto: "Stock Inquiry", tone: "success" },
     { key: "available", label: "Available Qty", icon: "checkCircle", value: fmtInt(snap.available), unit: "ชิ้น", goto: "Stock Inquiry", tone: "success" },
     { key: "reserved", label: "Reserved Qty", icon: "lock", value: fmtInt(snap.reserved), unit: "ชิ้น", goto: "Sales Order", tone: "warning" },
-    { key: "qcHold", label: "QC Hold", icon: "shield", value: fmtInt(snap.qcHold), unit: "ชิ้น", goto: "QC Inspection", tone: "danger" },
+    { key: "qcHold", label: "QC Hold", icon: "shield", value: fmtInt(snap.qcHold), unit: "ชิ้น", goto: "Goods Receipt", tone: "danger" },
     { key: "damaged", label: "Damaged", icon: "trash", value: fmtInt(INV_OPS.damagedStock), unit: "ชิ้น", goto: "Stock Adjustment", tone: "danger" },
     { key: "lowStock", label: "Low Stock", icon: "alert", value: String(snap.belowRop), unit: "SKU", goto: "Stock Inquiry", tone: "warning" },
     { key: "nearExpiry", label: "Near Expiry", icon: "calendar", value: String(snap.lotsNearExpiry), unit: "Lot", goto: "Lot Tracking", tone: "warning" },

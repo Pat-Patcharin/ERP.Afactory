@@ -58,7 +58,13 @@ export const NAV: NavGroup[] = [
       },
       { label: "Purchase Order", href: "/m/purchase-order", icon: "purchaseOrder" },
       { label: "Goods Receipt", href: "/m/goods-receipt", icon: "goodsReceipt" },
-      { label: "QC Inspection", href: "/m/qc-inspection", icon: "qc" },
+      /* QC Inspection and Supplier Claim are HIDDEN, not removed.
+
+         Both are still wired: a receipt whose lines need inspection still
+         goes to Pending QC, and the QC decision is still taken from the
+         Goods Receipt screen. What is gone is the menu entry, until the two
+         are wanted on the sidebar again — put these lines back and nothing
+         else has to change. */
       /* No Put Away.
 
          It asked which bin each line went into, and a warehouse in this
@@ -68,12 +74,6 @@ export const NAV: NavGroup[] = [
          Receiving now ends at the goods receipt: what is received is
          available. The module and its history are still in the codebase;
          putting the entry back here is what turns it on again. */
-      {
-        label: "Supplier Claim",
-        href: "/soon?m=Supplier%20Claim",
-        icon: "shield",
-        soon: true,
-      },
     ],
   },
   {

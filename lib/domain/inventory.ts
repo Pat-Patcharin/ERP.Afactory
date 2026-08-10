@@ -328,7 +328,7 @@ export function invKpis(): InvKpi[] {
     ["onHand", "box", fmtInt(s.onHand), "ชิ้น", "Stock On Hand", `${fmtInt(s.skus)} SKU ใน ${s.warehouses} คลัง`, "Stock Inquiry", "info"],
     ["available", "checkCircle", fmtInt(s.available), "ชิ้น", "Available Stock", `พร้อมขายทันที ${Math.round((s.available / (s.onHand || 1)) * 100)}% ของสต๊อก`, "Stock Inquiry", "success"],
     ["reserved", "lock", fmtInt(s.reserved), "ชิ้น", "Reserved Stock", `กันไว้ให้ ${s.outboundDocs} งานฝั่งจ่ายออก`, "Sales Order", "warning"],
-    ["qcHold", "shield", fmtInt(s.qcHold), "ชิ้น", "QC Hold", `รอผลตรวจ ${openInspections().length} ใบ`, "QC Inspection", "danger"],
+    ["qcHold", "shield", fmtInt(s.qcHold), "ชิ้น", "QC Hold", `รอผลตรวจ ${openInspections().length} ใบ`, "Goods Receipt", "danger"],
     ["returnHold", "return", fmtInt(s.returnHold), "ชิ้น", "Return Hold", `ของคืน ${openReturns().length} ใบยังไม่คืนสู่สต๊อก`, "Sales Return", "warning"],
     ["inTransit", "truck", fmtInt(s.inTransit), "ชิ้น", "In Transit", `ระหว่างขนย้าย ${openShipments().length} เที่ยว`, "Stock Transfer", "info"],
     ["lowStock", "alert", String(s.belowRop), "SKU", "Low Stock Items", `เฝ้าระวังอีก ${s.watch} SKU ใกล้ถึงจุดสั่งซื้อ`, "Stock Inquiry", "warning"],
@@ -557,7 +557,7 @@ export function invAlerts(): InvAlert[] {
       priority: "Critical",
       warehouse: "WH-QTY Quarantine",
       action: "ไปที่ QC",
-      goto: "QC Inspection",
+      goto: "Goods Receipt",
       tone: "danger",
     },
     {
@@ -1012,7 +1012,7 @@ export function invShortcuts(): InvShortcut[] {
       count: qc.length,
       unit: "ใบ",
       desc: `${fmtInt(sum(qc, (q) => q.receivedQty))} ชิ้นรอผลตรวจ`,
-      goto: "QC Inspection",
+      goto: "Goods Receipt",
       tone: "danger",
     },
     {
@@ -1025,15 +1025,6 @@ export function invShortcuts(): InvShortcut[] {
       goto: "Sales Return",
       tone: "warning",
     },
-    {
-      key: "claim",
-      title: "Pending Supplier Claims",
-      icon: "file",
-      count: INV_OPS.supplierClaims,
-      unit: "เรื่อง",
-      desc: "เคลมของเสียกับผู้ขาย",
-      goto: "Supplier Claim",
-      tone: "info",
-    },
+    /* No Supplier Claim panel — the module is hidden from the sidebar. */
   ];
 }

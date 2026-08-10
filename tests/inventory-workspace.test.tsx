@@ -316,10 +316,12 @@ describe("Inventory Workspace — health and shortcuts", () => {
     }
   });
 
-  it("renders the six shortcut panels", () => {
+  it("renders the five shortcut panels", () => {
     render(<InventoryWorkspacePage />);
     const grid = screen.getByTestId("ws-shortcut-grid");
-    expect(within(grid).getAllByRole("button")).toHaveLength(6);
+    /* Pending Supplier Claims went with the module — it is hidden from the
+       sidebar, so a panel leading to it is a dead end. */
+    expect(within(grid).getAllByRole("button")).toHaveLength(5);
 
     for (const title of [
       "Pending Transfers",
@@ -327,7 +329,6 @@ describe("Inventory Workspace — health and shortcuts", () => {
       "Pending Counts",
       "Pending QC",
       "Pending Returns",
-      "Pending Supplier Claims",
     ]) {
       expect(within(grid).getByText(title)).toBeInTheDocument();
     }
@@ -374,8 +375,9 @@ describe("Inventory Workspace — navigation", () => {
     render(<InventoryWorkspacePage />);
     const grid = screen.getByTestId("ws-kpi-grid");
 
+    /* QC Inspection is hidden; the hold is worked from the receipt. */
     await user.click(within(grid).getByText("QC Hold").closest("button")!);
-    expect(routerPush).toHaveBeenCalledWith(pageHref("QC Inspection"));
+    expect(routerPush).toHaveBeenCalledWith(pageHref("Goods Receipt"));
   });
 
   it("routes a warehouse row into the warehouse master", async () => {
@@ -490,7 +492,6 @@ describe("Navigation regression — every module still resolves", () => {
       ["Purchase Workspace", "/purchase"],
       ["Purchase Order", "/m/purchase-order"],
       ["Goods Receipt", "/m/goods-receipt"],
-      ["QC Inspection", "/m/qc-inspection"],
       ["Outbound Workspace", "/outbound"],
       ["Sales Order", "/m/sales-order"],
       ["Picking", "/m/picking"],
