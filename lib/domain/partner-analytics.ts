@@ -70,10 +70,19 @@ export function bpInvoices(bp: BusinessPartner) {
    had about, because five categories are nameable and forty
    SKUs are not.
 
-   Both measures are returned on every row rather than one per
-   call. Ranking by spend and ranking by how often they order
-   are different lists, and a reader switching between them
-   needs to see the number that did NOT move them up.
+   Ranked by spend or by units taken, and those are genuinely
+   different lists — a category of cheap consumables can be the
+   biggest thing this customer moves and nowhere near the top by
+   money. That is the reason the ranking has a switch at all, so
+   both figures are on every row and only the leading one
+   changes.
+
+   Units are summed across a category, which means across the
+   base units its products are counted in — 12 Tube and 3 Box
+   add up to 15 here. That is the number a warehouse conversation
+   uses ("they take a lot of sealant") and it is not a quantity
+   anybody can reorder against. Money is the exact measure; this
+   one is a shape.
    ============================================================ */
 
 export interface CategoryTally {
@@ -81,10 +90,18 @@ export interface CategoryTally {
   amount: number;
   /** Order lines, not orders: two lines on one order are two decisions to buy. */
   lines: number;
+  /** Units taken, summed across the base units of the category's products. */
   qty: number;
 }
 
-export type CategoryMeasure = "amount" | "lines";
+export type CategoryMeasure = "amount" | "qty";
+
+/** Totals carried alongside a ranking — both measures plus the line count. */
+export interface CategoryTotals {
+  lines: number;
+  amount: number;
+  qty: number;
+}
 
 export interface CategoryBreakdown {
   /** The ranking. Named categories only. */
@@ -98,9 +115,9 @@ export interface CategoryBreakdown {
    * leave a Top 5 whose bars do not add up to what the customer spent.
    * Neither: excluded from the rank, disclosed as a figure.
    */
-  unmatched: { lines: number; amount: number };
+  unmatched: CategoryTotals;
   /** Every line, matched or not — what the ranking is a part of. */
-  total: { lines: number; amount: number };
+  total: CategoryTotals;
 }
 
 export function bpTopCategories(
@@ -109,8 +126,8 @@ export function bpTopCategories(
   limit = 5,
 ): CategoryBreakdown {
   const tally = new Map<string, CategoryTally>();
-  const unmatched = { lines: 0, amount: 0 };
-  const total = { lines: 0, amount: 0 };
+  const unmatched: CategoryTotals = { lines: 0, amount: 0, qty: 0 };
+  const total: CategoryTotals = { lines: 0, amount: 0, qty: 0 };
 
   for (const so of bpSalesOrders(bp)) {
     for (const it of so.items ?? []) {
@@ -118,11 +135,13 @@ export function bpTopCategories(
       const amount = qty * (Number(it.price) || 0);
       total.lines += 1;
       total.amount += amount;
+      total.qty += qty;
 
       const cat = getProduct(it.code)?.cat;
       if (!cat) {
         unmatched.lines += 1;
         unmatched.amount += amount;
+        unmatched.qty += qty;
         continue;
       }
 

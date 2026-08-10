@@ -115,12 +115,15 @@ describe("BP — Top 5 หมวดหมู่ที่ซื้อ", () => {
        unmatched figure — so the two together are what the customer spent. */
     const lines = bpSalesOrders(b).flatMap((so) => so.items ?? []);
     const spent = lines.reduce((t, i) => t + (Number(i.qty) || 0) * (Number(i.price) || 0), 0);
+    const taken = lines.reduce((t, i) => t + (Number(i.qty) || 0), 0);
     expect(total.lines).toBe(lines.length);
     expect(total.amount).toBeCloseTo(spent, 6);
+    expect(total.qty).toBe(taken);
 
     const all = bpTopCategories(b, "amount", 999);
     expect(all.rows.reduce((t, r) => t + r.amount, 0) + unmatched.amount).toBeCloseTo(spent, 6);
     expect(all.rows.reduce((t, r) => t + r.lines, 0) + unmatched.lines).toBe(lines.length);
+    expect(all.rows.reduce((t, r) => t + r.qty, 0) + unmatched.qty).toBe(taken);
   });
 
   it("สินค้าที่ไม่มีในทะเบียนสินค้าไม่ถูกจัดอันดับ แต่ถูกบอกเป็นตัวเลข", () => {
@@ -153,14 +156,42 @@ describe("BP — Top 5 หมวดหมู่ที่ซื้อ", () => {
   it("เรียงลำดับตามเกณฑ์ที่เลือก", () => {
     const b = bp("BP000120");
     const byAmount = bpTopCategories(b, "amount", 5).rows;
-    const byLines = bpTopCategories(b, "lines", 5).rows;
+    const byQty = bpTopCategories(b, "qty", 5).rows;
 
     for (let i = 1; i < byAmount.length; i++) {
       expect(byAmount[i - 1].amount).toBeGreaterThanOrEqual(byAmount[i].amount);
     }
-    for (let i = 1; i < byLines.length; i++) {
-      expect(byLines[i - 1].lines).toBeGreaterThanOrEqual(byLines[i].lines);
+    for (let i = 1; i < byQty.length; i++) {
+      expect(byQty[i - 1].qty).toBeGreaterThanOrEqual(byQty[i].qty);
     }
+  });
+
+  it("นับหน่วยที่สั่ง ไม่ใช่จำนวนบรรทัดในใบสั่งขาย", () => {
+    /*
+       Silicone takes 300 units on ONE order line. Counting lines would score
+       that category 1 against a category of four small lines, which is the
+       opposite of what the customer actually moves.
+
+       Tallied here from the raw order lines rather than from the function's
+       own output, so this checks the arithmetic instead of restating it.
+    */
+    const b = bp("BP000120");
+    const byCat = new Map<string, number>();
+    for (const it of bpSalesOrders(b).flatMap((so) => so.items ?? [])) {
+      const cat = getProduct(it.code)?.cat;
+      if (cat) byCat.set(cat, (byCat.get(cat) ?? 0) + (Number(it.qty) || 0));
+    }
+
+    const rows = bpTopCategories(b, "qty", 5).rows;
+    expect(rows.length).toBeGreaterThan(1);
+    for (const r of rows) expect(r.qty, r.cat).toBe(byCat.get(r.cat));
+
+    const expected = [...byCat.entries()].sort((a, c) => c[1] - a[1]).map(([cat]) => cat);
+    expect(rows.map((r) => r.cat)).toEqual(expected.slice(0, rows.length));
+
+    /* And a single line can carry hundreds of units, which is the whole
+       reason the line count was the wrong measure. */
+    expect(rows.some((r) => r.lines === 1 && r.qty >= 100)).toBe(true);
   });
 
   it("กดสลับเกณฑ์แล้วอันดับเปลี่ยนตาม", async () => {
@@ -173,18 +204,18 @@ describe("BP — Top 5 หมวดหมู่ที่ซื้อ", () => {
     const byAmount = bpTopCategories(bp("BP000120"), "amount", 5).rows;
     expect(panel.getByText(byAmount[0].cat)).toBeInTheDocument();
 
-    const toggle = panel.getByRole("button", { name: "ตามจำนวนครั้ง" });
+    const toggle = panel.getByRole("button", { name: "ตามจำนวนหน่วย" });
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-pressed", "true");
 
-    const byLines = bpTopCategories(bp("BP000120"), "lines", 5).rows;
-    expect(panel.getByText(byLines[0].cat)).toBeInTheDocument();
+    const byQty = bpTopCategories(bp("BP000120"), "qty", 5).rows;
+    expect(panel.getByText(byQty[0].cat)).toBeInTheDocument();
 
     /* Both figures stay on every row — only which one leads changes. That is
        what makes the re-sort followable instead of a list that reshuffles for
-       no visible reason, and it is checked here rather than the order, which
-       on this customer happens to be the same either way. */
-    expect(panel.getByText(`${byLines[0].lines.toLocaleString("en-US")} ครั้ง`)).toBeInTheDocument();
-    expect(panel.getByText(`${byLines[0].amount.toLocaleString("en-US")} THB`)).toBeInTheDocument();
+       no visible reason. */
+    const qty = byQty[0].qty.toLocaleString("en-US");
+    expect(panel.getAllByText(`${qty} หน่วย`).length).toBeGreaterThan(0);
+    expect(panel.getByText(`${byQty[0].amount.toLocaleString("en-US")} THB`)).toBeInTheDocument();
   });
 });

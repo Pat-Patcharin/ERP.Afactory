@@ -120,8 +120,11 @@ export function RecentInvoicesPanel({
 
 const MEASURES: { key: CategoryMeasure; label: string }[] = [
   { key: "amount", label: "ตามยอดซื้อ" },
-  { key: "lines", label: "ตามจำนวนครั้ง" },
+  { key: "qty", label: "ตามจำนวนหน่วย" },
 ];
+
+/** Units are summed across base units — see the note above bpTopCategories. */
+const units = (n: number) => `${fmt(n)} หน่วย`;
 
 export function TopCategoriesPanel({ partner }: { partner: BusinessPartner }) {
   const [measure, setMeasure] = useState<CategoryMeasure>("amount");
@@ -140,7 +143,7 @@ export function TopCategoriesPanel({ partner }: { partner: BusinessPartner }) {
       <div className="flex flex-wrap items-center gap-3">
         <p className="text-cap text-ink-2">
           {total.lines
-            ? `${fmt(total.lines)} รายการสั่งซื้อ · ${money0(total.amount)} THB`
+            ? `${fmt(total.lines)} รายการสั่งซื้อ · ${units(total.qty)} · ${money0(total.amount)} THB`
             : "ยังไม่มีใบสั่งขายที่บันทึกรายการสินค้า"}
         </p>
 
@@ -188,15 +191,15 @@ export function TopCategoriesPanel({ partner }: { partner: BusinessPartner }) {
                   <span className="w-4 flex-shrink-0 text-cap text-ink-3 tnum">{i + 1}</span>
                   <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{r.cat}</span>
                   <span className="flex-shrink-0 text-[13px] font-semibold tnum">
-                    {measure === "amount" ? money0(r.amount) : `${fmt(r.lines)} ครั้ง`}
+                    {measure === "amount" ? money0(r.amount) : units(r.qty)}
                   </span>
                   {/* The measure that did NOT do the ranking, so switching the
                       toggle is a re-sort somebody can follow rather than a
-                      list that changes for no visible reason. */}
-                  <span className="w-24 flex-shrink-0 text-right text-cap text-ink-3 tnum">
-                    {measure === "amount"
-                      ? `${fmt(r.lines)} ครั้ง`
-                      : `${money0(r.amount)} THB`}
+                      list that changes for no visible reason. The two orders
+                      genuinely differ: a cheap consumable can be the biggest
+                      thing this customer moves and near the bottom by money. */}
+                  <span className="w-28 flex-shrink-0 text-right text-cap text-ink-3 tnum">
+                    {measure === "amount" ? units(r.qty) : `${money0(r.amount)} THB`}
                   </span>
                 </div>
                 <div className="ml-6 h-2 overflow-hidden rounded-[4px] bg-neutral-soft">
@@ -220,8 +223,9 @@ export function TopCategoriesPanel({ partner }: { partner: BusinessPartner }) {
         <p className="flex items-start gap-1.5 text-cap text-ink-3">
           <Icon name="alert" size={13} className="mt-px flex-shrink-0" />
           <span>
-            อีก {fmt(unmatched.lines)} รายการ · {money0(unmatched.amount)} THB
-            ยังไม่ผูกกับทะเบียนสินค้า จึงจัดหมวดหมู่ไม่ได้และไม่ถูกนับในอันดับข้างต้น
+            อีก {fmt(unmatched.lines)} รายการ · {units(unmatched.qty)} ·{" "}
+            {money0(unmatched.amount)} THB ยังไม่ผูกกับทะเบียนสินค้า
+            จึงจัดหมวดหมู่ไม่ได้และไม่ถูกนับในอันดับข้างต้น
           </span>
         </p>
       )}
