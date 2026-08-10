@@ -1,9 +1,4 @@
-import {
-  SALES_REPRESENTATIVES,
-  areaCoverageRows,
-  decorateSRs,
-  type SalesRepRow,
-} from "@/lib/domain/sales";
+import { SALES_REPRESENTATIVES, decorateSRs, type SalesRepRow } from "@/lib/domain/sales";
 import {
   SR_AREAS,
   SR_DEPARTMENTS,
@@ -75,66 +70,13 @@ export const SR_LIST: ListSchema<SalesRepRow> = {
     "province",
   ],
 
-  hero: () => {
-    const reps = SALES_REPRESENTATIVES;
-    const active = reps.filter((r) => r.status === "Active");
-    const totalCust = reps.reduce((s, r) => s + (Number(r.custCount) || 0), 0);
-    const totalTarget = active.reduce((s, r) => s + (Number(r.monthlyTarget) || 0), 0);
-    const teams = new Set(reps.map((r) => r.team).filter(Boolean)).size;
+  /* No hero.
 
-    /* Coverage is measured against the territory master, not against the
-       areas that happen to appear on a rep record — an area nobody works is
-       exactly the number a sales manager is looking for. */
-    const coverage = areaCoverageRows();
-    const covered = coverage.filter((c) => c.activeReps.length > 0).length;
-    const gaps = coverage.length - covered;
-
-    return {
-      banner: {
-        title: "Sales Team Summary",
-        icon: "users",
-        items: [
-          `${reps.length} sales reps`,
-          `${active.length} active`,
-          `${teams} teams`,
-          `${covered}/${coverage.length} เขตมีเซลล์ดูแล`,
-          `${totalCust} customers assigned`,
-        ],
-        stamp: "Master data — ยังไม่ผูกข้อมูลยอดขาย",
-      },
-      kpis: [
-        {
-          label: "Total Reps",
-          value: fmt(reps.length),
-          sub: "ในฐานข้อมูล",
-          tone: "primary",
-          icon: "salesRep",
-        },
-        {
-          label: "Active Reps",
-          value: fmt(active.length),
-          sub: `of ${reps.length} total`,
-          tone: "ok",
-          icon: "users",
-          goTab: "active",
-        },
-        { label: "Teams", value: fmt(teams), sub: "ทีมขาย", icon: "layers" },
-        {
-          label: "Sales Areas",
-          value: `${covered}/${coverage.length}`,
-          sub: gaps ? `ยังไม่มีเซลล์ ${gaps} เขต` : "ครอบคลุมครบทุกเขต",
-          tone: gaps ? "warn" : "ok",
-          icon: "mapPin",
-        },
-        {
-          label: "Customers",
-          value: fmt(totalCust),
-          sub: `เป้ารวม ฿${money0(totalTarget)}/เดือน`,
-          icon: "partner",
-        },
-      ],
-    };
-  },
+     A banner and five tiles that counted the rows of the table beneath them:
+     Total Reps and Active Reps are the "All" and "Active" tab counts, Teams
+     and Sales Areas are two filters, and Customers is the sum of a column.
+     Every figure was already on the screen, and the summary pushed the list
+     itself below the fold on the page whose job is to show the list. */
 
   tabs: [
     { key: "all", label: "All" },
