@@ -78,7 +78,34 @@ export interface GoodsReceipt {
   nonPoReason?: string;
   refDoc?: string;
   approvalRef?: string;
+  /**
+   * Receiving less than the order asked for CLOSES the rest of it.
+   *
+   * A short receipt is not a partial one: partial means "more is coming",
+   * short means "this is all that is coming, close the order". The system
+   * cannot tell them apart from the numbers, so the person receiving says
+   * which — and saying "close it" is a commercial decision about giving up
+   * on goods already ordered, which is why it needs the approve right on
+   * this module rather than the receiving right.
+   */
+  forceClosed?: boolean;
+  forceClosedBy?: string;
+  forceClosedAt?: string;
+  forceCloseReason?: string;
 }
+
+/**
+ * Two receipts, two number series.
+ *
+ * A receipt against a purchase order is the closing half of a spend somebody
+ * approved. A receipt without one — goods back from a claim, a repair
+ * returning to the shelf — has no order behind it and no spend to close, and
+ * mixing the two in one series makes "what did we order and get" unanswerable
+ * without reading every document.
+ */
+export const GR_TYPES = ["With PO", "Without PO"] as const;
+
+export type GrType = (typeof GR_TYPES)[number];
 
 export const GR_STATUS = [
   "Draft",

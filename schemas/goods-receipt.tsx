@@ -15,6 +15,7 @@ import { grCancel, grDelete, grPassQC } from "@/lib/workflows";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, Thumb } from "@/components/ui";
 import { GR_FORM } from "./forms/goods-receipt";
+import { GoodsReceiptEditor } from "@/components/goods-receipt/GoodsReceiptEditor";
 
 /* ============================================================
    GOODS RECEIPT
@@ -292,6 +293,17 @@ export const GR_DETAIL: DetailSchema<GrRow> = {
       key: "overview",
       label: "Overview",
       blocks: (gr) => [
+        gr.forceClosed && {
+          /* The one thing on this document that was a decision rather than a
+             count — who made it, and why, on the page rather than only in
+             the history. */
+          type: "alert",
+          tone: "warn",
+          title: `ปิดยอดคงเหลือของ ${gr.poRef} แล้ว`,
+          message: `รับน้อยกว่าจำนวนที่สั่ง และปิดใบสั่งซื้อส่วนที่เหลือโดย ${
+            gr.forceClosedBy || DASH
+          } เมื่อ ${gr.forceClosedAt || DASH} · เหตุผล: ${gr.forceCloseReason || DASH}`,
+        },
         gr.type === "Without PO" && {
           type: "alert",
           tone: "warn",
@@ -551,5 +563,10 @@ export const GR_DETAIL: DetailSchema<GrRow> = {
 export const grSchemas: EntitySchemas<GrRow> = {
   list: GR_LIST,
   detail: GR_DETAIL,
+  /* Kept beside the editor for the same reason the purchase request keeps
+     its form: `GR_FORM` still supplies the `required` list, and it is the
+     fallback if the document editor is ever rolled back. The route prefers
+     `editor` when it is present. */
   form: GR_FORM,
+  editor: ({ record }) => <GoodsReceiptEditor record={record} />,
 };

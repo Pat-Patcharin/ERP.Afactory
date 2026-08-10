@@ -2,6 +2,7 @@ import type { GoodsReceipt } from "@/data/goods-receipts";
 import {
   GR_DISCREPANCY,
   GR_NONPO_REASONS,
+  GR_TYPES,
   GR_PKG_CONDITION,
   GR_RECEIVERS,
   GR_WAREHOUSES,
@@ -42,7 +43,10 @@ import {
 
 const num = (v: unknown) => Number(v) || 0;
 
-const isPoBased = (s: { type?: string }) => s.type !== "Non-PO";
+/* One spelling. The form used to offer "PO Based"/"Non-PO" while the list
+   badge, the detail page and every filter tested for "With PO"/"Without PO"
+   — so a receipt created here was rendered as if it had no order. */
+const isPoBased = (s: { type?: string }) => s.type !== "Without PO";
 const needsQc = (s: { items?: GridRow[] }) =>
   ((s.items ?? []) as GridRow[]).some((it) => it.qc);
 
@@ -147,8 +151,8 @@ export const GR_FORM: FormSchema<GrRow> = {
               path: "type",
               label: "Receipt Type",
               required: true,
-              options: ["PO Based", "Non-PO"],
-              hint: "Non-PO ใช้กับของแถม ตัวอย่าง หรือของทดแทน",
+              options: [...GR_TYPES],
+              hint: "Without PO ใช้กับของเคลม ของซ่อมกลับ ของแถม หรือตัวอย่าง",
             },
             {
               type: "select",

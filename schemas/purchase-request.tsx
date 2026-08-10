@@ -313,6 +313,13 @@ export const PR_DETAIL: DetailSchema<PrRow> = {
             return {
               ...it,
               lineTotal: prLineTotal(it),
+              /* The four figures an approver needs before turning this into
+                 an order: what is on the shelf, what is already promised
+                 away, what is already coming, and what is actually free.
+                 Approving a purchase without them is approving a number. */
+              onHand: si ? si.onHand : null,
+              backOrder: si ? si.backOrder : null,
+              onOrder: si ? si.onOrder : null,
               avail: si ? si.available : null,
               stStatus: si ? si.status : null,
               stTone: si ? si.tone : null,
@@ -330,6 +337,43 @@ export const PR_DETAIL: DetailSchema<PrRow> = {
               label: "Line Total",
               align: "right",
               cell: (r) => <span className="font-medium">{money0(r.lineTotal)}</span>,
+            },
+            {
+              key: "onHand",
+              label: "On Hand",
+              align: "right",
+              muted: true,
+              cell: (r) => (r.onHand === null ? DASH : fmt(r.onHand)),
+            },
+            {
+              key: "backOrder",
+              label: "Back Order",
+              align: "right",
+              muted: true,
+              cell: (r) =>
+                r.backOrder === null ? (
+                  DASH
+                ) : r.backOrder > 0 ? (
+                  <span className="font-semibold text-warning-text">{fmt(r.backOrder)}</span>
+                ) : (
+                  fmt(0)
+                ),
+            },
+            {
+              key: "onOrder",
+              label: "On Order",
+              align: "right",
+              muted: true,
+              /* Already bought and not yet arrived. The figure that stops a
+                 second order for goods that are on their way. */
+              cell: (r) =>
+                r.onOrder === null ? (
+                  DASH
+                ) : r.onOrder > 0 ? (
+                  <span className="font-semibold text-info-text">{fmt(r.onOrder)}</span>
+                ) : (
+                  fmt(0)
+                ),
             },
             {
               key: "avail",

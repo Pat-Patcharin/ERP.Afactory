@@ -411,7 +411,12 @@ export const ROLES: RoleDef[] = [
       /* Reads the order that comes out of the request, does not raise one:
          the PO is issued by whoever approved the spend. */
       "purchase-order": VIEW_ONLY,
-      "goods-receipt": VIEW_ONLY,
+      /* Receives, and is the desk that may close an order short — the
+         warehouse counts what arrived, this desk decides whether the rest
+         is still coming. `approve` is what that decision is called; without
+         `create`/`edit` beside it there would be nobody who could both
+         write the short receipt and sign it. */
+      "goods-receipt": ["view", "create", "edit", "approve", "export", "print"],
       "business-partner": VIEW_ONLY,
       product: VIEW_ONLY,
       "stock-inquiry": VIEW_ONLY,
@@ -456,8 +461,11 @@ export const ROLES: RoleDef[] = [
       "inventory-workspace": ["view"],
       "purchase-order": VIEW_ONLY,
       /* Receiving ends at the goods receipt — there is no put-away step for
-         this desk to hold. */
-      "goods-receipt": ALL,
+         this desk to hold. OPERATE rather than ALL: receiving less than the
+         order asked for closes the rest of it, which is `approve`, and this
+         desk counts what arrived rather than deciding to give up on the
+         rest. */
+      "goods-receipt": OPERATE,
       "qc-inspection": OPERATE,
       "cycle-count": OPERATE,
       "stock-transfer": OPERATE,
@@ -1118,6 +1126,9 @@ export const NUMBER_SERIES: SeriesDef[] = [
   { code: "NS-PR", module: "purchase-request", label: "Purchase Request", prefix: "PR", yearMode: "AD", yearDigits: 2, separatorAfterPrefix: false, useMonth: true, padding: 4, next: 125, resetCycle: "Yearly", separator: "-", status: "Active", lastIssued: "PR2506-0124", updated: "26/07/2026 10:40", updatedBy: "System" },
   { code: "NS-PO", module: "purchase-order", label: "Purchase Order", prefix: "PO", yearMode: "AD", yearDigits: 2, separatorAfterPrefix: false, useMonth: true, padding: 3, next: 125, resetCycle: "Yearly", separator: "", status: "Active", lastIssued: "PO2506124", updated: "12/06/2025 09:10", updatedBy: "System" },
   { code: "NS-GR", module: "goods-receipt", label: "Goods Receipt", prefix: "GR", yearMode: "AD", yearDigits: 2, separatorAfterPrefix: false, useMonth: true, padding: 4, next: 6, resetCycle: "Yearly", separator: "", status: "Active", lastIssued: "GR25060005", updated: "15/06/2025 16:05", updatedBy: "System" },
+  /* The receipt without an order runs its own series — see GR_TYPES. Same
+     module, second series, which is exactly what this table is for. */
+  { code: "NS-GRW", module: "goods-receipt", label: "Goods Receipt (no PO)", prefix: "GRW", yearMode: "AD", yearDigits: 2, separatorAfterPrefix: false, useMonth: true, padding: 4, next: 1, resetCycle: "Yearly", separator: "", status: "Active", lastIssued: "", updated: "10/08/2026 09:00", updatedBy: "System" },
   { code: "NS-QC", module: "qc-inspection", label: "QC Inspection", prefix: "QC", yearMode: "AD", yearDigits: 2, separatorAfterPrefix: false, useMonth: true, padding: 4, next: 9, resetCycle: "Yearly", separator: "-", status: "Active", lastIssued: "QC2506-0008", updated: "15/06/2025 16:30", updatedBy: "System" },
   { code: "NS-SO", module: "sales-order", label: "Sales Order", prefix: "SO", yearMode: "AD", yearDigits: 2, separatorAfterPrefix: false, useMonth: true, padding: 4, next: 6, resetCycle: "Yearly", separator: "-", status: "Active", lastIssued: "SO2507-0005", updated: "01/07/2026 14:00", updatedBy: "System" },
   { code: "NS-INV", module: "sales-invoice", label: "Sales Invoice", prefix: "INV", yearMode: "AD", yearDigits: 4, separatorAfterPrefix: true, useMonth: false, padding: 6, next: 26, resetCycle: "Yearly", separator: "-", status: "Active", lastIssued: "INV-2026-000025", updated: "28/07/2026 11:00", updatedBy: "System" },

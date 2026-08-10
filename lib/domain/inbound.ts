@@ -1,4 +1,4 @@
-import { GOODS_RECEIPTS as RAW_GR, type GoodsReceipt } from "@/data/goods-receipts";
+import { GOODS_RECEIPTS as RAW_GR, type GoodsReceipt, type GrType } from "@/data/goods-receipts";
 import { QC_INSPECTIONS as RAW_QC, QC_SUPPLIER_STATS, type QcInspection } from "@/data/qc";
 import { PA_BIN_USAGE, PUTAWAY_TASKS as RAW_PA, type PutAwayTask } from "@/data/putaway";
 import { PRODUCTS } from "./product";
@@ -74,13 +74,60 @@ decorateGRs();
 export const getGR = (code: string) =>
   GOODS_RECEIPTS.find((g) => g.code === code) ?? null;
 
-export function nextGRCode(): string {
-  const n = GOODS_RECEIPTS.reduce(
-    (m, g) => Math.max(m, parseInt(String(g.code).replace(/\D/g, ""), 10) || 0),
-    25060000,
-  );
-  return `GR${n + 1}`;
+/* ---------- Two series, one per kind of receipt ---------- */
+
+/** `GR…` receives against an order; `GRW…` receives without one. */
+export const GR_PREFIX: Record<GrType, string> = {
+  "With PO": "GR",
+  "Without PO": "GRW",
+};
+
+export const grIsWithPO = (gr: { type?: string }) => gr.type !== "Without PO";
+
+/**
+ * The next number in THAT type's series.
+ *
+ * Counted per prefix rather than across the store: the two series run
+ * independently, so receiving a claim never advances the purchase-order
+ * receipt numbering and a gap in one is not explained by the other.
+ */
+export function nextGRCode(type: GrType = "With PO"): string {
+  const prefix = GR_PREFIX[type] ?? GR_PREFIX["With PO"];
+  const n = GOODS_RECEIPTS.reduce((m, g) => {
+    const code = String(g.code);
+    /* "GR250600 01" must not be counted as a "GRW" number, and the other way
+       round — match the prefix and then require a digit, so GR never eats
+       GRW's rows. */
+    if (!code.startsWith(prefix) || !/^\d/.test(code.slice(prefix.length))) return m;
+    return Math.max(m, parseInt(code.slice(prefix.length), 10) || 0);
+  }, 25060000);
+  return `${prefix}${n + 1}`;
 }
+
+/* ---------- Receiving against an order ---------- */
+
+/**
+ * Short of what the order still had outstanding — the lines a force close
+ * would give up on. Over-receipts and exact receipts are not short.
+ */
+export const grShortLines = (gr: { items?: GrItem[] }) =>
+  (gr.items ?? []).filter(
+    (it) => (Number(it.receiveNow) || 0) > 0 && grItemVariance(it) < 0,
+  );
+
+/**
+ * Does saving this receipt end the order early?
+ *
+ * Only a receipt against an order can: without one there is nothing to close.
+ * A line that receives nothing at all is not short — it was simply not part
+ * of this receipt, and stays outstanding for the next one.
+ */
+export const grForceCloses = (gr: { type?: string; items?: GrItem[] }) =>
+  grIsWithPO(gr) && grShortLines(gr).length > 0;
+
+/** Received more than was outstanding — allowed, but worth saying out loud. */
+export const grOverLines = (gr: { items?: GrItem[] }) =>
+  (gr.items ?? []).filter((it) => grItemVariance(it) > 0);
 
 /**
  * Which control regime a product falls under. Derived from the code so the
