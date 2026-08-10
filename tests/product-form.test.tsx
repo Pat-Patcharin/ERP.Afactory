@@ -189,11 +189,60 @@ describe("Product form — ชื่อสินค้ามาจากชื�
   });
 });
 
-describe("Product form — ผู้ขายสินค้า", () => {
-  it("แสดงหัวข้อผู้ขายเสมอ ไม่ต้องเปิด Purchase Item ก่อน", () => {
-    const stepKeys = (s: FormState) =>
-      PRODUCT_FORM.steps.filter((st) => !st.when || st.when(s)).map((st) => st.key);
+describe("Product form — ต้นทุนและผู้ขายอยู่หัวข้อเดียวกัน", () => {
+  const stepKeys = (s: FormState) =>
+    PRODUCT_FORM.steps.filter((st) => !st.when || st.when(s)).map((st) => st.key);
 
-    expect(stepKeys(PRODUCT_FORM.blank())).toContain("supplier");
+  it("แสดงเสมอ ไม่ต้องเปิด Purchase Item ก่อน", () => {
+    expect(stepKeys(PRODUCT_FORM.blank())).toContain("supply");
+  });
+
+  it("ไม่มีหัวข้อผู้ขายแยกอีกแล้ว", () => {
+    /*
+       The two sections were renderings of the same supplierItems row —
+       "Cost" showed every supplier's price, "Supplier" showed one of them
+       again as six read-only boxes, and Latest Purchase Price appeared in
+       both. One section, one table.
+    */
+    expect(stepKeys(PRODUCT_FORM.blank())).not.toContain("supplier");
+    expect(PRODUCT_FORM.steps.map((s) => s.key)).not.toContain("price");
+  });
+
+  it("ไม่ถามซ้ำสิ่งที่ตารางผู้ขายบอกอยู่แล้ว", () => {
+    const supply = PRODUCT_FORM.steps.find((s) => s.key === "supply")!;
+    const paths = supply
+      .blocks(PRODUCT_FORM.blank())
+      .filter((b): b is FormBlock => Boolean(b))
+      .flatMap((b) => ("fields" in b ? b.fields : [b]))
+      .filter((f): f is FormField => Boolean(f))
+      .map((f) => f.path);
+
+    /* Every one of these is a column of the table below. */
+    for (const gone of ["sup.code", "sup.itemCode", "sup.moq", "sup.lead", "sup.lastPrice"]) {
+      expect(paths, gone).not.toContain(gone);
+    }
+    /* What the form still decides: which supplier is the default, and the
+       two terms that belong to the product rather than to one quote. */
+    expect(paths).toContain("supplier");
+    expect(paths).toContain("sup.warranty");
+  });
+
+  it("ตารางต้นทุนตามผู้ขายแก้ไม่ได้จากที่นี่", () => {
+    /* The rows belong to the partner. An Add button here would promise a
+       write that the next load discards. */
+    const supply = PRODUCT_FORM.steps.find((s) => s.key === "supply")!;
+    const grid = supply
+      .blocks(PRODUCT_FORM.blank())
+      .filter((b): b is FormBlock => Boolean(b))
+      .find((b) => "path" in b && b.path === "offers") as FormField;
+
+    expect(grid.readonly).toBe(true);
+  });
+
+  it("ไม่มีตารางผู้ขายสำรองที่พิมพ์แล้วหาย", () => {
+    /* `altSuppliers` is rebuilt from the partner's supplier items on every
+       load, so anything typed into it was gone before it was read back. */
+    expect(PRODUCT_FORM.newRow!("altSuppliers", true)).toEqual({});
+    expect(paths()).not.toContain("altSuppliers");
   });
 });

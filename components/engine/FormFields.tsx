@@ -619,14 +619,16 @@ function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
                     </td>
                   ))}
                   <td className="px-1 py-1.5 text-center">
-                    <button
-                      type="button"
-                      title="ลบรายการ"
-                      onClick={() => api.gridRemove(path, i)}
-                      className="grid h-[30px] w-[30px] place-items-center rounded-btn text-ink-3 transition-colors duration-fast hover:bg-danger-soft hover:text-danger"
-                    >
-                      <Icon name="trash" size={15} />
-                    </button>
+                    {!f.readonly && (
+                      <button
+                        type="button"
+                        title="ลบรายการ"
+                        onClick={() => api.gridRemove(path, i)}
+                        className="grid h-[30px] w-[30px] place-items-center rounded-btn text-ink-3 transition-colors duration-fast hover:bg-danger-soft hover:text-danger"
+                      >
+                        <Icon name="trash" size={15} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -636,14 +638,21 @@ function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => api.gridAdd(path)}
-          className="inline-flex items-center gap-1.5 rounded-btn border border-dashed border-line-strong px-3 py-2 text-[13px] font-medium text-ink-2 transition-colors duration-fast hover:border-primary hover:bg-primary-soft hover:text-primary-active"
-        >
-          <Icon name="plus" size={15} strokeWidth={2.2} />
-          {f.addLabel ?? "เพิ่มรายการ"}
-        </button>
+        {/* A grid whose rows are owned elsewhere is rendered, not edited.
+            Offering Add and Delete on it promises a write with nowhere to
+            land: the row belongs to another record, and the next reload
+            would show it exactly as it was. The hint stays either way —
+            it is what says where the rows DO come from. */}
+        {!f.readonly && (
+          <button
+            type="button"
+            onClick={() => api.gridAdd(path)}
+            className="inline-flex items-center gap-1.5 rounded-btn border border-dashed border-line-strong px-3 py-2 text-[13px] font-medium text-ink-2 transition-colors duration-fast hover:border-primary hover:bg-primary-soft hover:text-primary-active"
+          >
+            <Icon name="plus" size={15} strokeWidth={2.2} />
+            {f.addLabel ?? "เพิ่มรายการ"}
+          </button>
+        )}
         {invalid && (
           <span className="text-cap font-medium text-danger">
             ต้องมีอย่างน้อย 1 รายการ

@@ -350,7 +350,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
             */
             {
               key: "factor",
-              label: `จำนวน ${String(s.unit ?? "หน่วยหลัก")} ต่อ 1 หน่วย`,
+              label: `จำนวน ${String(s.unit || "หน่วยหลัก")} ต่อ 1 หน่วย`,
               type: "number",
               align: "right",
               required: true,
@@ -374,26 +374,29 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       ],
     },
 
-    /* ---------- 3. COST ----------
+    /* ---------- 3. COST & SUPPLIER ----------
 
-       The step was "Price" and led with four selling-price boxes. None of
-       them belonged here: what a product sells for depends on the list and
-       the unit being quoted, and neither is an item fact.
+       One section, because they were one subject split across two.
 
-       What is left is cost, and cost is read-only on this form. The agreed
-       figure lives on the supplier item — one row per supplier, in that
-       supplier's own packaging — and the roll-up below is those rows
-       converted to the unit the warehouse counts. Typing over it here would
-       put a fifth copy of the number back. */
+       "Cost" carried Latest Purchase Price and a table of every supplier's
+       price; "Supplier" carried Latest Purchase Price again, plus that same
+       supplier's unit, MOQ and lead time as six read-only boxes. Both were
+       renderings of the same `supplierItems` row — the second one just
+       showed a single supplier instead of all of them, and repeated four
+       fields the table beside it already had columns for.
+
+       What is left: the cost roll-up, which supplier is the default, and one
+       table with a row per supplier. Everything a buyer compares is in that
+       table, in one unit, in one place. */
     {
-      key: "price",
-      label: "Cost",
-      railLabel: "ต้นทุน",
+      key: "supply",
+      label: "Cost & Supplier",
+      railLabel: "ต้นทุนและผู้ขาย",
       labelTh: "ต้นทุนตามผู้ขายและภาษี",
       blocks: (s) => {
         const offers = supplierOffers(String(s.code ?? ""));
         const best = offers.find((o) => o.costPerBase > 0);
-        const baseUnit = String(s.unit ?? "หน่วยหลัก");
+        const baseUnit = String(s.unit || "หน่วยหลัก");
 
         return [
           {
@@ -443,6 +446,36 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
             ],
           },
 
+          /* Only what this form actually decides about the supplier: which
+             one is the default, and the two terms that belong to the product
+             rather than to any one vendor's quote. */
+          {
+            type: "card",
+            title: "Main Supplier",
+            cols: "3",
+            fields: [
+              {
+                type: "select",
+                path: "supplier",
+                label: "Supplier",
+                options: opts(OPT.supplier),
+                hint: "ผู้ขายหลัก — ใช้เป็นค่าตั้งต้นตอนเปิดใบสั่งซื้อ",
+              },
+              {
+                type: "text",
+                path: "sup.warranty",
+                label: "Supplier Warranty",
+                placeholder: "12 เดือน",
+              },
+              {
+                type: "select",
+                path: "sup.country",
+                label: "Country",
+                options: opts(OPT.country),
+              },
+            ],
+          },
+
           /* ---- One row per supplier, every price in the same unit ---- */
           {
             type: "grid",
@@ -454,7 +487,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
             cols: [
               { key: "partnerName", label: "Supplier", type: "static" },
               { key: "sku", label: "Vendor Code", type: "static", muted: true },
-              { key: "conv", label: "Purchase Unit", type: "computed", get: (r) => String(r.conv) },
+              { key: "conv", label: "Purchase Unit", type: "static" },
               { key: "price", label: "ราคาต่อหน่วยซื้อ", type: "static", align: "right" },
               {
                 key: "costPerBase",
@@ -563,98 +596,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       ],
     },
 
-    /* ---------- 5. SUPPLIER ---------- */
-    {
-      key: "supplier",
-      label: "Supplier",
-      railLabel: "ผู้ขายสินค้า",
-      labelTh: "ผู้ขายหลักและเงื่อนไข",
-      blocks: () => [
-        {
-          type: "card",
-          title: "Main Supplier",
-          cols: "2",
-          fields: [
-            {
-              type: "select",
-              path: "supplier",
-              label: "Supplier",
-              options: opts(OPT.supplier),
-            },
-            /*
-               Read-only, and this is the point rather than a limitation.
-
-               These five were text boxes, and the same five facts were also
-               a row on the supplier's own record. Nothing kept the two in
-               step and they had drifted: this product read "240 Tube / 21
-               วัน" here while the supplier's row said 24 and 14. Whoever
-               read one of them was wrong half the time.
-
-               The purchase terms now have one home — the supplier item on
-               the Business Partner, which is keyed by (partner, product),
-               the grain these facts actually have. What shows here is that
-               row, rendered. Editing it belongs where it lives, so the hint
-               says so rather than the field silently discarding what
-               somebody types.
-            */
-            { type: "static", path: "sup.code", label: "Supplier Code" },
-            { type: "static", path: "sup.itemCode", label: "Supplier Item Code" },
-            {
-              /* The unit this supplier ships in, and what it is worth in the
-                 unit the warehouse counts. Both come from their supplier
-                 item, because the next supplier packs the same product
-                 differently and a figure held here would be wrong for them. */
-              type: "static",
-              label: "Purchase Unit",
-              value: (s) =>
-                s.sup?.punit
-                  ? conversionText(
-                      String(s.unit ?? ""),
-                      String(s.sup.punit),
-                      num(s.sup.punitFactor),
-                    )
-                  : "—",
-            },
-            {
-              type: "static",
-              path: "sup.moq",
-              label: "MOQ",
-              hint: "แก้ที่ Business Partner → ข้อมูลผู้ขาย → Supplier Items",
-            },
-            { type: "static", path: "sup.lead", label: "Lead Time" },
-            {
-              type: "secure",
-              as: "static",
-              permission: "canViewCost",
-              path: "sup.lastPrice",
-              label: "Latest Purchase Price",
-            },
-            { type: "text", path: "sup.warranty", label: "Supplier Warranty", placeholder: "12 เดือน" },
-            {
-              type: "select",
-              path: "sup.country",
-              label: "Country",
-              options: opts(OPT.country),
-            },
-          ],
-        },
-        {
-          type: "grid",
-          path: "altSuppliers",
-          label: "Alternative Suppliers",
-          addLabel: "เพิ่มผู้ขายสำรอง",
-          empty: "ยังไม่มีผู้ขายสินค้าสำรอง",
-          cols: [
-            { key: "name", label: "Supplier", type: "select", options: opts(OPT.supplier) },
-            { key: "code", label: "Supplier Code", type: "text" },
-            { key: "lead", label: "Lead Time", type: "text", placeholder: "21 วัน" },
-            { key: "price", label: "Latest Price", type: "text", align: "right" },
-          ],
-        },
-      ],
-    },
-
-    /* ---------- 6. REGISTRATION ---------- */
+    /* ---------- 5. REGISTRATION ---------- */
     {
       key: "registration",
       label: "Registration",
@@ -732,7 +674,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     { path: "cat", label: "Category", step: "general" },
     { path: "brand", label: "Brand", step: "general" },
     { path: "unit", label: "Base Unit", step: "units" },
-    { path: "pricing.currency", label: "Currency", step: "price" },
+    { path: "pricing.currency", label: "Currency", step: "supply" },
     { path: "lowLevel", label: "Reorder Point", step: "stock" },
   ],
 
@@ -790,8 +732,6 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
           defaultIssuing: isFirst,
           status: "Active",
         };
-      case "altSuppliers":
-        return { name: "", code: "", lead: "", price: "" };
       default:
         return {};
     }
@@ -842,15 +782,15 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         {row("Primary Barcode", s.barcode, "units")}
       </ReviewCard>
       <ReviewCard title="Price & Stock">
-        {row("Currency", s.pricing?.currency, "price")}
-        {row("VAT", s.pricing?.vat, "price")}
+        {row("Currency", s.pricing?.currency, "supply")}
+        {row("VAT", s.pricing?.vat, "supply")}
         {row("Reorder Point", s.lowLevel, "stock")}
         {row("Warehouse Assignment", s.stocks, "stock")}
       </ReviewCard>
       <ReviewCard title="Supplier">
-        {row("Main Supplier", s.supplier, "supplier")}
-        {row("Purchase Unit", s.sup?.punit, "supplier")}
-        {row("Lead Time", s.sup?.lead, "supplier")}
+        {row("Main Supplier", s.supplier, "supply")}
+        {row("Supplier Warranty", s.sup?.warranty, "supply")}
+        {row("Country", s.sup?.country, "supply")}
       </ReviewCard>
       <ReviewCard title="Registration">
         {row("Registration Number", s.reg?.no, "registration")}
