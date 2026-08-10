@@ -27,10 +27,7 @@ function detailFor(p: Product): ProductDetail {
   return {
     cls: {
       ...DEFAULT_CLASS,
-      ptype: p.cat === "Accessory" ? "General Consumable" : "Medical Consumable",
       devClass: p.cat === "Accessory" ? "Class I" : "Class II",
-      origin: p.sup.country,
-      maker: `${p.brand} Co., Ltd.`,
     },
     units: [
       {

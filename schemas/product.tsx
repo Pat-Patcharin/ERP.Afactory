@@ -17,6 +17,7 @@ import { DASH, daysUntil, fmt, money } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
 import type { BadgeTone, DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
 import { Badge, Barcode, LinkButton } from "@/components/ui";
+import { isPhoto } from "@/components/engine/FormFields";
 import { Icon } from "@/lib/icons";
 import { PRODUCT_FORM } from "./forms/product";
 
@@ -28,6 +29,22 @@ import { PRODUCT_FORM } from "./forms/product";
 const regBadge = (status: string) => (
   <Badge tone={tone(REG_TONE, status)}>{status}</Badge>
 );
+
+/**
+ * The picture is an uploaded photograph now, so it can be a data URL rather
+ * than an emoji. Anything the browser can display becomes an image; products
+ * seeded with an emoji keep rendering as text, and one with neither falls back
+ * to the generic mark rather than an empty square.
+ */
+function ProductAvatar({ value, name }: { value: string; name: string }) {
+  if (isPhoto(value)) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={value} alt={name} className="h-full w-full rounded-card object-cover" />
+    );
+  }
+  return value ? <>{value}</> : <Icon name="product" size={34} className="text-ink-3" />;
+}
 
 /**
  * Warehouse rows store code and name as one string ("WH-01 Samut Prakan"),
@@ -206,7 +223,7 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
   entityLabel: "Product",
 
   identity: (p) => ({
-    image: p.icon,
+    image: <ProductAvatar value={p.icon} name={p.name} />,
     code: p.code,
     title: p.name,
     copyFields: [
@@ -273,8 +290,8 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
         return {
           top: (
             <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-card p-5 shadow-xs">
-              <div className="grid h-[150px] w-full place-items-center rounded-btn border border-line bg-surface text-[56px]">
-                {p.icon}
+              <div className="grid h-[150px] w-full place-items-center overflow-hidden rounded-btn border border-line bg-surface text-[56px]">
+                <ProductAvatar value={p.icon} name={p.name} />
               </div>
               <Badge tone={tone(STATUS_TONE, p.status)}>{p.status}</Badge>
             </div>
@@ -343,11 +360,8 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
             title: "Product Classification",
             cols: 2,
             items: [
-              { label: "Product Type", value: c.ptype },
               { label: "Medical Device Class", value: c.devClass },
               { label: "Storage Condition", value: c.storage },
-              { label: "Country of Origin", value: c.origin },
-              { label: "Manufacturer", value: c.maker },
             ],
           },
           /* ---- Units & Barcode, folded in from the tab it used to own.

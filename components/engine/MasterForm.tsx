@@ -763,8 +763,11 @@ function CardBlock({ card, api }: { card: FormCard; api: FormApi }) {
         </div>
       )}
       <div className={cn("grid gap-x-5 gap-y-4", COLS[card.cols ?? "2"])}>
+        {/* Position, not path: a card can hold two fields on the same path —
+            a Product Code that is typed on create and read back on edit —
+            and keying on the path alone made those two one child. */}
         {fields.map((f, i) => (
-          <FieldView key={f.path ?? `${f.type}-${i}`} field={f} api={api} />
+          <FieldView key={`${f.path ?? f.type}-${i}`} field={f} api={api} />
         ))}
       </div>
     </div>

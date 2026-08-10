@@ -5,26 +5,36 @@ import { WAREHOUSES } from "@/lib/domain/warehouse";
 import { marginPct, markupPct } from "@/lib/domain/pricing";
 import { money, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
-import type { FormSchema, GridRow } from "@/lib/types";
-import { Badge } from "@/components/ui";
-import {
-  FORM_USER,
-  RailCard,
-  RailRow,
-  ReviewCard,
-  isCreate,
-  opts,
-  saved,
-} from "./common";
+import type { FormSchema, FormState, GridRow } from "@/lib/types";
+import { FORM_USER, ReviewCard, isCreate, opts, saved } from "./common";
 
 /* ============================================================
-   PRODUCT FORM — eight steps mirroring the eight detail tabs,
-   so a user who knows the read screen already knows the form.
+   PRODUCT FORM — six sections plus a review, mirroring the
+   detail tabs, so a user who knows the read screen already
+   knows the form.
    ============================================================ */
 
 const num = (v: unknown) => Number(v) || 0;
 
 const whOptions = () => WAREHOUSES.map((w) => `${w.code} ${w.name}`);
+
+/**
+ * The product name is one of the two language fields, never a third string
+ * typed on its own. A product called "A-FLEX PU40 (White)" in the list while
+ * its Thai and English boxes said something else was three names for one
+ * thing, and nothing said which of them a quotation would print.
+ *
+ * `nameLang` is that decision, made once and visible on the form.
+ */
+const productName = (s: FormState) =>
+  String((s.nameLang === "en" ? s.nameEn : s.nameTh) ?? "").trim();
+
+/* Named for the language rather than for the two boxes above, so the choice
+   and the box it points at are never two controls with one name. */
+const NAME_LANG = [
+  { value: "th", label: "ภาษาไทย" },
+  { value: "en", label: "English" },
+];
 
 export const PRODUCT_FORM: FormSchema<ProductRow> = {
   key: "product",
@@ -35,28 +45,20 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
 
   blank: () => ({
     _mode: "create",
-    icon: "📦",
+    icon: "",
     code: "",
     barcode: "",
     name: "",
     nameTh: "",
     nameEn: "",
+    nameLang: "th",
     cat: "",
     brand: "",
     series: "",
     status: "Draft",
     demo: false,
     desc: "",
-    cls: {
-      ptype: "",
-      devClass: "",
-      storage: "",
-      origin: "ประเทศไทย",
-      maker: "",
-      inv: true,
-      buy: true,
-      sell: true,
-    },
+    cls: { devClass: "", storage: "" },
     unit: "",
     weight: "",
     dim: "",
@@ -90,50 +92,62 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     reg: { no: "", status: "Pending", issue: "", expiry: "", custWarranty: "" },
   }),
 
-  toState: (p) => ({
-    _mode: "edit",
-    icon: p.icon,
-    code: p.code,
-    barcode: p.barcode,
-    name: p.name,
-    nameTh: p.nameTh,
-    nameEn: p.nameEn,
-    cat: p.cat,
-    brand: p.brand,
-    series: p.series,
-    status: p.status,
-    demo: p.demo,
-    desc: p.desc,
-    cls: { ...p.detail.cls },
-    unit: p.unit,
-    weight: p.weight,
-    dim: p.dim,
-    units: p.detail.units.filter((u) => u.type !== "Base Unit").map((u) => ({ ...u })),
-    price: p.price,
-    pricing: {
-      currency: p.pricing.currency,
-      retail: p.pricing.retail,
-      dealer: p.pricing.dealer,
-      gov: p.pricing.gov,
-      lastCost: p.pricing.lastCost,
-      avgCost: p.pricing.avgCost,
-      vat: p.pricing.vat,
-      effective: dmyToIso(p.pricing.effective),
-    },
-    tiers: p.detail.tiers.map((t) => ({ ...t })),
-    lowLevel: p.lowLevel,
-    stocks: p.stocks.map((s) => ({ ...s, exp: dmyToIso(s.exp) })),
-    supplier: p.supplier,
-    sup: { ...p.sup },
-    altSuppliers: p.altSuppliers.map((a) => ({ ...a })),
-    reg: {
-      no: p.reg.no,
-      status: p.reg.status,
-      issue: dmyToIso(p.reg.issue),
-      expiry: dmyToIso(p.reg.expiry),
-      custWarranty: p.reg.custWarranty,
-    },
-  }),
+  toState: (p) => {
+    /*
+       `name` predates the choice, so an edit has to work out which box it
+       came from. An exact match with the English name means English;
+       anything else counts as Thai, and a record whose Thai box was never
+       filled in takes the old name rather than losing it.
+    */
+    const nameEn = String(p.nameEn ?? "").trim();
+    const fromEn = Boolean(nameEn) && p.name.trim() === nameEn;
+
+    return {
+      _mode: "edit",
+      icon: p.icon,
+      code: p.code,
+      barcode: p.barcode,
+      name: p.name,
+      nameTh: fromEn ? p.nameTh : String(p.nameTh ?? "").trim() || p.name,
+      nameEn,
+      nameLang: fromEn ? "en" : "th",
+      cat: p.cat,
+      brand: p.brand,
+      series: p.series,
+      status: p.status,
+      demo: p.demo,
+      desc: p.desc,
+      cls: { ...p.detail.cls },
+      unit: p.unit,
+      weight: p.weight,
+      dim: p.dim,
+      units: p.detail.units.filter((u) => u.type !== "Base Unit").map((u) => ({ ...u })),
+      price: p.price,
+      pricing: {
+        currency: p.pricing.currency,
+        retail: p.pricing.retail,
+        dealer: p.pricing.dealer,
+        gov: p.pricing.gov,
+        lastCost: p.pricing.lastCost,
+        avgCost: p.pricing.avgCost,
+        vat: p.pricing.vat,
+        effective: dmyToIso(p.pricing.effective),
+      },
+      tiers: p.detail.tiers.map((t) => ({ ...t })),
+      lowLevel: p.lowLevel,
+      stocks: p.stocks.map((s) => ({ ...s, exp: dmyToIso(s.exp) })),
+      supplier: p.supplier,
+      sup: { ...p.sup },
+      altSuppliers: p.altSuppliers.map((a) => ({ ...a })),
+      reg: {
+        no: p.reg.no,
+        status: p.reg.status,
+        issue: dmyToIso(p.reg.issue),
+        expiry: dmyToIso(p.reg.expiry),
+        custWarranty: p.reg.custWarranty,
+      },
+    };
+  },
 
   steps: [
     /* ---------- 1. GENERAL ---------- */
@@ -141,14 +155,20 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       key: "general",
       label: "General",
       railLabel: "ข้อมูลทั่วไป",
-      labelTh: "รหัส ชื่อ และหมวดหมู่",
+      labelTh: "รหัส ชื่อ หมวดหมู่ และการจัดประเภท",
       blocks: () => [
         {
           type: "card",
           title: "Identity",
           cols: "2",
           fields: [
-            { type: "image", path: "icon", label: "Product Image", span: true },
+            {
+              type: "photo",
+              path: "icon",
+              label: "Product Image",
+              icon: "product",
+              span: true,
+            },
             {
               type: "text",
               path: "code",
@@ -173,14 +193,28 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
             },
             {
               type: "text",
-              path: "name",
-              label: "Product Name",
-              required: true,
-              span: true,
+              path: "nameTh",
+              label: "ชื่อภาษาไทย",
+              placeholder: "เอ-เฟล็กซ์ ซีลแลนท์ พียู40 2 มล.",
+            },
+            {
+              type: "text",
+              path: "nameEn",
+              label: "English Name",
               placeholder: "A-FLEX Sealant PU40 2ml",
             },
-            { type: "text", path: "nameTh", label: "ชื่อภาษาไทย" },
-            { type: "text", path: "nameEn", label: "English Name" },
+            {
+              type: "radio",
+              path: "nameLang",
+              label: "ใช้ชื่อใดเป็นชื่อสินค้า",
+              options: NAME_LANG,
+              hint: "ชื่อที่เลือกคือชื่อที่ขึ้นในรายการสินค้าและบนเอกสารทุกใบ",
+            },
+            {
+              type: "static",
+              label: "Product Name",
+              value: (s) => productName(s) || "—",
+            },
             {
               type: "textarea",
               path: "desc",
@@ -192,7 +226,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         },
         {
           type: "card",
-          title: "Grouping",
+          title: "Grouping & Classification",
           cols: "3",
           fields: [
             {
@@ -211,37 +245,6 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
             },
             { type: "select", path: "series", label: "Series", options: opts(OPT.series) },
             {
-              type: "toggle",
-              path: "demo",
-              label: "Demo Product",
-              onText: "เป็นสินค้าตัวอย่าง",
-              offText: "สินค้าปกติ",
-            },
-          ],
-        },
-      ],
-    },
-
-    /* ---------- 2. CLASSIFICATION ---------- */
-    {
-      key: "classification",
-      label: "Classification",
-      railLabel: "การจัดประเภท",
-      labelTh: "ประเภทและการจัดเก็บ",
-      blocks: () => [
-        {
-          type: "card",
-          title: "Product Classification",
-          cols: "2",
-          fields: [
-            {
-              type: "select",
-              path: "cls.ptype",
-              label: "Product Type",
-              required: true,
-              options: opts(OPT.ptype),
-            },
-            {
               type: "select",
               path: "cls.devClass",
               label: "Medical Device Class",
@@ -254,53 +257,18 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
               options: opts(OPT.storage),
             },
             {
-              type: "select",
-              path: "cls.origin",
-              label: "Country of Origin",
-              options: opts(OPT.country),
-            },
-            {
-              type: "text",
-              path: "cls.maker",
-              label: "Manufacturer",
-              span: true,
-              placeholder: "A-FLEX Co., Ltd.",
-            },
-          ],
-        },
-        {
-          type: "card",
-          title: "Transaction Roles",
-          cols: "3",
-          badge: <Badge tone="info">ใช้กำหนดว่าสินค้านี้เข้าเอกสารใดได้บ้าง</Badge>,
-          fields: [
-            {
               type: "toggle",
-              path: "cls.inv",
-              label: "Inventory Item",
-              onText: "นับสต๊อก",
-              offText: "ไม่นับสต๊อก",
-            },
-            {
-              type: "toggle",
-              path: "cls.buy",
-              label: "Purchase Item",
-              onText: "ซื้อได้",
-              offText: "ซื้อไม่ได้",
-            },
-            {
-              type: "toggle",
-              path: "cls.sell",
-              label: "Sales Item",
-              onText: "ขายได้",
-              offText: "ขายไม่ได้",
+              path: "demo",
+              label: "Demo Product",
+              onText: "เป็นสินค้าตัวอย่าง",
+              offText: "สินค้าปกติ",
             },
           ],
         },
       ],
     },
 
-    /* ---------- 3. UNITS & BARCODE ---------- */
+    /* ---------- 2. UNITS & BARCODE ---------- */
     {
       key: "units",
       label: "Units & Barcode",
@@ -349,7 +317,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       ],
     },
 
-    /* ---------- 4. PRICE ---------- */
+    /* ---------- 3. PRICE ---------- */
     {
       key: "price",
       label: "Price",
@@ -460,7 +428,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       ],
     },
 
-    /* ---------- 5. STOCK ---------- */
+    /* ---------- 4. STOCK ---------- */
     {
       key: "stock",
       label: "Stock",
@@ -506,19 +474,13 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       ],
     },
 
-    /* ---------- 6. SUPPLIER ---------- */
+    /* ---------- 5. SUPPLIER ---------- */
     {
       key: "supplier",
       label: "Supplier",
       railLabel: "ผู้ขายสินค้า",
       labelTh: "ผู้ขายหลักและเงื่อนไข",
-      when: (s) => Boolean(s.cls?.buy),
       blocks: () => [
-        {
-          type: "note",
-          label: "ขั้นตอนนี้แสดงเพราะสินค้านี้ตั้งเป็น Purchase Item",
-          text: "ปิด Purchase Item ในขั้นตอน Classification หากสินค้านี้ไม่ได้สั่งซื้อจากภายนอก",
-        },
         {
           type: "card",
           title: "Main Supplier",
@@ -588,7 +550,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       ],
     },
 
-    /* ---------- 7. REGISTRATION ---------- */
+    /* ---------- 6. REGISTRATION ---------- */
     {
       key: "registration",
       label: "Registration",
@@ -644,11 +606,27 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
 
   required: [
     { path: "code", label: "Product Code", step: "general" },
-    { path: "name", label: "Product Name", step: "general" },
+    /*
+       Only the box the product is actually named from. Demanding both would
+       block a product that genuinely has one name, and demanding neither
+       would let one through with no name at all — which is what `name` being
+       its own field used to allow.
+    */
+    {
+      path: "nameTh",
+      label: "ชื่อภาษาไทย",
+      step: "general",
+      test: (s) => s.nameLang === "en" || Boolean(String(s.nameTh ?? "").trim()),
+    },
+    {
+      path: "nameEn",
+      label: "English Name",
+      step: "general",
+      test: (s) => s.nameLang !== "en" || Boolean(String(s.nameEn ?? "").trim()),
+    },
     { path: "status", label: "Status", step: "general" },
     { path: "cat", label: "Category", step: "general" },
     { path: "brand", label: "Brand", step: "general" },
-    { path: "cls.ptype", label: "Product Type", step: "classification" },
     { path: "unit", label: "Base Unit", step: "units" },
     { path: "price", label: "Standard Selling Price", step: "price" },
     { path: "pricing.currency", label: "Currency", step: "price" },
@@ -688,12 +666,19 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         !num(s.pricing?.lastCost) ||
         num(s.price) >= num(s.pricing.lastCost),
     },
-    {
-      label: "สินค้าที่ตั้งเป็น Purchase Item ต้องระบุผู้ขายสินค้าหลัก",
-      step: "supplier",
-      test: (s) => !s.cls?.buy || Boolean(String(s.supplier ?? "").trim()),
-    },
   ],
+
+  /*
+     The two name boxes and the language choice all feed one field, so keep it
+     in step here rather than only at save. The list column, the form title and
+     the duplicate check all read `name`, and each of them would otherwise be a
+     keystroke behind what the form shows.
+  */
+  onChange: (path, s) => {
+    if (path === "nameTh" || path === "nameEn" || path === "nameLang") {
+      s.name = productName(s);
+    }
+  },
 
   newRow: (path, isFirst) => {
     switch (path) {
@@ -729,66 +714,27 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
 
   openDuplicate: (code, ctx) => ctx.openEntity("product", code),
 
-  previewCard: (s) => (
-    <div className="flex-1 rounded-card border border-line bg-card p-5 shadow-xs max-[1280px]:min-w-[280px]">
-      <div className="mb-3 grid h-[110px] w-full place-items-center rounded-btn border border-line bg-surface text-[44px]">
-        {String(s.icon ?? "📦")}
-      </div>
-      <p className="truncate text-[13px] font-semibold tnum">
-        {String(s.code ?? "") || "รหัสสินค้าใหม่"}
-      </p>
-      <p className="mt-0.5 line-clamp-2 text-cap text-ink-2">
-        {String(s.name ?? "") || "ยังไม่ได้ตั้งชื่อสินค้า"}
-      </p>
-      <p className="mt-3 text-lg font-semibold tracking-[-0.02em] tnum">
-        {num(s.price) ? money(s.price) : "—"}
-        <span className="ml-1 text-cap font-normal text-ink-2">
-          {String(s.pricing?.currency ?? "")}
-        </span>
-      </p>
-    </div>
-  ),
+  /*
+     No preview card and no insight rail.
 
-  sidePanel: (s) => {
-    const cost = num(s.pricing?.lastCost);
-    const price = num(s.price);
-    const margin = cost && price ? marginPct(cost, price) : null;
-
-    return (
-      <RailCard icon="trend" title="Pricing Insight" tone={margin !== null && margin < 15 ? "warn" : "default"}>
-        <RailRow label="ราคามาตรฐาน" value={price ? money(price) : "—"} />
-        <RailRow
-          label="ต้นทุนล่าสุด"
-          value={checkPermission("canViewCost") ? (cost ? money(cost) : "—") : "••••"}
-        />
-        <RailRow
-          label="กำไรขั้นต้น"
-          value={margin === null ? "—" : `${margin}%`}
-          tone={margin === null ? undefined : margin < 15 ? "warn" : "ok"}
-        />
-        <RailRow label="ราคาตัวแทน" value={num(s.pricing?.dealer) ? money(s.pricing.dealer) : "—"} />
-        <RailRow label="จุดสั่งซื้อ" value={`${num(s.lowLevel)} ${String(s.unit ?? "")}`} />
-        {margin !== null && margin < 15 && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            กำไรขั้นต้นต่ำกว่า 15% — ตรวจสอบราคาขายหรือเจรจาต้นทุนกับผู้ขายอีกครั้ง
-          </p>
-        )}
-      </RailCard>
-    );
-  },
+     Both restated what the form already showed — the code, the name and the
+     price were on screen a few centimetres to the left, and the gross margin
+     is a computed field inside the Cost card where the two numbers it comes
+     from are typed. A rail that repeats the page costs a third of the width
+     and tells the person filling it in nothing they did not just write.
+  */
 
   reviewCards: (s, row) => (
     <>
       <ReviewCard title="General">
         {row("Product Code", s.code, "general")}
-        {row("Product Name", s.name, "general")}
+        {row("Product Name", productName(s), "general")}
         {row("Category", s.cat, "general")}
         {row("Brand", s.brand, "general")}
         {row("Status", s.status, "general")}
+        {row("Storage Condition", s.cls?.storage, "general")}
       </ReviewCard>
-      <ReviewCard title="Classification & Units">
-        {row("Product Type", s.cls?.ptype, "classification")}
-        {row("Storage Condition", s.cls?.storage, "classification")}
+      <ReviewCard title="Units & Barcode">
         {row("Base Unit", s.unit, "units")}
         {row("Alternative Units", s.units, "units")}
         {row("Primary Barcode", s.barcode, "units")}
@@ -800,13 +746,11 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         {row("Reorder Point", s.lowLevel, "stock")}
         {row("Warehouse Assignment", s.stocks, "stock")}
       </ReviewCard>
-      {Boolean(s.cls?.buy) && (
-        <ReviewCard title="Supplier">
-          {row("Main Supplier", s.supplier, "supplier")}
-          {row("Purchase Unit", s.sup?.punit, "supplier")}
-          {row("Lead Time", s.sup?.lead, "supplier")}
-        </ReviewCard>
-      )}
+      <ReviewCard title="Supplier">
+        {row("Main Supplier", s.supplier, "supplier")}
+        {row("Purchase Unit", s.sup?.punit, "supplier")}
+        {row("Lead Time", s.sup?.lead, "supplier")}
+      </ReviewCard>
       <ReviewCard title="Registration">
         {row("Registration Number", s.reg?.no, "registration")}
         {row("Registration Status", s.reg?.status, "registration")}
@@ -842,11 +786,13 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     }));
 
     const patch = {
-      icon: String(s.icon ?? "📦"),
+      icon: String(s.icon ?? ""),
       barcode: String(s.barcode ?? ""),
-      name: String(s.name ?? "").trim(),
-      nameTh: String(s.nameTh ?? ""),
-      nameEn: String(s.nameEn ?? ""),
+      /* Derived here as well as in onChange: a restored draft written before
+         the choice existed reaches save without ever firing a change. */
+      name: productName(s),
+      nameTh: String(s.nameTh ?? "").trim(),
+      nameEn: String(s.nameEn ?? "").trim(),
       cat: String(s.cat ?? ""),
       brand: String(s.brand ?? ""),
       series: String(s.series ?? ""),
@@ -931,14 +877,8 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     const rec = PRODUCTS.find((p) => p.code === code);
     if (rec) {
       rec.detail.cls = {
-        ptype: String(s.cls?.ptype ?? ""),
         devClass: String(s.cls?.devClass ?? ""),
         storage: String(s.cls?.storage ?? ""),
-        origin: String(s.cls?.origin ?? ""),
-        maker: String(s.cls?.maker ?? ""),
-        inv: Boolean(s.cls?.inv),
-        buy: Boolean(s.cls?.buy),
-        sell: Boolean(s.cls?.sell),
       };
       rec.detail.units = [
         {

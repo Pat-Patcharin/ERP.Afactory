@@ -29,8 +29,9 @@ import type {
 /* ============================================================
    FIELD RENDERERS
 
-   Thirteen field types, one switch. A form schema names a type and
-   a path; nothing here knows what a Product or a Goods Receipt is.
+   Every field type resolves through one switch. A form schema names
+   a type and a path; nothing here knows what a Product or a Goods
+   Receipt is.
    ============================================================ */
 
 /** Everything a field needs to read state and write it back. */
@@ -172,6 +173,29 @@ export function FieldView({ field: f, api }: { field: FormField; api: FormApi })
           />
         );
 
+      case "radio":
+        return (
+          <div className="flex min-h-10 flex-wrap items-center gap-x-5 gap-y-2">
+            {(f.options ?? []).map((o) => {
+              const val = optValue(o);
+              return (
+                <label
+                  key={val}
+                  className="inline-flex cursor-pointer items-center gap-2 text-body"
+                >
+                  <Radio
+                    name={path}
+                    value={val}
+                    checked={String(value ?? "") === val}
+                    onChange={() => api.set(path, val)}
+                  />
+                  {optLabel(o)}
+                </label>
+              );
+            })}
+          </div>
+        );
+
       case "image":
         return <ImageControl field={f} api={api} />;
 
@@ -303,7 +327,7 @@ function PhotoControl({ field: f, api }: { field: FormField; api: FormApi }) {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={value} alt={f.label} className="h-full w-full object-cover" />
         ) : (
-          <Icon name="partner" size={28} className="text-ink-3" />
+          <Icon name={f.icon ?? "partner"} size={28} className="text-ink-3" />
         )}
       </div>
 

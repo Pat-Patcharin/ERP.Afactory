@@ -119,28 +119,23 @@ export interface Product {
   };
 }
 
+/**
+ * What is left of the classification once the fields that repeated something
+ * else were taken out.
+ *
+ * `ptype` said "Medical Consumable" where the category already said "Dental
+ * Consumable" — two names for one fact, and the product form asked for both.
+ * `origin` and `maker` belonged to the supplier, who is where a buyer looks
+ * for them. `inv` / `buy` / `sell` were three toggles nothing outside the
+ * form ever read.
+ */
 export interface ProductClassification {
-  ptype: string;
-  inv: boolean;
-  buy: boolean;
-  sell: boolean;
   devClass: string;
   storage: string;
-  origin: string;
-  maker: string;
 }
 
 export type ProductDetailMap = Record<string, {
-  cls: {
-    ptype: string;
-    inv: boolean;
-    buy: boolean;
-    sell: boolean;
-    devClass: string;
-    storage: string;
-    origin: string;
-    maker: string;
-  };
+  cls: ProductClassification;
   units: {
     unit: string;
     type: string;
@@ -1066,27 +1061,15 @@ export const PRODUCTS: Product[] = [
 ];
 
 export const DEFAULT_CLASS: ProductClassification = {
-  ptype: "Medical Consumable",
-  inv: true,
-  buy: true,
-  sell: true,
   devClass: "Class II",
   storage: "อุณหภูมิห้อง (15–30°C)",
-  origin: "ประเทศไทย",
-  maker: "A-FLEX Co., Ltd.",
 };
 
 export const DETAIL: ProductDetailMap = {
   "AA-TH003-WL": {
     cls: {
-      ptype: "Medical Consumable",
-      inv: true,
-      buy: true,
-      sell: true,
       devClass: "Class II",
       storage: "อุณหภูมิห้อง (15–30°C)",
-      origin: "ญี่ปุ่น",
-      maker: "A-FLEX Co., Ltd.",
     },
     units: [
       {

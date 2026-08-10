@@ -204,14 +204,8 @@ function toDetail(r: PriceMasterRow, p: Product, date: string): ProductDetail {
 
   return {
     cls: {
-      ptype: p.cat === "Dental Equipment" ? "Medical Device" : "Medical Consumable",
-      inv: true,
-      buy: true,
-      sell: r.status === "OK",
       devClass: DASH,
       storage: DASH,
-      origin: DASH,
-      maker: r.vendor || DASH,
     },
     units: [{ unit: p.unit, type: "Base Unit", conv: `1 ${p.unit}`, barcode: "", active: true }],
     rfid: false,

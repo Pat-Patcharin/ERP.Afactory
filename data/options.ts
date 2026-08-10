@@ -15,7 +15,6 @@ export interface ProductOptions {
   status: string[];
   country: string[];
   storage: string[];
-  ptype: string[];
   devClass: string[];
   yesno: string[];
   warehouse: string[];
@@ -38,13 +37,6 @@ export const OPT: ProductOptions = {
   status: ["Draft", "Active", "Inactive"],
   country: ["ประเทศไทย", "ญี่ปุ่น", "เกาหลีใต้", "จีน", "เยอรมนี", "มาเลเซีย", "สหรัฐอเมริกา"],
   storage: ["อุณหภูมิห้อง (15–30°C)", "แช่เย็น (2–8°C)", "หลีกเลี่ยงแสงแดด", "ที่แห้ง"],
-  ptype: [
-    "Medical Consumable",
-    "General Consumable",
-    "Medical Device",
-    "Instrument",
-    "Spare Part",
-  ],
   devClass: ["Class I", "Class II", "Class III", "ไม่จัดเป็นเครื่องมือแพทย์"],
   yesno: ["Yes", "No"],
   warehouse: ["WH-01 Samut Prakan", "WH-02 Bangkok", "WH-03 Service"],

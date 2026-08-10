@@ -500,6 +500,12 @@ export type FieldType =
   | "select"
   | "textarea"
   | "toggle"
+  /**
+   * A short, mutually exclusive choice shown in full — every option visible
+   * without opening anything. Two or three options that the user must weigh
+   * against each other, where a dropdown would hide the alternative.
+   */
+  | "radio"
   /** Emoji stand-in picker plus upload — masters that only need a marker. */
   | "image"
   /** Upload only. A real photograph, no icon to fall back on. */
@@ -578,6 +584,8 @@ export interface FormField {
   step?: string;
   rows?: number;
   options?: (string | SelectOption)[];
+  /** Placeholder mark on a `photo` field with nothing uploaded yet. */
+  icon?: IconName;
   /** Conditional field — hidden when this returns false. */
   when?: (state: FormState) => boolean;
   /** static fields compute their display value from state. */
