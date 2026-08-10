@@ -24,7 +24,10 @@ vi.mock("next/navigation", () => ({
     refresh: vi.fn(),
     prefetch: vi.fn(),
   }),
-  usePathname: () => "/inventory",
+  /* A route inside a labelled section, so the sidebar tests can prove that
+     folding a section still says which one holds the open page. It was
+     /inventory until that group was hidden from the menu. */
+  usePathname: () => "/purchase",
   useSearchParams: () => new URLSearchParams(),
   useParams: () => routeParams,
   notFound: () => {

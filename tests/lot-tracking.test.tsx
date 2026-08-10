@@ -693,12 +693,18 @@ describe("Lot Tracking — navigation", () => {
     expect(getSchemas("lot-tracking")!.form).toBeUndefined();
   });
 
-  it("is reachable from the Inventory sidebar group", () => {
-    const group = NAV.find((g) => g.label === "Inventory")!;
-    const item = group.items.find((i) => i.label === "Lot Tracking")!;
-    expect(item.href).toBe("/m/lot-tracking");
-    expect(item.soon).toBeUndefined();
-    expect(pageHref("Lot Tracking")).toBe("/m/lot-tracking");
+  it("ซ่อนจากเมนู Inventory แต่โมดูลยังอยู่ครบ", () => {
+    /* The Inventory group is hidden from the sidebar while the inbound and
+       outbound flows are being walked — see lib/nav.ts. The module is
+       untouched: its route resolves and its schema is registered. Restoring
+       the group is what puts it back on the menu. */
+    expect(NAV.some((g) => g.label === "Inventory")).toBe(false);
+    expect(NAV.flatMap((g) => g.items).some((i) => i.label === "Lot Tracking")).toBe(
+      false,
+    );
+    /* Still registered, so the route still resolves for anyone who has the
+       URL — hidden is not deleted. */
+    expect(getSchemas("lot-tracking")).toBeTruthy();
   });
 
   it("leaves the phases after Inventory as coming soon", () => {
@@ -710,13 +716,22 @@ describe("Lot Tracking — navigation", () => {
     }
   });
 
-  it("keeps the other Inventory modules untouched", () => {
-    expect(pageHref("Inventory Workspace")).toBe("/inventory");
-    expect(pageHref("Stock Inquiry")).toBe("/m/stock-inquiry");
-    expect(pageHref("Stock Card")).toBe("/m/stock-card");
-    expect(pageHref("Stock Transfer")).toBe("/m/stock-transfer");
-    expect(pageHref("Stock Adjustment")).toBe("/m/stock-adjustment");
-    expect(pageHref("Cycle Count")).toBe("/m/cycle-count");
+  it("โมดูลอื่นในหมวด Inventory ก็ถูกซ่อนเหมือนกัน", () => {
+    /* Hidden as a group, not one screen at a time. */
+    const labels = NAV.flatMap((g) => g.items).map((i) => i.label);
+    for (const l of [
+      "Inventory Workspace",
+      "Stock Inquiry",
+      "Stock Card",
+      "Stock Transfer",
+      "Stock Adjustment",
+      "Cycle Count",
+      "Lot Tracking",
+      "Serial Tracking",
+      "Barcode Lookup",
+    ]) {
+      expect(labels, l).not.toContain(l);
+    }
   });
 
   it("resolves a lot by product and lot number", () => {

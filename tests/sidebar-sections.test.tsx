@@ -16,8 +16,8 @@ import { resetCurrentUser } from "@/lib/domain/admin";
      · the icon rail, where there is no heading to fold into
      · knowing which page is open when its section is shut
 
-   The route is mocked to /inventory throughout — see setup.ts —
-   so "Inventory" is the section holding the current page.
+   The route is mocked to /purchase throughout — see setup.ts —
+   so "Purchase" is the section holding the current page.
    ============================================================ */
 
 beforeEach(() => {
@@ -90,9 +90,9 @@ describe("Sidebar — หุบเป็นรายหมวด", () => {
     const user = userEvent.setup();
     const { container } = render(<Sidebar />);
 
-    /* Inventory holds the current route, so folding it must leave a mark. */
-    await user.click(heading("Inventory"));
-    expect(heading("Inventory").querySelector(".bg-primary")).not.toBeNull();
+    /* Purchase holds the current route, so folding it must leave a mark. */
+    await user.click(heading("Purchase"));
+    expect(heading("Purchase").querySelector(".bg-primary")).not.toBeNull();
 
     /* A section with nothing active in it gets no mark. */
     await user.click(heading("Finance"));

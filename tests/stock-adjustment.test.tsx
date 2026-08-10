@@ -875,12 +875,18 @@ describe("Stock Adjustment — navigation", () => {
     expect(getSchemas("stock-adjustment")!.form).toBeDefined();
   });
 
-  it("is reachable from the Inventory sidebar group", () => {
-    const group = NAV.find((g) => g.label === "Inventory")!;
-    const item = group.items.find((i) => i.label === "Stock Adjustment")!;
-    expect(item.href).toBe("/m/stock-adjustment");
-    expect(item.soon).toBeUndefined();
-    expect(pageHref("Stock Adjustment")).toBe("/m/stock-adjustment");
+  it("ซ่อนจากเมนู Inventory แต่โมดูลยังอยู่ครบ", () => {
+    /* The Inventory group is hidden from the sidebar while the inbound and
+       outbound flows are being walked — see lib/nav.ts. The module is
+       untouched: its route resolves and its schema is registered. Restoring
+       the group is what puts it back on the menu. */
+    expect(NAV.some((g) => g.label === "Inventory")).toBe(false);
+    expect(NAV.flatMap((g) => g.items).some((i) => i.label === "Stock Adjustment")).toBe(
+      false,
+    );
+    /* Still registered, so the route still resolves for anyone who has the
+       URL — hidden is not deleted. */
+    expect(getSchemas("stock-adjustment")).toBeTruthy();
   });
 
   it("leaves the phases after Inventory as coming soon", () => {
@@ -892,11 +898,22 @@ describe("Stock Adjustment — navigation", () => {
     }
   });
 
-  it("keeps the other Inventory modules untouched", () => {
-    expect(pageHref("Inventory Workspace")).toBe("/inventory");
-    expect(pageHref("Stock Inquiry")).toBe("/m/stock-inquiry");
-    expect(pageHref("Stock Card")).toBe("/m/stock-card");
-    expect(pageHref("Stock Transfer")).toBe("/m/stock-transfer");
+  it("โมดูลอื่นในหมวด Inventory ก็ถูกซ่อนเหมือนกัน", () => {
+    /* Hidden as a group, not one screen at a time. */
+    const labels = NAV.flatMap((g) => g.items).map((i) => i.label);
+    for (const l of [
+      "Inventory Workspace",
+      "Stock Inquiry",
+      "Stock Card",
+      "Stock Transfer",
+      "Stock Adjustment",
+      "Cycle Count",
+      "Lot Tracking",
+      "Serial Tracking",
+      "Barcode Lookup",
+    ]) {
+      expect(labels, l).not.toContain(l);
+    }
   });
 });
 

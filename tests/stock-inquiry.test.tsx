@@ -534,12 +534,18 @@ describe("Stock Inquiry — navigation", () => {
     expect(getSchemas("stock-inquiry")!.form).toBeUndefined();
   });
 
-  it("is reachable from the Inventory sidebar group", () => {
-    const group = NAV.find((g) => g.label === "Inventory")!;
-    const item = group.items.find((i) => i.label === "Stock Inquiry")!;
-    expect(item.href).toBe("/m/stock-inquiry");
-    expect(item.soon).toBeUndefined();
-    expect(pageHref("Stock Inquiry")).toBe("/m/stock-inquiry");
+  it("ซ่อนจากเมนู Inventory แต่โมดูลยังอยู่ครบ", () => {
+    /* The Inventory group is hidden from the sidebar while the inbound and
+       outbound flows are being walked — see lib/nav.ts. The module is
+       untouched: its route resolves and its schema is registered. Restoring
+       the group is what puts it back on the menu. */
+    expect(NAV.some((g) => g.label === "Inventory")).toBe(false);
+    expect(NAV.flatMap((g) => g.items).some((i) => i.label === "Stock Inquiry")).toBe(
+      false,
+    );
+    /* Still registered, so the route still resolves for anyone who has the
+       URL — hidden is not deleted. */
+    expect(getSchemas("stock-inquiry")).toBeTruthy();
   });
 
   it("leaves the phases after Inventory as coming soon", () => {

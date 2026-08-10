@@ -337,15 +337,20 @@ describe("Two accounts — on the screen", () => {
   it("hides from the rep the modules the rep may not open", () => {
     switchAccount(REP);
     const { unmount } = render(<Sidebar />);
-    /* Sales work stays; the warehouse and the admin console go. */
+    /* Sales work stays; the buying side and the admin console go.
+
+       This used to test Stock Adjustment, which is hidden from EVERYONE now
+       and so proves nothing about permissions — a module nobody can see is
+       not evidence that this role cannot see it. */
     expect(screen.getAllByText("Quotation").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Stock Adjustment")).toBeNull();
     expect(screen.queryByText("Purchase Order")).toBeNull();
+    expect(screen.queryByText("Role Management")).toBeNull();
     unmount();
 
     switchAccount(ADMIN);
     render(<Sidebar />);
-    expect(screen.getAllByText("Stock Adjustment").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Purchase Order").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Role Management").length).toBeGreaterThan(0);
   });
 
   it("gives no Create button on a list the role may only read", () => {

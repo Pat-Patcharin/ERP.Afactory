@@ -13,6 +13,7 @@ import {
   invWarehouseOverview,
 } from "@/lib/domain/inventory";
 import { WAREHOUSES } from "@/lib/domain/warehouse";
+import { getSchemas } from "@/schemas/registry";
 import { NAV, NAV_INDEX } from "@/lib/nav";
 import { pageHref } from "@/lib/routes";
 import { routerPush } from "./setup";
@@ -356,9 +357,11 @@ describe("Inventory Workspace — navigation", () => {
     }
   });
 
-  it("registers every workspace destination in the sidebar", () => {
-    /* pageHref falls back to /soon for anything unknown, so an unregistered
-       target still routes — it just becomes unreachable from the sidebar. */
+  it("ทุกปลายทางของหน้านี้ยังชี้ไปโมดูลที่มีอยู่จริง", () => {
+    /* The Inventory group is hidden from the sidebar for now, so this can no
+       longer ask "is it on the menu". What still has to hold is that no card
+       points at a name nothing answers to: every target is either a
+       registered module or a page with a route of its own. */
     const targets = new Set([
       ...invKpis().map((k) => k.goto),
       ...invPipeline().map((s) => s.goto),
@@ -366,8 +369,22 @@ describe("Inventory Workspace — navigation", () => {
       ...invShortcuts().map((s) => s.goto),
       ...invHealth().map((h) => h.goto),
     ]);
-    const registered = new Set(NAV_INDEX.map((n) => n.label));
-    for (const t of targets) expect(registered, `${t} in sidebar`).toContain(t);
+
+    const known = new Set([
+      ...NAV_INDEX.map((n) => n.label),
+      "Inventory Workspace",
+      "Stock Inquiry",
+      "Stock Card",
+      "Stock Transfer",
+      "Stock Adjustment",
+      "Cycle Count",
+      "Lot Tracking",
+      "Serial Tracking",
+      "Barcode Lookup",
+      /* Not built at all — routes to the named placeholder on purpose. */
+      "Supplier Claim",
+    ]);
+    for (const t of targets) expect(known, `${t} เป็นปลายทางที่มีอยู่จริง`).toContain(t);
   });
 
   it("routes a KPI card into its module", async () => {
@@ -389,12 +406,14 @@ describe("Inventory Workspace — navigation", () => {
     expect(routerPush).toHaveBeenCalledWith("/m/warehouse");
   });
 
-  it("registers the Inventory group with every module built", () => {
-    const group = NAV.find((g) => g.label === "Inventory");
-    expect(group).toBeDefined();
+  it("หมวด Inventory ถูกซ่อนทั้งหมวด แต่ทุกโมดูลยังอยู่", () => {
+    /* Nine screens that are built and working, parked while the inbound and
+       outbound flows are being walked — see lib/nav.ts. Hidden as a GROUP,
+       which is what makes it one line to put back. */
+    expect(NAV.find((g) => g.label === "Inventory")).toBeUndefined();
 
-    const labels = group!.items.map((i) => i.label);
-    expect(labels).toEqual([
+    const onMenu = new Set(NAV.flatMap((g) => g.items).map((i) => i.label));
+    for (const label of [
       "Inventory Workspace",
       "Stock Inquiry",
       "Stock Card",
@@ -404,28 +423,23 @@ describe("Inventory Workspace — navigation", () => {
       "Lot Tracking",
       "Serial Tracking",
       "Barcode Lookup",
-    ]);
+    ]) {
+      expect(onMenu, label).not.toContain(label);
+    }
 
-    /* Built so far, in sidebar order. */
-    const built: [string, string][] = [
-      ["Inventory Workspace", "/inventory"],
-      ["Stock Inquiry", "/m/stock-inquiry"],
-      ["Stock Card", "/m/stock-card"],
-      ["Stock Transfer", "/m/stock-transfer"],
-      ["Stock Adjustment", "/m/stock-adjustment"],
-      ["Cycle Count", "/m/cycle-count"],
-      ["Lot Tracking", "/m/lot-tracking"],
-      ["Serial Tracking", "/m/serial-tracking"],
-      ["Barcode Lookup", "/barcode"],
-    ];
-    built.forEach(([label, href], i) => {
-      expect(group!.items[i].label).toBe(label);
-      expect(group!.items[i].href).toBe(href);
-      expect(group!.items[i].soon).toBeUndefined();
-    });
-
-    /* Inventory is complete — nothing in the group is a placeholder. */
-    expect(group!.items).toHaveLength(built.length);
+    /* Still registered, so every route resolves for anyone holding the URL —
+       and so restoring the group needs no other change. */
+    for (const entity of [
+      "stock-inquiry",
+      "stock-card",
+      "stock-transfer",
+      "stock-adjustment",
+      "cycle-count",
+      "lot-tracking",
+      "serial-tracking",
+    ]) {
+      expect(getSchemas(entity), entity).toBeTruthy();
+    }
   });
 
   it("keeps Finance, Service, Reports and Settings as coming soon", () => {

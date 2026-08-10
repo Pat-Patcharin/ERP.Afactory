@@ -757,13 +757,28 @@ describe("Dashboard — navigation", () => {
 
   it("registers every built destination in the sidebar", () => {
     /* Supplier Invoice has no module and no sidebar entry — it is expected
-       to fall through to the named placeholder, so it is excluded here. */
+       to fall through to the named placeholder, so it is excluded here.
+
+       The Inventory targets are excluded for a different reason: those
+       screens are BUILT and hidden from the menu while the inbound and
+       outbound flows are being walked. The dashboard still reports their
+       figures — a QC hold and a low-stock count are true whether or not the
+       screen behind them is on the menu — so clicking one lands on the named
+       placeholder until the group is restored. */
     const registered = new Set(NAV_INDEX.map((n) => n.label));
     const extra = new Set([
       "Purchase Workspace",
       "Outbound Workspace",
-      "Inventory Workspace",
       "Supplier Invoice",
+      "Inventory Workspace",
+      "Stock Inquiry",
+      "Stock Card",
+      "Stock Transfer",
+      "Stock Adjustment",
+      "Cycle Count",
+      "Lot Tracking",
+      "Serial Tracking",
+      "Barcode Lookup",
     ]);
 
     const targets = new Set([

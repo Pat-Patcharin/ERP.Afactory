@@ -76,6 +76,15 @@ export const NAV: NavGroup[] = [
          putting the entry back here is what turns it on again. */
     ],
   },
+  /* The whole INVENTORY group is HIDDEN, not removed.
+
+     Nine screens that are built and working, parked while the inbound and
+     outbound flows are being walked. Every route still resolves, every
+     figure they produce is still computed, and the dashboard still reports
+     them — what is gone is the way in from the sidebar.
+
+     To bring it back, restore the group below. Nothing else has to change.
+
   {
     label: "Inventory",
     items: [
@@ -90,6 +99,7 @@ export const NAV: NavGroup[] = [
       { label: "Barcode Lookup", href: "/barcode", icon: "barcode" },
     ],
   },
+  */
   {
     label: "Outbound",
     items: [
