@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Button, Input, Menu, MenuItem, MenuSep, Modal, Textarea } from "@/components/ui";
 import type { DocMode } from "./parts";
 import type { DocumentEditorApi, EditableDraft } from "./useDocumentEditor";
+import { catalogPrice } from "@/lib/domain/pricing";
 
 /* ============================================================
    THE CHROME AROUND A DOCUMENT-FIRST EDITOR
@@ -534,7 +535,7 @@ function PasteItemsModal({
                     <span className="block truncate text-[13px] font-medium">{p.code}</span>
                     <span className="block truncate text-cap text-ink-2">{p.name}</span>
                   </span>
-                  <span className="ml-auto text-cap text-ink-3 tnum">{money0(p.price)}</span>
+                  <span className="ml-auto text-cap text-ink-3 tnum">{money0(catalogPrice(p.code))}</span>
                 </label>
               </li>
             ))}

@@ -44,6 +44,7 @@ import {
   opts,
   saved,
 } from "./common";
+import { catalogPrice } from "@/lib/domain/pricing";
 
 /* ============================================================
    SALES ORDER FORM
@@ -440,7 +441,7 @@ export const SO_FORM: FormSchema<SoRow> = {
         .map((p) => ({
           code: p.code,
           name: p.name,
-          meta: `${money0(p.price)} · คงเหลือ ${fmt(p.availTotal)}`,
+          meta: `${money0(catalogPrice(p.code))} · คงเหลือ ${fmt(p.availTotal)}`,
         }));
     },
   },
@@ -453,7 +454,7 @@ export const SO_FORM: FormSchema<SoRow> = {
     row.code = hit.code;
     row.name = hit.name;
     row.unit = p?.unit ?? "";
-    if (!num(row.price)) row.price = p?.price ?? 0;
+    if (!num(row.price)) row.price = catalogPrice(hit.code);
     if (!num(row.qty)) row.qty = 1;
     if (row.tax === "" || row.tax === undefined) row.tax = 7;
     if (row.disc === "" || row.disc === undefined) row.disc = 0;

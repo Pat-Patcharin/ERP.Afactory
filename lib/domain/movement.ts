@@ -769,7 +769,9 @@ function buildLedger(): MovementRow[] {
       const after = addState(state, d);
 
       const wh = whOf(e.warehouse || "");
-      const unitCost = Math.round((p.pricing?.avgCost || p.price || 0) * 100) / 100;
+      /* Falling back to the selling price valued a movement at margin. */
+      const unitCost =
+        Math.round((p.pricing?.avgCost || p.pricing?.lastCost || 0) * 100) / 100;
       const qtyIn = Math.max(0, d.onHand);
       const qtyOut = Math.max(0, -d.onHand);
 

@@ -44,6 +44,7 @@ import {
   opts,
   saved,
 } from "./common";
+import { catalogPrice } from "@/lib/domain/pricing";
 
 /* ============================================================
    SALES INVOICE FORM
@@ -762,7 +763,7 @@ export const INV_FORM: FormSchema<InvRow> = {
           p.nameTh.includes(q.trim()),
       )
         .slice(0, 20)
-        .map((p) => ({ code: p.code, name: p.name, meta: money0(p.price) }));
+        .map((p) => ({ code: p.code, name: p.name, meta: money0(catalogPrice(p.code)) }));
     },
   },
 
@@ -775,7 +776,7 @@ export const INV_FORM: FormSchema<InvRow> = {
     row.name = hit.name;
     row.desc = hit.name;
     row.unit = p?.unit ?? "";
-    if (!num(row.unitPrice)) row.unitPrice = p?.price ?? 0;
+    if (!num(row.unitPrice)) row.unitPrice = catalogPrice(hit.code);
     if (!num(row.invoiceQty)) row.invoiceQty = 1;
     /* Manual lines have no source, so everything is billable. */
     row.orderedQty = num(row.invoiceQty);

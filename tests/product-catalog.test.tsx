@@ -1,3 +1,4 @@
+import { catalogPrice } from "@/lib/domain/pricing";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -72,12 +73,13 @@ describe("Product catalogue — the two masters are one list", () => {
     expect(p.brand).toBe(row.brand);
     expect(p.unit).toBe(row.unit);
     expect(p.supplier).toBe(row.vendor);
-    /* The catalogue price is the private tier — government is the same
-       product at +10%, not a second selling price. */
-    expect(p.price).toBe(row.price_private);
-    expect(p.pricing.gov).toBe(row.price_government);
-    expect(p.pricing.dealer).toBe(row.price_dealer);
+    /* The four tiers stayed in the price file. The product carries the cost
+       and reaches its price through catalogPrice(), which reads the private
+       tier off this same row — government is the same product at +10%, not a
+       second selling price. */
+    expect(catalogPrice(p.code)).toBe(row.price_private);
     expect(p.pricing.lastCost).toBe(row.cost_thb);
+    expect(p).not.toHaveProperty("price");
   });
 
   it("files every row under a category a buyer would look in", () => {
@@ -112,13 +114,16 @@ describe("Product catalogue — price, not stock", () => {
     expect(low.length).toBeLessThan(PROTOTYPE.length);
   });
 
-  it("carries the four tiers onto the product's own price tab", () => {
+  it("leaves the four tiers in the price file rather than copying them", () => {
     const p = getProduct("D-AD001-01")!;
-    const names = p.detail.priceLists.map((l) => l.name);
 
-    expect(names).toEqual(["ราคาราชการ", "ราคาเอกชน", "ราคา Dealer"]);
+    /* The detail payload used to fabricate three "price lists" out of the
+       row the product came from, so the Price tab showed lists nobody had
+       created and a second copy of figures the file already held. */
+    expect(p.detail).not.toHaveProperty("priceLists");
+    expect(p.detail).not.toHaveProperty("tiers");
+    expect(p.detail).not.toHaveProperty("contracts");
     /* price_last is a floor, not a fourth list a customer can buy from. */
-    expect(names).not.toContain("Last Price");
     expect(p.priceRef!.floor).toBe(280);
   });
 });
@@ -303,11 +308,11 @@ describe("Product catalogue — the source file's faults are carried, not hidden
   });
 });
 
-/** Open a product straight on its Price tab. */
-async function priceTab(code: string) {
+/** Open a product straight on its Cost tab. */
+async function costTab(code: string) {
   const user = userEvent.setup();
   render(<FullDetail schema={PRODUCT_DETAIL} record={getProduct(code)!} />);
-  await user.click(screen.getByRole("tab", { name: "Price" }));
+  await user.click(screen.getByRole("tab", { name: "Cost" }));
 }
 
 describe("Product catalogue — on the screen", () => {
@@ -328,24 +333,27 @@ describe("Product catalogue — on the screen", () => {
     expect(await screen.findByText("รอรหัส")).toBeInTheDocument();
   });
 
-  it("shows the four tiers and the floor on the product page", async () => {
-    await priceTab("D-AD001-01");
+  it("shows cost on the product page, and sends the selling price elsewhere", async () => {
+    await costTab("D-AD001-01");
 
-    expect(screen.getByText(/ราคา 4 ชั้น/)).toBeInTheDocument();
-    expect(screen.getByText(/เพดานล่าง/)).toBeInTheDocument();
-    expect(screen.getByText(/ต่ำกว่านี้ต้องขออนุมัติ/)).toBeInTheDocument();
+    /* The tab used to lead with four selling-price tiles copied off the
+       price row. It carries cost now, and one line saying where the selling
+       price is set — the product master does not hold one. */
+    expect(screen.getByText("Cost Summary")).toBeInTheDocument();
+    expect(screen.queryByText(/ราคา 4 ชั้น/)).toBeNull();
+    expect(screen.getByText(/Product Pricing/)).toBeInTheDocument();
   });
 
   it("says on the page why a blocked product cannot be sold", async () => {
     const blocked = catalogProducts().find((p) => p.priceRef!.priceStatus === "PENDING_COST")!;
-    await priceTab(blocked.code);
+    await costTab(blocked.code);
 
     expect(screen.getByText(/PENDING_COST/)).toBeInTheDocument();
     expect(screen.getByText(/ยังไม่มีต้นทุน/)).toBeInTheDocument();
   });
 
   it("warns on the page that a code is shared with a different product", async () => {
-    await priceTab("H-RC005-01");
+    await costTab("H-RC005-01");
     expect(screen.getByText(/ถูกใช้กับสินค้าคนละตัว/)).toBeInTheDocument();
   });
 

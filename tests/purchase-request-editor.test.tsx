@@ -1,3 +1,4 @@
+import { catalogPrice } from "@/lib/domain/pricing";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -243,11 +244,12 @@ describe("Purchase Request — asking for less than suggested", () => {
 describe("Purchase Request — a line opens at what the company pays", () => {
   it("uses the supplier's last cost, not the catalogue price", () => {
     const { product, st } = stocked();
-    if (!st.lastCost || st.lastCost === product.price) return;
+    const sells = catalogPrice(product.code);
+    if (!st.lastCost || st.lastCost === sells) return;
 
     const line = applyProductForPurchase(blankLine(), product.code);
     expect(line.price, "the cost, not the price the company charges").toBe(st.lastCost);
-    expect(line.price).not.toBe(product.price);
+    expect(line.price).not.toBe(sells);
   });
 
   it("leaves a price the requester already typed alone", () => {

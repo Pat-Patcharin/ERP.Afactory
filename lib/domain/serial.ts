@@ -599,7 +599,8 @@ function build(key: SerialKey): SerialRow {
   const openReturn = returns.find((r) => r.status !== "Closed");
   const openJob = jobs.find((j) => j.status !== "Closed" && j.status !== "Cancelled");
 
-  const unitCost = equipModel?.price ?? masterProduct?.pricing?.avgCost ?? masterProduct?.price ?? 0;
+  const unitCost =
+    equipModel?.price ?? masterProduct?.pricing?.avgCost ?? masterProduct?.pricing?.lastCost ?? 0;
 
   const moves = movementRows().filter((m) => m.serial === serial);
   const conflict = ownerType === "Customer" && Boolean(warehouse);

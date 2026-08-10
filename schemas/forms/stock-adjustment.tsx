@@ -83,7 +83,7 @@ function toLines(state: FormState, base?: Adjustment): AdjLine[] {
       expTo: String(row.expTo ?? ""),
       serials: split(row.serials),
       serialsTo: split(row.serialsTo),
-      unitCost: num(row.unitCost ?? product?.pricing?.avgCost ?? product?.price),
+      unitCost: num(row.unitCost ?? product?.pricing?.avgCost ?? product?.pricing?.lastCost),
       reason: String(row.reason ?? state.reason ?? ""),
       note: String(row.note ?? ""),
       ...(prev ? {} : {}),
@@ -371,7 +371,7 @@ export const stockAdjustmentForm: FormSchema<AdjRow> = {
     row.name = hit.name;
     row.unit = p?.unit ?? "";
     row.cat = p?.cat ?? "";
-    row.unitCost = p?.pricing?.avgCost ?? p?.price ?? 0;
+    row.unitCost = p?.pricing?.avgCost ?? p?.pricing?.lastCost ?? 0;
     row.eligible = eligibleQty(
       hit.code,
       whCode(String(state.warehouse)),

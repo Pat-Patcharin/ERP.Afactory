@@ -21,7 +21,6 @@ export interface Product {
   weight: string;
   dim: string;
   demoAllowed: boolean;
-  price: number;
   stock: number;
   onHand: number;
   reserved: number;
@@ -35,20 +34,28 @@ export interface Product {
   desc: string;
   supplier: string;
   expiry: string;
+  /**
+   * COST and tax settings only.
+   *
+   * The selling price left with the price list. It depends on which list is
+   * being quoted and in which unit, and a single number here could only ever
+   * be one of those — `retail` and `price` were the same figure written
+   * twice, and `dealer` / `gov` / `contract` were three more lists' worth of
+   * pricing kept on the item instead of in the lists.
+   */
   pricing: {
     currency: string;
-    retail: number;
-    dealer: number;
-    gov: number;
+    /** Cost of the last receipt, in the stock unit. */
     lastCost: number;
+    /** Moving average cost, in the stock unit. */
     avgCost: number;
     vat: string;
     effective: string;
-    contract: {
-      name: string;
-      price: number;
-    } | null;
   };
+  /**
+   * BALANCES. What each warehouse is holding right now — transactional, and
+   * written by receipts and issues rather than by anybody editing the item.
+   */
   stocks: {
     wh: string;
     loc: string;
@@ -56,6 +63,36 @@ export interface Product {
     res: number;
     lot: string;
     exp: string;
+  }[];
+  /**
+   * POLICY. Which warehouses may hold this product at all, and on what terms.
+   *
+   * Separate from `stocks` on purpose: a balance says where the goods ARE, and
+   * this says where they MAY BE. Only the second can answer "which warehouse
+   * should this purchase order deliver to" before any stock exists, and only
+   * the second can be wrong in a way somebody should fix.
+   */
+  warehouses: {
+    /** "WH-01 Samut Prakan" — code and name as every document carries it. */
+    wh: string;
+    /** Default put-away location in that warehouse. */
+    bin: string;
+    /**
+     * Reorder point AT THIS WAREHOUSE.
+     *
+     * `lowLevel` on the product is the company-wide default and still applies
+     * to a warehouse that has not set its own — a service store holding five
+     * of something and a main store holding five hundred cannot share one
+     * number, which is what they did when every warehouse row simply
+     * displayed `lowLevel` back.
+     */
+    rop: number;
+    maxQty: number;
+    /** Where goods land by default. One per product. */
+    defaultReceiving: boolean;
+    /** Where they ship from by default. One per product. */
+    defaultIssuing: boolean;
+    status: string;
   }[];
   /**
    * The buying terms, rendered. The truth is the `supplierItems` row on the
@@ -167,27 +204,6 @@ export type ProductDetailMap = Record<string, {
     active: boolean;
   }[];
   rfid: boolean;
-  priceLists: {
-    name: string;
-    price: number;
-    cur: string;
-    from: string;
-    to: string;
-    status: string;
-  }[];
-  tiers: ({
-    min: number;
-    max: number | null;
-    price: number;
-  })[];
-  contracts: {
-    cust: string;
-    type: string;
-    price: number;
-    from: string;
-    to: string;
-    status: string;
-  }[];
   backOrder: number;
   lotTracked: boolean;
   serialTracked: boolean;
@@ -266,7 +282,6 @@ export const PRODUCTS: Product[] = [
     weight: "48 g",
     dim: "22 × 22 × 128 mm",
     demoAllowed: false,
-    price: 120,
     stock: 1100,
     onHand: 1250,
     reserved: 150,
@@ -282,18 +297,12 @@ export const PRODUCTS: Product[] = [
     expiry: "31/12/2026",
     pricing: {
       currency: "THB",
-      retail: 120,
-      dealer: 104,
-      gov: 112,
       lastCost: 68.5,
       avgCost: 71.2,
       vat: "VAT 7% (exclusive)",
       effective: "01/01/2026",
-      contract: {
-        name: "สัญญาจัดซื้อ รพ.ธรรมศาสตร์ 2569",
-        price: 98,
-      },
     },
+    warehouses: [],
     stocks: [
       {
         wh: "WH-01 Samut Prakan",
@@ -415,7 +424,6 @@ export const PRODUCTS: Product[] = [
     weight: "48 g",
     dim: "22 × 22 × 128 mm",
     demoAllowed: false,
-    price: 120,
     stock: 760,
     onHand: 820,
     reserved: 60,
@@ -431,15 +439,12 @@ export const PRODUCTS: Product[] = [
     expiry: "31/12/2026",
     pricing: {
       currency: "THB",
-      retail: 120,
-      dealer: 104,
-      gov: 112,
       lastCost: 68.5,
       avgCost: 70.8,
       vat: "VAT 7% (exclusive)",
       effective: "01/01/2026",
-      contract: null,
     },
+    warehouses: [],
     stocks: [
       {
         wh: "WH-01 Samut Prakan",
@@ -522,7 +527,6 @@ export const PRODUCTS: Product[] = [
     weight: "52 g",
     dim: "22 × 22 × 128 mm",
     demoAllowed: true,
-    price: 150,
     stock: 320,
     onHand: 400,
     reserved: 80,
@@ -538,15 +542,12 @@ export const PRODUCTS: Product[] = [
     expiry: "30/06/2027",
     pricing: {
       currency: "THB",
-      retail: 150,
-      dealer: 130,
-      gov: 140,
       lastCost: 88,
       avgCost: 88,
       vat: "VAT 7% (exclusive)",
       effective: "—",
-      contract: null,
     },
+    warehouses: [],
     stocks: [
       {
         wh: "WH-01 Samut Prakan",
@@ -610,7 +611,6 @@ export const PRODUCTS: Product[] = [
     dim: "25 × 25 × 130 mm",
     demoAllowed: false,
     low: true,
-    price: 95,
     stock: 280,
     onHand: 280,
     reserved: 0,
@@ -626,15 +626,12 @@ export const PRODUCTS: Product[] = [
     expiry: "15/09/2026",
     pricing: {
       currency: "THB",
-      retail: 95,
-      dealer: 82,
-      gov: 90,
       lastCost: 54,
       avgCost: 55.4,
       vat: "VAT 7% (exclusive)",
       effective: "01/04/2026",
-      contract: null,
     },
+    warehouses: [],
     stocks: [
       {
         wh: "WH-01 Samut Prakan",
@@ -716,7 +713,6 @@ export const PRODUCTS: Product[] = [
     weight: "300 g",
     dim: "55 × 55 × 165 mm",
     demoAllowed: false,
-    price: 110,
     stock: 180,
     onHand: 210,
     reserved: 30,
@@ -732,15 +728,12 @@ export const PRODUCTS: Product[] = [
     expiry: "01/03/2026",
     pricing: {
       currency: "THB",
-      retail: 110,
-      dealer: 96,
-      gov: 105,
       lastCost: 62,
       avgCost: 63.5,
       vat: "VAT 7% (exclusive)",
       effective: "01/01/2025",
-      contract: null,
     },
+    warehouses: [],
     stocks: [
       {
         wh: "WH-02 Bangkok",
@@ -803,7 +796,6 @@ export const PRODUCTS: Product[] = [
     weight: "620 g",
     dim: "240 × 120 × 65 mm",
     demoAllowed: false,
-    price: 250,
     stock: 500,
     onHand: 560,
     reserved: 60,
@@ -819,18 +811,12 @@ export const PRODUCTS: Product[] = [
     expiry: "—",
     pricing: {
       currency: "THB",
-      retail: 250,
-      dealer: 215,
-      gov: 235,
       lastCost: 148,
       avgCost: 151.5,
       vat: "VAT 7% (exclusive)",
       effective: "01/07/2026",
-      contract: {
-        name: "สัญญาราคากลาง กรมอนามัย 2569",
-        price: 228,
-      },
     },
+    warehouses: [],
     stocks: [
       {
         wh: "WH-01 Samut Prakan",
@@ -913,7 +899,6 @@ export const PRODUCTS: Product[] = [
     weight: "320 g",
     dim: "195 × 100 × 95 mm",
     demoAllowed: false,
-    price: 150,
     stock: 1200,
     onHand: 1200,
     reserved: 0,
@@ -929,15 +914,12 @@ export const PRODUCTS: Product[] = [
     expiry: "—",
     pricing: {
       currency: "THB",
-      retail: 150,
-      dealer: 128,
-      gov: 142,
       lastCost: 86,
       avgCost: 87.4,
       vat: "VAT 7% (exclusive)",
       effective: "01/05/2026",
-      contract: null,
     },
+    warehouses: [],
     stocks: [
       {
         wh: "WH-01 Samut Prakan",
@@ -1006,7 +988,6 @@ export const PRODUCTS: Product[] = [
     dim: "120 × 80 × 20 mm",
     demoAllowed: false,
     low: true,
-    price: 890,
     stock: 64,
     onHand: 64,
     reserved: 0,
@@ -1022,15 +1003,12 @@ export const PRODUCTS: Product[] = [
     expiry: "—",
     pricing: {
       currency: "THB",
-      retail: 890,
-      dealer: 760,
-      gov: 840,
       lastCost: 512,
       avgCost: 520,
       vat: "VAT 7% (exclusive)",
       effective: "01/06/2026",
-      contract: null,
     },
+    warehouses: [],
     stocks: [
       {
         wh: "WH-01 Samut Prakan",
@@ -1128,75 +1106,6 @@ export const DETAIL: ProductDetailMap = {
       },
     ],
     rfid: false,
-    priceLists: [
-      {
-        name: "Standard 2569",
-        price: 120,
-        cur: "THB",
-        from: "01/01/2026",
-        to: "31/12/2026",
-        status: "Active",
-      },
-      {
-        name: "Dealer Tier A",
-        price: 104,
-        cur: "THB",
-        from: "01/01/2026",
-        to: "31/12/2026",
-        status: "Active",
-      },
-      {
-        name: "Government",
-        price: 112,
-        cur: "THB",
-        from: "01/01/2026",
-        to: "31/12/2026",
-        status: "Active",
-      },
-      {
-        name: "Standard 2568",
-        price: 115,
-        cur: "THB",
-        from: "01/01/2025",
-        to: "31/12/2025",
-        status: "Expired",
-      },
-    ],
-    tiers: [
-      {
-        min: 1,
-        max: 11,
-        price: 120,
-      },
-      {
-        min: 12,
-        max: 119,
-        price: 112,
-      },
-      {
-        min: 120,
-        max: null,
-        price: 104,
-      },
-    ],
-    contracts: [
-      {
-        cust: "มหาวิทยาลัยธรรมศาสตร์",
-        type: "Contract",
-        price: 98,
-        from: "01/01/2026",
-        to: "31/12/2026",
-        status: "Active",
-      },
-      {
-        cust: "รพ.สมุทรปราการ",
-        type: "Exception",
-        price: 105,
-        from: "01/03/2026",
-        to: "28/02/2027",
-        status: "Active",
-      },
-    ],
     backOrder: 0,
     lotTracked: true,
     serialTracked: false,

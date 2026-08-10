@@ -100,9 +100,9 @@ function toProduct(
     dim: DASH,
     demoAllowed: false,
 
-    /* The catalogue price is the private tier. Government is the same
-       product at +10%, not a different selling price. */
-    price: r.price_private ?? r.price_government ?? 0,
+    /* No selling price here. `catalogPrice()` reads the private tier off
+       this same row when a screen asks for one — which is where it always
+       came from, and now the only place it is kept. */
 
     /* No stock record — not zero stock. isStocked() keeps the two apart. */
     stock: 0,
@@ -122,19 +122,21 @@ function toProduct(
     supplier: r.vendor || DASH,
     expiry: DASH,
 
+    /* Cost only. The four tiers this row carries belong to the price list
+       and are read from there — copying them onto the product was what made
+       a catalogue product carry a price the catalogue already held. */
     pricing: {
       currency: "THB",
-      retail: r.price_private ?? 0,
-      dealer: r.price_dealer ?? 0,
-      gov: r.price_government ?? 0,
       lastCost: r.cost_thb ?? 0,
       avgCost: r.cost_thb ?? 0,
       vat: "VAT 7% (exclusive)",
       effective: date,
-      contract: null,
     },
 
     stocks: [],
+    /* Never stocked, so no warehouse has been cleared to hold it yet. An
+       empty policy is the truthful state, not an oversight. */
+    warehouses: [],
     sup: {
       code: DASH,
       itemCode: DASH,
@@ -212,13 +214,6 @@ function toDetail(r: PriceMasterRow, p: Product, date: string): ProductDetail {
     },
     units: [{ unit: p.unit, type: "Base Unit", factor: 1, barcode: "", active: true }],
     rfid: false,
-    priceLists: [
-      tier("ราคาราชการ", r.price_government),
-      tier("ราคาเอกชน", r.price_private),
-      tier("ราคา Dealer", r.price_dealer),
-    ].filter(Boolean) as ProductDetail["priceLists"],
-    tiers: [],
-    contracts: [],
     backOrder: 0,
     /* Unknown until the item is actually stocked — claiming either way here
        would be guessing. */

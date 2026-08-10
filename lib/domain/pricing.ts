@@ -1,6 +1,11 @@
 import { PRICE_LISTS as RAW, PL_PRIORITY_ENGINE, type PriceList } from "@/data/price-lists";
 import { PRICING as RAW_PRICING } from "@/data/pricing";
 import { PRODUCTS, PURCHASE_UNIT, unitFactor, type ProductRow } from "./product";
+import {
+  priceMasterByProduct,
+  priceMasterRows,
+  type PriceMasterRow,
+} from "./price-master";
 import { daysUntil } from "@/lib/format";
 
 /* ============================================================
@@ -61,6 +66,9 @@ export { PL_PRIORITY_ENGINE };
    PRODUCT PRICING — the actual selling price of each product
    under each price list. One product, many price lines.
    ============================================================ */
+
+/** The list every screen means when it says "the catalogue price". */
+export const STANDARD_LIST = "PL-STD-2026";
 
 export interface QtyBreak {
   min: number;
@@ -164,10 +172,14 @@ export function ensurePricing(code: string): PriceLine[] {
     return PRICING[code];
   }
 
-  const cost = p.pricing?.lastCost ?? p.pricing?.avgCost ?? Math.round((p.price ?? 0) * 0.6);
+  const cost = p.pricing?.lastCost ?? p.pricing?.avgCost ?? 0;
   const cur = p.pricing?.currency ?? "THB";
   const units = sellableUnits(p);
   const lines: PriceLine[] = [];
+  /* The four tiers the price file holds for this product. It is the source
+     for 751 of the 810; the other 59 are seeded explicitly in data/pricing.ts
+     and never reach here, because that map is checked first. */
+  const master = masterRowFor(p);
 
   const push = (
     suffix: string,
@@ -192,27 +204,82 @@ export function ensurePricing(code: string): PriceLine[] {
         exp: "31/12/2026",
         status: "Active",
         note: "",
-        /* The quantity ladder the product used to carry is a fact about the
-           standard price in the stock unit, so it lands on that one line
-           rather than being copied onto every list and unit. */
-        qtyBreaks:
-          list === "PL-STD-2026" && u.factor === 1
-            ? (p.detail?.tiers ?? []).map((t) => ({
-                min: t.min,
-                max: t.max,
-                price: t.price,
-              }))
-            : [],
+        /* A generated line carries no ladder. The volume steps that existed
+           were the eight hand-built products', and they moved into the seed
+           whole rather than being re-derived here. */
+        qtyBreaks: [],
       });
     }
   };
 
-  if (p.pricing?.retail) push("S", "PL-STD-2026", "Standard", p.pricing.retail, 8);
-  if (p.pricing?.dealer) push("D", "PL-DEALER-2026", "Dealer", p.pricing.dealer, 12);
-  if (p.pricing?.gov) push("G", "PL-GOV-2026", "Government", p.pricing.gov, 0);
+  if (master?.price_private) push("S", STANDARD_LIST, "Standard", master.price_private, 8);
+  if (master?.price_dealer) push("D", "PL-DEALER-2026", "Dealer", master.price_dealer, 12);
+  if (master?.price_government) push("G", "PL-GOV-2026", "Government", master.price_government, 0);
 
   PRICING[code] = lines;
   return lines;
+}
+
+/* ============================================================
+   THE CATALOGUE PRICE — one way in, for everybody
+
+   `product.price` used to be this, and every screen read it
+   directly. It is gone: a selling price depends on which list
+   is being quoted and in which unit, and a single number on the
+   product could only ever be one of those.
+
+   Two sources answer, in order:
+
+     · an explicit price line, for the eight hand-built products
+       whose prices moved into `data/pricing.ts`
+     · the price list master, which already carries all four
+       tiers for the other 751
+
+   Zero means genuinely unpriced, and every caller shows that as
+   a dash rather than as free. A product with no price is a real
+   state here — 8 rows in the master have no price at all.
+   ============================================================ */
+
+/** The price list master row behind a product, by code or by its row key. */
+function masterRowFor(p: ProductRow): PriceMasterRow | null {
+  const byCode = priceMasterByProduct(p.code);
+  const hit = byCode.find((r) => r.status === "OK") ?? byCode[0];
+  if (hit) return hit;
+  /* 51 rows have no product code; the product carries the row's own key
+     instead, which is the only handle those have. */
+  const row = p.priceRef?.row;
+  return row ? (priceMasterRows().find((r) => r.code === row) ?? null) : null;
+}
+
+/**
+ * The standard catalogue price of a product, in the unit asked for.
+ *
+ * The stock unit by default. `0` when nothing prices it — never a guess.
+ */
+export function catalogPrice(code: string, unit?: string): number {
+  const p = PRODUCTS.find((x) => x.code === code);
+  if (!p) return 0;
+  const want = unit || p.unit;
+
+  const line = (PRICING[code] ?? []).find(
+    (l) => l.priceList === STANDARD_LIST && l.unit === want && l.status !== "Expired",
+  );
+  if (line?.price) return line.price;
+
+  /* No line in that unit: take the stock unit's price and convert. Better a
+     converted figure than none, and the pricing screen is where somebody
+     sets the box price properly. */
+  const base =
+    (PRICING[code] ?? []).find(
+      (l) => l.priceList === STANDARD_LIST && l.unit === p.unit && l.status !== "Expired",
+    )?.price ?? masterRowFor(p)?.price_private ?? masterRowFor(p)?.price_government ?? 0;
+
+  if (!(base > 0)) return 0;
+  const factor = unitFactor(p, want);
+  /* Rounded only when it has been multiplied. Rounding a price that was
+     already right turned 17,166.67 into 17,167 — a change nobody asked for,
+     on a figure that came straight out of the price file. */
+  return factor === 1 ? base : Math.round(base * factor);
 }
 
 /**

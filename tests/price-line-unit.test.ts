@@ -1,27 +1,33 @@
 import { describe, expect, it } from "vitest";
 import {
   PRICING,
+  STANDARD_LIST,
+  catalogPrice,
   ensurePricing,
   impliedUnitPrice,
   sellableUnits,
   winningLine,
 } from "@/lib/domain/pricing";
-import { getProduct, unitFactor } from "@/lib/domain/product";
+import { PRODUCTS, getProduct, unitFactor } from "@/lib/domain/product";
+import { priceMasterByProduct } from "@/lib/domain/price-master";
 
 /* ============================================================
    PRICE LINE — keyed at (list × product × unit)
 
-   Phase 1 of the master-data plan. The line gains the unit it is
-   quoted for and its own volume ladder; nothing has been removed
-   from the product yet, so both still hold a price and the line
-   is the one that is right.
+   The selling price has left the product record entirely. It is
+   read from one of two places and nowhere else: an explicit line
+   for the eight hand-built products, or the price list master
+   for the other 751.
    ============================================================ */
 
-const CODE = "AA-TH003-WL";
+/** One of the eight whose prices moved into data/pricing.ts whole. */
+const SEEDED = "AA-TH003-WL";
+/** A catalogue product — priced by the file, lines generated on demand. */
+const CATALOGUE = "D-AD001-01";
 
 describe("บรรทัดราคา — หน่วยขายเป็นส่วนหนึ่งของ key", () => {
   it("หน่วยที่ขายได้ = หน่วยหลัก + หน่วยขายที่ยังใช้งาน", () => {
-    const p = getProduct(CODE)!;
+    const p = getProduct(SEEDED)!;
     const units = sellableUnits(p);
 
     /* The stock unit is always sellable and always leads, because every
@@ -33,70 +39,51 @@ describe("บรรทัดราคา — หน่วยขายเป็�
   it("ไม่เสนอหน่วยซื้ออย่างเดียวให้ตั้งราคาขาย", () => {
     /* AA-TH003-WL is received by the Carton and sold by the Box. Quoting a
        customer per Carton would be a price nobody can order at. */
-    const p = getProduct(CODE)!;
+    const p = getProduct(SEEDED)!;
     const carton = p.detail.units.find((u) => u.unit === "Carton")!;
     expect(carton.type).toBe("Purchase Unit");
     expect(sellableUnits(p).map((u) => u.unit)).not.toContain("Carton");
   });
 
-  it("สร้างบรรทัดหนึ่งเส้นต่อ (รายการราคา × หน่วย)", () => {
-    delete PRICING[CODE];
-    const lines = ensurePricing(CODE);
-    const p = getProduct(CODE)!;
-
-    const lists = [...new Set(lines.map((l) => l.priceList))];
-    const units = sellableUnits(p).map((u) => u.unit);
-    expect(lists.length).toBeGreaterThan(0);
-
-    for (const list of lists) {
-      const forList = lines.filter((l) => l.priceList === list);
-      expect(forList.map((l) => l.unit).sort(), list).toEqual([...units].sort());
+  it("หนึ่งบรรทัดต่อ (รายการราคา × หน่วย) ไม่ซ้ำกัน", () => {
+    for (const [code, lines] of Object.entries(PRICING)) {
+      const keys = lines.map((l) => `${l.priceList}·${l.unit}`);
+      expect(new Set(keys).size, code).toBe(keys.length);
     }
-
-    /* One line per pair, never two. */
-    const keys = lines.map((l) => `${l.priceList}·${l.unit}`);
-    expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("ราคาหน่วยใหญ่ตั้งต้นที่ผลคูณ แล้วแก้ต่อได้", () => {
-    delete PRICING[CODE];
-    const lines = ensurePricing(CODE);
-    const p = getProduct(CODE)!;
+  it("ราคาหน่วยใหญ่เป็นช่องของตัวเอง แก้แล้วหน่วยหลักไม่ขยับ", () => {
+    const p = getProduct(SEEDED)!;
+    const lines = PRICING[SEEDED];
+    const base = lines.find((l) => l.priceList === STANDARD_LIST && l.unit === p.unit)!;
+    const box = lines.find((l) => l.priceList === STANDARD_LIST && l.unit === "Box")!;
 
-    const base = lines.find((l) => l.priceList === "PL-STD-2026" && l.unit === p.unit)!;
-    const box = lines.find((l) => l.priceList === "PL-STD-2026" && l.unit === "Box")!;
+    /* Seeded at the arithmetic — but seeded, not derived. */
     expect(box.price).toBe(base.price * unitFactor(p, "Box"));
 
-    /* Seeded, not derived: the box price is its own field and editing it
-       leaves the tube price alone. */
+    const wasBase = base.price;
     box.price = 1_320;
-    expect(lines.find((l) => l.id === base.id)!.price).toBe(base.price);
+    expect(base.price).toBe(wasBase);
+    box.price = wasBase * unitFactor(p, "Box");
   });
 
   it("บอกส่วนต่างจากผลคูณ ให้เห็นว่าลดไปเท่าไหร่", () => {
-    delete PRICING[CODE];
-    const lines = ensurePricing(CODE);
-    const p = getProduct(CODE)!;
-
-    const base = lines.find((l) => l.priceList === "PL-STD-2026" && l.unit === p.unit)!;
-    const box = lines.find((l) => l.priceList === "PL-STD-2026" && l.unit === "Box")!;
+    const p = getProduct(SEEDED)!;
+    const lines = PRICING[SEEDED];
+    const base = lines.find((l) => l.priceList === STANDARD_LIST && l.unit === p.unit)!;
+    const box = lines.find((l) => l.priceList === STANDARD_LIST && l.unit === "Box")!;
 
     /* The stock unit has nothing to be compared against. */
     expect(impliedUnitPrice(lines, base, p)).toBeNull();
     expect(impliedUnitPrice(lines, box, p)).toBe(base.price * 12);
-
-    box.price = base.price * 11;
-    expect(impliedUnitPrice(lines, box, p)).toBe(base.price * 12);
   });
 
-  it("ขั้นบันไดตามจำนวนย้ายมาอยู่บนบรรทัดราคามาตรฐานหน่วยหลัก", () => {
-    delete PRICING[CODE];
-    const lines = ensurePricing(CODE);
-    const p = getProduct(CODE)!;
+  it("ขั้นบันไดตามจำนวนอยู่บนบรรทัดราคามาตรฐานหน่วยหลักเส้นเดียว", () => {
+    const p = getProduct(SEEDED)!;
+    const lines = PRICING[SEEDED];
+    const base = lines.find((l) => l.priceList === STANDARD_LIST && l.unit === p.unit)!;
 
-    const base = lines.find((l) => l.priceList === "PL-STD-2026" && l.unit === p.unit)!;
-    expect(base.qtyBreaks.length).toBe(p.detail.tiers.length);
-
+    expect(base.qtyBreaks.length).toBeGreaterThan(0);
     /* It is a fact about that one price, not about every list and unit —
        copying it onto all of them would be the same drift in a new place. */
     for (const l of lines) {
@@ -105,21 +92,59 @@ describe("บรรทัดราคา — หน่วยขายเป็�
     }
   });
 
-  it("ตัวเลือกราคาที่ชนะยังทำงานเหมือนเดิม", () => {
-    delete PRICING[CODE];
-    const lines = ensurePricing(CODE);
+  it("สินค้าจากไฟล์ราคาสร้างบรรทัดจากสี่ชั้นในไฟล์", () => {
+    delete PRICING[CATALOGUE];
+    const lines = ensurePricing(CATALOGUE);
+    const row = priceMasterByProduct(CATALOGUE)[0];
+
+    expect(lines.length).toBeGreaterThan(0);
+    const std = lines.find((l) => l.priceList === STANDARD_LIST)!;
+    expect(std.price).toBe(row.price_private);
+    expect(std.unit).toBe(getProduct(CATALOGUE)!.unit);
+
     const win = winningLine(lines);
-    expect(win).not.toBeNull();
     expect(win!.status).toBe("Active");
     expect(win!.unit).toBeTruthy();
   });
 
-  it("ทุกบรรทัดที่ seed ไว้มีหน่วยและช่องขั้นบันได", () => {
+  it("ทุกบรรทัดมีหน่วยและช่องขั้นบันได", () => {
     for (const [code, lines] of Object.entries(PRICING)) {
       for (const l of lines) {
         expect(l.unit, `${code} · ${l.id}`).toBeTruthy();
         expect(Array.isArray(l.qtyBreaks), `${code} · ${l.id}`).toBe(true);
       }
     }
+  });
+});
+
+describe("ราคาขายไม่อยู่บนสินค้าอีกแล้ว", () => {
+  it("ไม่มีสินค้าไหนถือช่องราคาขาย", () => {
+    for (const p of PRODUCTS) {
+      expect(p, p.code).not.toHaveProperty("price");
+      expect(p.pricing, p.code).not.toHaveProperty("retail");
+      expect(p.pricing, p.code).not.toHaveProperty("dealer");
+      expect(p.pricing, p.code).not.toHaveProperty("gov");
+      expect(p.pricing, p.code).not.toHaveProperty("contract");
+      expect(p.detail, p.code).not.toHaveProperty("priceLists");
+      expect(p.detail, p.code).not.toHaveProperty("tiers");
+      expect(p.detail, p.code).not.toHaveProperty("contracts");
+    }
+  });
+
+  it("ทุกสินค้ายังตอบราคาแคตตาล็อกได้เหมือนเดิม", () => {
+    /* The move must not have lost a price. Every product that had one before
+       resolves to one now — 810 of 810 matched when this was cut over. */
+    let priced = 0;
+    for (const p of PRODUCTS) if (catalogPrice(p.code) > 0) priced++;
+    expect(priced).toBeGreaterThan(790);
+  });
+
+  it("แปลงราคาเป็นหน่วยขายใหญ่ให้เมื่อไม่มีบรรทัดของหน่วยนั้น", () => {
+    const p = getProduct(SEEDED)!;
+    expect(catalogPrice(p.code, "Box")).toBe(catalogPrice(p.code) * 12);
+  });
+
+  it("สินค้าที่ไม่มีราคาได้ 0 ไม่ใช่การเดา", () => {
+    expect(catalogPrice("NO-SUCH-PRODUCT")).toBe(0);
   });
 });

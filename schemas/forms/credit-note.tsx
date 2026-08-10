@@ -28,6 +28,7 @@ import {
 import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
 import { FORM_USER, RailCard, RailRow, RailTotal, ReviewCard, opts, saved } from "./common";
+import { catalogPrice } from "@/lib/domain/pricing";
 
 /* ============================================================
    CREDIT NOTE FORM
@@ -584,7 +585,7 @@ export const CN_FORM: FormSchema<CnRow> = {
           p.nameTh.includes(q.trim()),
       )
         .slice(0, 20)
-        .map((p) => ({ code: p.code, name: p.name, meta: money0(p.price) }));
+        .map((p) => ({ code: p.code, name: p.name, meta: money0(catalogPrice(p.code)) }));
     },
   },
 
@@ -596,7 +597,7 @@ export const CN_FORM: FormSchema<CnRow> = {
     row.code = hit.code;
     row.name = hit.name;
     row.unit = p?.unit ?? "";
-    if (!num(row.unitPrice)) row.unitPrice = p?.price ?? 0;
+    if (!num(row.unitPrice)) row.unitPrice = catalogPrice(hit.code);
     if (!num(row.creditQty)) row.creditQty = 1;
     /* A manual line has no return behind it, so the requested qty is its own
        ceiling — the approval chain is what controls it instead. */

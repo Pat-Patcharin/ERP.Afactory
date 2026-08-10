@@ -631,8 +631,18 @@ function mergeSupplierItems() {
         ),
         lead: leadingNumber(legacy?.lead),
         currency: p.pricing?.currency || "THB",
-        /* The last cost actually paid, which the pricing block does know. */
-        price: p.pricing?.lastCost ?? 0,
+        /*
+           The last cost actually paid, which the pricing block does know —
+           but it knows it PER STOCK UNIT, and this row is quoted per purchase
+           unit. Scaling by the pack size is what keeps the two the same fact.
+
+           Left unscaled, 68.50 per Tube became 68.50 per Carton-of-24, and
+           the per-unit cost read back as 2.85: a quarter of what the company
+           pays, on the row a buyer compares suppliers with.
+        */
+        price:
+          Math.round((p.pricing?.lastCost ?? 0) * (stated > 0 ? stated : packed.factor) * 100) /
+          100,
         preferred: true,
         status: p.status === "Active" ? "Active" : "Draft",
         effective: p.pricing?.effective ?? "",
@@ -816,6 +826,64 @@ function syncProductSupplyView() {
 }
 
 syncProductSupplyView();
+
+/**
+ * Every supplier who quotes a product, with each price restated in the unit
+ * the warehouse counts.
+ *
+ * `costPerBase` is the point of this. One supplier quotes 420 per Carton of
+ * 24 and the next quotes 420 per Tube; the two figures are the same number
+ * and mean nothing next to each other until the pack size is divided out.
+ * Cheapest first, so the comparison is the order.
+ */
+export interface SupplierOffer {
+  partner: string;
+  partnerName: string;
+  sku: string;
+  punit: string;
+  punitFactor: number;
+  /** As quoted — per purchase unit. */
+  price: number;
+  /** The comparable figure: price ÷ pack size. */
+  costPerBase: number;
+  currency: string;
+  moq: number;
+  lead: number;
+  preferred: boolean;
+  status: string;
+}
+
+export function supplierOffers(productCode: string): SupplierOffer[] {
+  const out: SupplierOffer[] = [];
+  for (const bp of BUSINESS_PARTNERS) {
+    for (const row of bp.supplierItems ?? []) {
+      if (row.product !== productCode) continue;
+      const factor = row.punitFactor && row.punitFactor > 0 ? row.punitFactor : 1;
+      out.push({
+        partner: bp.code,
+        partnerName: bp.nameTh || bp.nameEn || bp.code,
+        sku: row.sku,
+        punit: row.punit || "",
+        punitFactor: factor,
+        price: row.price,
+        /* Two decimals: a carton of 24 at 1,000 is 41.666… per tube, and a
+           cost carried to more places than money is quoted in reads as
+           precision the price never had. */
+        costPerBase: Math.round((row.price / factor) * 100) / 100,
+        currency: row.currency,
+        moq: row.moq,
+        lead: row.lead,
+        preferred: row.preferred,
+        status: row.status,
+      });
+    }
+  }
+  return out.sort(
+    (a, b) =>
+      Number(b.preferred) - Number(a.preferred) ||
+      (a.costPerBase || Infinity) - (b.costPerBase || Infinity),
+  );
+}
 
 /**
  * The buying terms for a product, from the one place they live.

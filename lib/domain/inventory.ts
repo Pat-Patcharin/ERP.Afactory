@@ -153,7 +153,11 @@ export function invStockHealth(): StockHealthRow[] {
       suggested: s.suggested,
       status: s.status,
       tone: s.tone as BadgeTone,
-      value: s.available * (s.price || 0),
+      /* Inventory value is what the stock COST, which is also what this
+         figure was always labelled. It multiplied by the selling price
+         until the price left the product record, and reported the margin
+         as if it were already earned. */
+      value: s.available * (s.lastCost || 0),
       whCount: stocks.length,
       topWh: top?.wh ?? "",
     };

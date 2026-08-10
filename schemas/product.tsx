@@ -4,7 +4,10 @@ import {
   getProduct,
   isStocked,
   productStock,
+  productWarehouses,
   stockStatus,
+  storageMismatch,
+  warehouseRop,
   type ProductRow,
 } from "@/lib/domain/product";
 import {
@@ -13,6 +16,8 @@ import {
   productPurchaseKpi,
   productPurchaseOrders,
 } from "@/lib/domain/product-analytics";
+import { supplierOffers } from "@/lib/domain/partner";
+import { catalogPrice } from "@/lib/domain/pricing";
 import { REG_TONE, STATUS_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt, money } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
@@ -146,7 +151,7 @@ export const PRODUCT_LIST: ListSchema<ProductRow> = {
       label: "Selling Price",
       sortable: true,
       align: "right",
-      cell: (p) => money(p.price),
+      cell: (p) => money(catalogPrice(p.code)),
     },
     {
       key: "stock",
@@ -265,7 +270,7 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
     {
       icon: "tag",
       label: "Standard Selling Price",
-      value: money(p.price),
+      value: money(catalogPrice(p.code)),
       sub: p.pricing.currency,
       goTab: "price",
     },
@@ -436,79 +441,139 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
     },
 
 
-    /* ---------- 3. PRICE ---------- */
+    /* ---------- 3. COST ----------
+
+       This tab was "Price" and led with the selling price. It does not carry
+       one any more: what a product sells for depends on which list is quoting
+       it and in which unit, and neither of those is a fact about the item.
+       What IS an item fact is what it costs us — and that turns out to be one
+       figure per supplier, in each supplier's own packaging, which is why the
+       table below has rows rather than a single number. */
     {
       key: "price",
-      label: "Price",
-      blocks: (p) => {
+      label: "Cost",
+      blocks: (p, ctx) => {
         const c = p.pricing;
-        const d = p.detail;
         const canCost = checkPermission("canViewCost");
+        const offers = supplierOffers(p.code);
+        const best = offers.find((o) => o.costPerBase > 0) ?? null;
+
         return [
-          {
-            type: "cards",
-            title: "Price Summary",
-            items: [
-              {
-                label: "Standard Selling Price",
-                value: money(p.price),
-                unit: c.currency,
-                tone: "accent",
-              },
-              canCost
-                ? {
-                    label: "Latest Purchase Price",
-                    value: money(c.lastCost),
-                    unit: c.currency,
-                  }
-                : {
-                    label: "Latest Purchase Price",
-                    value: "••••",
-                    sub: "Restricted",
-                    tone: "locked",
-                  },
-              canCost
-                ? {
-                    label: "Moving Average Cost",
-                    value: money(c.avgCost),
-                    unit: c.currency,
-                  }
-                : {
-                    label: "Moving Average Cost",
-                    value: "••••",
-                    sub: "Restricted",
-                    tone: "locked",
-                  },
-              { label: "Currency", value: c.currency },
-            ],
-          },
           !canCost && { type: "restricted" },
 
-          /* ---- The four tiers, for products the price file priced ---- */
-          p.priceRef && {
+          canCost && {
             type: "cards",
-            title: "ราคา 4 ชั้น — จาก Price List Master",
+            title: "Cost Summary",
             cols: 4,
             items: [
-              { label: "ราคาราชการ", value: money(c.gov), unit: c.currency },
               {
-                label: "ราคาเอกชน",
-                value: money(c.retail),
-                unit: c.currency,
-                sub: "ราคาแคตตาล็อก",
+                label: "Latest Purchase Price",
+                value: money(c.lastCost),
+                unit: `${c.currency} / ${p.unit}`,
                 tone: "accent",
               },
-              { label: "ราคา Dealer", value: money(c.dealer), unit: c.currency },
+              { label: "Moving Average Cost", value: money(c.avgCost), unit: `${c.currency} / ${p.unit}` },
               {
-                /* Not a fourth price a customer can be sold at — the line the
-                   quote needs approval to cross. */
-                label: "Last Price — เพดานล่าง",
-                value: p.priceRef.floor === null ? DASH : money(p.priceRef.floor),
-                sub: "ต่ำกว่านี้ต้องขออนุมัติ",
-                tone: "warn",
+                /* The cheapest of the offers below, per stock unit — which is
+                   the only comparison that holds when one supplier quotes by
+                   the carton and the next by the tube. */
+                label: "ต้นทุนต่ำสุดที่เสนอมา",
+                value: best ? money(best.costPerBase) : DASH,
+                unit: best ? `${best.currency} / ${p.unit}` : "",
+                sub: best ? best.partnerName : "ยังไม่มีผู้ขายเสนอราคา",
+              },
+              { label: "ผู้ขายที่เสนอ", value: fmt(offers.length), sub: "ราย" },
+            ],
+          },
+
+          /* ---- One row per supplier, all converted to the stock unit ---- */
+          canCost && {
+            type: "table",
+            title: `ต้นทุนตามผู้ขาย (${offers.length})`,
+            rows: offers,
+            empty: "ยังไม่มีผู้ขายรายใดเสนอราคาสินค้านี้",
+            cols: [
+              {
+                key: "partnerName",
+                label: "Supplier",
+                cell: (o) => (
+                  <LinkButton onClick={() => ctx.openEntity("business-partner", o.partner)}>
+                    {o.partnerName}
+                  </LinkButton>
+                ),
+              },
+              {
+                key: "preferred",
+                label: "",
+                cell: (o) => (o.preferred ? <Badge tone="success">ผู้ขายหลัก</Badge> : null),
+              },
+              { key: "sku", label: "Vendor Code", muted: true, cell: (o) => o.sku || DASH },
+              {
+                key: "punit",
+                label: "Purchase Unit",
+                muted: true,
+                cell: (o) => conversionText(p.unit, o.punit, o.punitFactor),
+              },
+              {
+                key: "price",
+                label: "ราคาต่อหน่วยซื้อ",
+                align: "right",
+                cell: (o) => money(o.price),
+              },
+              {
+                /* The comparable figure. Two suppliers quoting 420 mean
+                   different things when one of them ships a carton of 24. */
+                key: "costPerBase",
+                label: `ต้นทุนต่อ ${p.unit}`,
+                align: "right",
+                cell: (o) => (
+                  <span className={o === best ? "font-semibold text-success-text" : undefined}>
+                    {money(o.costPerBase)}
+                  </span>
+                ),
+              },
+              { key: "moq", label: "MOQ", align: "right", muted: true, cell: (o) => `${fmt(o.moq)} ${o.punit}` },
+              { key: "lead", label: "Lead Time", align: "right", muted: true, cell: (o) => `${fmt(o.lead)} วัน` },
+              {
+                key: "status",
+                label: "Status",
+                cell: (o) => (
+                  <Badge tone={o.status === "Active" ? "success" : "neutral"}>{o.status}</Badge>
+                ),
               },
             ],
           },
+
+          canCost &&
+            offers.length > 0 && {
+              type: "note",
+              text: "ราคาที่ผู้ขายเสนอมาเป็นราคาต่อหน่วยซื้อของแต่ละราย — คอลัมน์สุดท้ายแปลงกลับเป็นหน่วยที่คลังนับให้แล้ว จึงเป็นช่องเดียวที่เทียบข้ามผู้ขายได้ตรง ๆ · แก้ที่ Business Partner → ข้อมูลผู้ขาย → Supplier Items",
+            },
+
+          /* ---- Where the selling price went ---- */
+          {
+            type: "fields",
+            title: "ราคาขาย",
+            cols: 2,
+            items: [
+              {
+                label: "ราคาตามแคตตาล็อก",
+                value: catalogPrice(p.code) > 0 ? money(catalogPrice(p.code)) : DASH,
+                muted: catalogPrice(p.code) === 0,
+              },
+              { label: "หน่วย", value: p.unit },
+              {
+                label: "ตั้งราคาที่",
+                span: true,
+                value: (
+                  <LinkButton onClick={() => ctx.goto("/pricing")}>
+                    Product Pricing — ราคาต่อรายการราคาและต่อหน่วยขาย
+                  </LinkButton>
+                ),
+              },
+            ],
+          },
+
           p.priceRef && {
             type: "note",
             text: `ทุกช่องเป็นราคาก่อน VAT · GP คิดจากราคาขายตรง ๆ ไม่หาร 1.07 · แถวต้นทางคือ ${p.priceRef.row} จากชีต ${p.priceRef.sheet}`,
@@ -535,89 +600,14 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
                   : "— ชื่อสินค้าตรงกัน จึงถือเป็นรายการเดียว"
               }`,
             },
-          {
-            type: "table",
-            title: "Price Lists",
-            rows: d.priceLists,
-            empty: "ยังไม่มีรายการราคา",
-            cols: [
-              { key: "name", label: "Price List" },
-              { key: "price", label: "Price", align: "right", cell: (r) => money(r.price) },
-              { key: "cur", label: "Currency", muted: true },
-              { key: "from", label: "Effective Date", muted: true },
-              { key: "to", label: "Expiry Date", muted: true },
-              {
-                key: "status",
-                label: "Status",
-                cell: (r) => (
-                  <Badge tone={r.status === "Active" ? "success" : "neutral"}>
-                    {r.status}
-                  </Badge>
-                ),
-              },
-            ],
-          },
-          {
-            type: "table",
-            title: "Tier Price",
-            rows: d.tiers,
-            empty: "ไม่มีราคาขั้นบันได",
-            cols: [
-              {
-                key: "min",
-                label: "Minimum Qty",
-                align: "right",
-                cell: (r) => fmt(r.min),
-              },
-              {
-                key: "max",
-                label: "Maximum Qty",
-                align: "right",
-                cell: (r) => (r.max === null ? "ไม่จำกัด" : fmt(r.max)),
-              },
-              {
-                key: "price",
-                label: "Unit Price",
-                align: "right",
-                cell: (r) => money(r.price),
-              },
-            ],
-          },
-          {
-            type: "table",
-            title: "Contract & Exception Price",
-            rows: d.contracts,
-            empty: "ไม่มีสัญญาราคาพิเศษ",
-            cols: [
-              { key: "cust", label: "Customer" },
-              {
-                key: "type",
-                label: "Price Type",
-                cell: (r) => (
-                  <Badge tone={r.type === "Contract" ? "info" : "neutral"}>{r.type}</Badge>
-                ),
-              },
-              { key: "price", label: "Price", align: "right", cell: (r) => money(r.price) },
-              { key: "from", label: "Start Date", muted: true },
-              { key: "to", label: "End Date", muted: true },
-              {
-                key: "status",
-                label: "Status",
-                cell: (r) => (
-                  <Badge tone={r.status === "Active" ? "success" : "neutral"}>
-                    {r.status}
-                  </Badge>
-                ),
-              },
-            ],
-          },
+
           {
             type: "fields",
             title: "Tax",
             cols: 2,
             items: [
               { label: "VAT", value: c.vat },
-              { label: "Price Effective Date", value: c.effective || DASH },
+              { label: "Cost Effective Date", value: c.effective || DASH },
             ],
           },
         ];
@@ -702,6 +692,60 @@ export const PRODUCT_DETAIL: DetailSchema<ProductRow> = {
             title: "ยังไม่มีการกำหนดคลังสินค้า",
             message:
               "สินค้านี้ยังไม่ถูกผูกเข้ากับคลังใด — ติดต่อฝ่ายคลังสินค้าเพื่อกำหนดคำแหน่งจัดเก็บ",
+          },
+          {
+            /* POLICY, above the balances. Which warehouses may hold this at
+               all, with each one's own reorder point — the question a buyer
+               asks before any stock exists, and the one nothing could answer
+               while every row simply echoed the product's single figure. */
+            type: "table",
+            title: `คลังที่เก็บสินค้านี้ได้ (${productWarehouses(p).length})`,
+            rows: productWarehouses(p),
+            empty: "ยังไม่ได้กำหนดคลัง — สินค้านี้ยังรับเข้าไม่ได้",
+            cols: [
+              {
+                key: "wh",
+                label: "Warehouse",
+                cell: (w) => (
+                  <span className="font-medium">{splitWarehouse(w.wh).code}</span>
+                ),
+              },
+              { key: "name", label: "Warehouse Name", muted: true, cell: (w) => splitWarehouse(w.wh).name || DASH },
+              { key: "bin", label: "Default Bin", muted: true, cell: (w) => w.bin || DASH },
+              {
+                key: "rop",
+                label: "Reorder Point",
+                align: "right",
+                cell: (w) => (
+                  <span title={w.rop > 0 ? "ตั้งไว้เฉพาะคลังนี้" : "ใช้ค่าตั้งต้นของสินค้า"}>
+                    {fmt(warehouseRop(p, w.wh))} {p.unit}
+                    {w.rop > 0 ? "" : " *"}
+                  </span>
+                ),
+              },
+              {
+                key: "role",
+                label: "ค่าตั้งต้น",
+                cell: (w) => (
+                  <span className="flex flex-wrap gap-1">
+                    {w.defaultReceiving && <Badge tone="info">รับเข้า</Badge>}
+                    {w.defaultIssuing && <Badge tone="success">จ่ายออก</Badge>}
+                  </span>
+                ),
+              },
+              {
+                key: "warn",
+                label: "เงื่อนไขการเก็บ",
+                cell: (w) => {
+                  const bad = storageMismatch(p, w.wh);
+                  return bad ? <Badge tone="danger">{bad}</Badge> : DASH;
+                },
+              },
+            ],
+          },
+          {
+            type: "note",
+            text: "* จุดสั่งซื้อที่มีดอกจันใช้ค่าตั้งต้นของสินค้า — คลังที่ตั้งตัวเลขของตัวเองจะใช้ตัวเลขนั้นแทน",
           },
           {
             /* Where the stock physically sits, and how much. The reserved /

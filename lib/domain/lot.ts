@@ -306,7 +306,9 @@ function build(key: LotKey): LotRow {
     (m) => m.product === key.product && aliases.includes(m.lot),
   );
   const recall = RECALL_REVIEWS.find((r) => aliases.includes(r.lot));
-  const unitCost = positions[0]?.avgCost ?? p?.pricing?.avgCost ?? p?.price ?? 0;
+  /* Cost, and only cost. The last term used to be the SELLING price,
+     which valued a lot at what it would fetch rather than what it cost. */
+  const unitCost = positions[0]?.avgCost ?? p?.pricing?.avgCost ?? p?.pricing?.lastCost ?? 0;
 
   const customers = new Set(
     SHIPMENTS.filter(

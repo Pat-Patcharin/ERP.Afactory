@@ -6,10 +6,12 @@ import {
   SALES_UNIT,
   conversionText,
   decorateProducts,
+  storageWarning,
   type ProductRow,
 } from "@/lib/domain/product";
 import { WAREHOUSES } from "@/lib/domain/warehouse";
-import { marginPct, markupPct } from "@/lib/domain/pricing";
+import { supplierOffers } from "@/lib/domain/partner";
+import { catalogPrice } from "@/lib/domain/pricing";
 import { money, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import { checkPermission } from "@/lib/permissions";
 import type { FormSchema, FormState, GridRow } from "@/lib/types";
@@ -43,6 +45,25 @@ const NAME_LANG = [
   { value: "en", label: "English" },
 ];
 
+/**
+ * The supplier offers, flattened for a read-only grid.
+ *
+ * Rendered rather than editable: the agreed figures live on the supplier item
+ * and editing them here would put a second copy back. Formatted once, on the
+ * way in, so every cell is a plain string the grid can show without a
+ * per-column renderer.
+ */
+const costRows = (code: string, baseUnit: string): GridRow[] =>
+  supplierOffers(code).map((o) => ({
+    partnerName: o.preferred ? `${o.partnerName} · ผู้ขายหลัก` : o.partnerName,
+    sku: o.sku || "—",
+    conv: conversionText(baseUnit, o.punit, o.punitFactor),
+    price: `${money(o.price)} ${o.currency}`,
+    costPerBase: money(o.costPerBase),
+    moqText: o.moq > 0 ? `${o.moq} ${o.punit}` : "—",
+    leadText: o.lead > 0 ? `${o.lead} วัน` : "—",
+  }));
+
 export const PRODUCT_FORM: FormSchema<ProductRow> = {
   key: "product",
   entityLabel: "Product",
@@ -70,19 +91,17 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     weight: "",
     dim: "",
     units: [],
-    price: "",
     pricing: {
       currency: "THB",
-      retail: "",
-      dealer: "",
-      gov: "",
       lastCost: "",
       avgCost: "",
       vat: "VAT 7% (exclusive)",
       effective: "",
     },
-    tiers: [],
     lowLevel: 0,
+    /* Read-only: the supplier's own row is edited on the partner. */
+    offers: [],
+    warehouses: [],
     stocks: [],
     supplier: "",
     sup: {
@@ -130,19 +149,16 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       weight: p.weight,
       dim: p.dim,
       units: p.detail.units.filter((u) => u.type !== "Base Unit").map((u) => ({ ...u })),
-      price: p.price,
       pricing: {
         currency: p.pricing.currency,
-        retail: p.pricing.retail,
-        dealer: p.pricing.dealer,
-        gov: p.pricing.gov,
         lastCost: p.pricing.lastCost,
         avgCost: p.pricing.avgCost,
         vat: p.pricing.vat,
         effective: dmyToIso(p.pricing.effective),
       },
-      tiers: p.detail.tiers.map((t) => ({ ...t })),
       lowLevel: p.lowLevel,
+      offers: costRows(p.code, p.unit),
+      warehouses: (p.warehouses ?? []).map((w) => ({ ...w })),
       stocks: p.stocks.map((s) => ({ ...s, exp: dmyToIso(s.exp) })),
       supplier: p.supplier,
       sup: { ...p.sup },
@@ -358,115 +374,110 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       ],
     },
 
-    /* ---------- 3. PRICE ---------- */
+    /* ---------- 3. COST ----------
+
+       The step was "Price" and led with four selling-price boxes. None of
+       them belonged here: what a product sells for depends on the list and
+       the unit being quoted, and neither is an item fact.
+
+       What is left is cost, and cost is read-only on this form. The agreed
+       figure lives on the supplier item — one row per supplier, in that
+       supplier's own packaging — and the roll-up below is those rows
+       converted to the unit the warehouse counts. Typing over it here would
+       put a fifth copy of the number back. */
     {
       key: "price",
-      label: "Price",
-      railLabel: "ราคา",
-      labelTh: "ราคาขายและต้นทุน",
-      blocks: (s) => [
-        {
-          type: "card",
-          title: "Selling Price",
-          cols: "3",
-          fields: [
-            {
-              type: "number",
-              path: "price",
-              label: "Standard Selling Price",
-              required: true,
-              min: 0,
-              step: "0.01",
-            },
-            {
-              type: "select",
-              path: "pricing.currency",
-              label: "Currency",
-              required: true,
-              options: opts(OPT.currency),
-            },
-            { type: "select", path: "pricing.vat", label: "VAT", options: opts(OPT.vat) },
-            {
-              type: "number",
-              path: "pricing.dealer",
-              label: "Dealer Price",
-              min: 0,
-              step: "0.01",
-            },
-            {
-              type: "number",
-              path: "pricing.gov",
-              label: "Government Price",
-              min: 0,
-              step: "0.01",
-            },
-            { type: "date", path: "pricing.effective", label: "Price Effective Date" },
-          ],
-        },
-        {
-          type: "card",
-          title: "Cost",
-          cols: "3",
-          fields: [
-            {
-              type: "secure",
-              as: "number",
-              permission: "canViewCost",
-              path: "pricing.lastCost",
-              label: "Latest Purchase Price",
-              min: 0,
-              step: "0.01",
-            },
-            {
-              type: "secure",
-              as: "number",
-              permission: "canViewCost",
-              path: "pricing.avgCost",
-              label: "Moving Average Cost",
-              min: 0,
-              step: "0.01",
-            },
-            {
-              type: "static",
-              label: "Gross Margin",
-              value: (s) => {
-                const cost = num(s.pricing?.lastCost);
-                const price = num(s.price);
-                if (!cost || !price) return "—";
-                return `${marginPct(cost, price)}% (markup ${markupPct(cost, price)}%)`;
+      label: "Cost",
+      railLabel: "ต้นทุน",
+      labelTh: "ต้นทุนตามผู้ขายและภาษี",
+      blocks: (s) => {
+        const offers = supplierOffers(String(s.code ?? ""));
+        const best = offers.find((o) => o.costPerBase > 0);
+        const baseUnit = String(s.unit ?? "หน่วยหลัก");
+
+        return [
+          {
+            type: "card",
+            title: "Cost",
+            cols: "3",
+            fields: [
+              {
+                type: "secure",
+                as: "static",
+                permission: "canViewCost",
+                label: "Latest Purchase Price",
+                value: (st) =>
+                  num(st.pricing?.lastCost)
+                    ? `${money(st.pricing.lastCost)} / ${baseUnit}`
+                    : "—",
+                hint: "มาจากใบรับสินค้าล่าสุด",
               },
-            },
-          ],
-        },
-        {
-          type: "grid",
-          path: "tiers",
-          label: "Tier Price",
-          addLabel: "เพิ่มขั้นราคา",
-          empty: "ไม่มีราคาขั้นบันได",
-          hint: "เว้น Maximum Qty ว่างไว้สำหรับขั้นสูงสุด (ไม่จำกัด)",
-          cols: [
-            { key: "min", label: "Minimum Qty", type: "number", align: "right", required: true },
-            { key: "max", label: "Maximum Qty", type: "number", align: "right" },
-            { key: "price", label: "Unit Price", type: "number", align: "right", required: true },
-            {
-              key: "saving",
-              label: "ส่วนต่างจากราคามาตรฐาน",
-              type: "computed",
-              align: "right",
-              muted: true,
-              /* blocks() closes over the draft, so the comparison reads the
-                 live standard price without stashing a copy on every row. */
-              get: (r) => {
-                const std = num(s.price);
-                const p = num(r.price);
-                if (!std || !p) return "—";
-                return `${(((std - p) / std) * 100).toFixed(1)}%`;
+              {
+                type: "secure",
+                as: "static",
+                permission: "canViewCost",
+                label: "Moving Average Cost",
+                value: (st) =>
+                  num(st.pricing?.avgCost)
+                    ? `${money(st.pricing.avgCost)} / ${baseUnit}`
+                    : "—",
               },
-            },
-          ],
-        },
-      ],
+              {
+                type: "secure",
+                as: "static",
+                permission: "canViewCost",
+                label: "ต้นทุนต่ำสุดที่เสนอมา",
+                value: () =>
+                  best ? `${money(best.costPerBase)} / ${baseUnit}` : "—",
+                hint: best ? best.partnerName : "ยังไม่มีผู้ขายเสนอราคา",
+              },
+              {
+                type: "select",
+                path: "pricing.currency",
+                label: "Currency",
+                required: true,
+                options: opts(OPT.currency),
+              },
+              { type: "select", path: "pricing.vat", label: "VAT", options: opts(OPT.vat) },
+              { type: "date", path: "pricing.effective", label: "Cost Effective Date" },
+            ],
+          },
+
+          /* ---- One row per supplier, every price in the same unit ---- */
+          {
+            type: "grid",
+            path: "offers",
+            readonly: true,
+            label: `ต้นทุนตามผู้ขาย (${offers.length})`,
+            empty: "ยังไม่มีผู้ขายรายใดเสนอราคาสินค้านี้",
+            hint: `ผู้ขายแต่ละรายเสนอราคาในหน่วยของตัวเอง คอลัมน์ "ต้นทุนต่อ ${baseUnit}" แปลงกลับให้แล้ว จึงเป็นช่องเดียวที่เทียบข้ามผู้ขายได้ · แก้ที่ Business Partner → Supplier Items`,
+            cols: [
+              { key: "partnerName", label: "Supplier", type: "static" },
+              { key: "sku", label: "Vendor Code", type: "static", muted: true },
+              { key: "conv", label: "Purchase Unit", type: "computed", get: (r) => String(r.conv) },
+              { key: "price", label: "ราคาต่อหน่วยซื้อ", type: "static", align: "right" },
+              {
+                key: "costPerBase",
+                label: `ต้นทุนต่อ ${baseUnit}`,
+                type: "static",
+                align: "right",
+              },
+              { key: "moqText", label: "MOQ", type: "static", align: "right", muted: true },
+              { key: "leadText", label: "Lead Time", type: "static", align: "right", muted: true },
+            ],
+          },
+
+          {
+            type: "note",
+            label: "ราคาขายไม่ได้อยู่ที่นี่",
+            text: `ราคาขายของสินค้านี้ตั้งที่ Product Pricing — หนึ่งบรรทัดต่อรายการราคาและต่อหน่วยขาย ราคาตามแคตตาล็อกตอนนี้คือ ${
+              catalogPrice(String(s.code ?? "")) > 0
+                ? `${money(catalogPrice(String(s.code ?? "")))} / ${baseUnit}`
+                : "ยังไม่ได้ตั้ง"
+            }`,
+          },
+        ];
+      },
     },
 
     /* ---------- 4. STOCK ---------- */
@@ -475,7 +486,7 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       label: "Stock",
       railLabel: "คลังสินค้า",
       labelTh: "จุดสั่งซื้อและคลัง",
-      blocks: () => [
+      blocks: (s) => [
         {
           type: "card",
           title: "Replenishment",
@@ -484,25 +495,62 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
             {
               type: "number",
               path: "lowLevel",
-              label: "Reorder Point",
+              label: "Reorder Point (ค่าตั้งต้น)",
               required: true,
               min: 0,
-              hint: "แจ้งเตือนเมื่อ Available ต่ำกว่าค่านี้",
+              hint: "ใช้กับคลังที่ยังไม่ได้ตั้งจุดสั่งซื้อของตัวเอง",
             },
             {
               type: "static",
               label: "Suggested Target",
-              value: (s) => `${Math.round(num(s.lowLevel) * 1.5)} ${s.unit ?? ""}`,
+              value: (st) => `${Math.round(num(st.lowLevel) * 1.5)} ${st.unit ?? ""}`,
               hint: "1.5 เท่าของจุดสั่งซื้อ",
             },
           ],
         },
+
+        /* ---- Policy: which warehouses may hold this at all ----
+
+           Separate grid from the balances below, because they answer
+           different questions. This one can be filled in before a single
+           unit exists, which is what a purchase order needs in order to
+           know where to deliver. */
+        {
+          type: "grid",
+          path: "warehouses",
+          label: "คลังที่เก็บสินค้านี้ได้",
+          addLabel: "เพิ่มคลัง",
+          empty: "ยังไม่ได้กำหนดคลัง — สินค้าจะยังรับเข้าไม่ได้",
+          hint: "จุดสั่งซื้อรายคลังใช้แทนค่าตั้งต้นด้านบน · คลังบริการกับคลังหลักไม่ควรใช้ตัวเลขเดียวกัน",
+          cols: [
+            { key: "wh", label: "Warehouse", type: "select", options: whOptions(), required: true },
+            { key: "bin", label: "Default Bin", type: "text", placeholder: "A-01-02" },
+            { key: "rop", label: "Reorder Point", type: "number", align: "right" },
+            { key: "maxQty", label: "Max Qty", type: "number", align: "right" },
+            {
+              key: "warn",
+              label: "เงื่อนไขการเก็บ",
+              type: "computed",
+              muted: true,
+              /* Both facts already exist — the product states a storage
+                 condition and the warehouse states a temperature. Nothing
+                 compared them, so a 2–8 °C item could be assigned to an
+                 ambient store and only the box would know. */
+              get: (r) => storageWarning(String(s.cls?.storage ?? ""), String(r.wh ?? "")) || "—",
+            },
+            { key: "defaultReceiving", label: "รับเข้า", type: "radio", align: "right", width: "80px" },
+            { key: "defaultIssuing", label: "จ่ายออก", type: "radio", align: "right", width: "80px" },
+          ],
+        },
+
+        /* ---- Balances: what is actually there ---- */
         {
           type: "grid",
           path: "stocks",
-          label: "Warehouse Assignment",
-          addLabel: "ผูกคลังสินค้า",
-          empty: "ยังไม่ได้ผูกคลังสินค้า — สินค้าจะยังรับเข้าไม่ได้",
+          label: "ยอดคงเหลือตามคลัง",
+          addLabel: "เพิ่มยอดคงเหลือ",
+          empty: "ยังไม่มียอดคงเหลือ",
+          hint: "ยอดจริงมาจากการรับเข้า-จ่ายออก แก้ที่นี่เฉพาะตอนตั้งต้นระบบ",
           cols: [
             { key: "wh", label: "Warehouse", type: "select", options: whOptions(), required: true },
             { key: "loc", label: "Location", type: "text", placeholder: "A-01-02" },
@@ -684,7 +732,6 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     { path: "cat", label: "Category", step: "general" },
     { path: "brand", label: "Brand", step: "general" },
     { path: "unit", label: "Base Unit", step: "units" },
-    { path: "price", label: "Standard Selling Price", step: "price" },
     { path: "pricing.currency", label: "Currency", step: "price" },
     { path: "lowLevel", label: "Reorder Point", step: "stock" },
   ],
@@ -704,24 +751,13 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         return !bc || !PRODUCTS.some((p) => p.barcode === bc && p.code !== s.code);
       },
     },
-    {
-      label: "ราคาขายต้องมากกว่า 0",
-      step: "price",
-      test: (s) => num(s.price) > 0,
-    },
-    {
-      label: "ราคาตัวแทนจำหน่ายต้องไม่สูงกว่าราคามาตรฐาน",
-      step: "price",
-      test: (s) => !num(s.pricing?.dealer) || num(s.pricing.dealer) <= num(s.price),
-    },
-    {
-      label: "ราคาขายต้องไม่ต่ำกว่าต้นทุนล่าสุด",
-      step: "price",
-      test: (s) =>
-        !checkPermission("canViewCost") ||
-        !num(s.pricing?.lastCost) ||
-        num(s.price) >= num(s.pricing.lastCost),
-    },
+    /*
+       The three selling-price rules left with the prices they guarded.
+       "must be above cost" and "dealer must not exceed standard" are checks
+       on a price list line, not on an item — they are enforced where the
+       price is now set, against the line being edited, rather than here
+       against a field that no longer exists.
+    */
   ],
 
   /*
@@ -740,10 +776,20 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     switch (path) {
       case "units":
         return { unit: "", type: SALES_UNIT, factor: 1, barcode: "", active: true };
-      case "tiers":
-        return { min: isFirst ? 1 : "", max: "", price: "" };
       case "stocks":
         return { wh: "", loc: "", avail: 0, res: 0, lot: "", exp: "" };
+      case "warehouses":
+        return {
+          wh: "",
+          bin: "",
+          rop: 0,
+          maxQty: 0,
+          /* The first warehouse cleared for a product is where its goods land
+             until somebody says otherwise. */
+          defaultReceiving: isFirst,
+          defaultIssuing: isFirst,
+          status: "Active",
+        };
       case "altSuppliers":
         return { name: "", code: "", lead: "", price: "" };
       default:
@@ -796,9 +842,8 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
         {row("Primary Barcode", s.barcode, "units")}
       </ReviewCard>
       <ReviewCard title="Price & Stock">
-        {row("Standard Selling Price", num(s.price) ? money(s.price) : "", "price")}
         {row("Currency", s.pricing?.currency, "price")}
-        {row("Tier Price", s.tiers, "price")}
+        {row("VAT", s.pricing?.vat, "price")}
         {row("Reorder Point", s.lowLevel, "stock")}
         {row("Warehouse Assignment", s.stocks, "stock")}
       </ReviewCard>
@@ -820,16 +865,15 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
     const code = String(s.code ?? "").trim();
     const existing = PRODUCTS.find((p) => p.code === code);
 
+    /* Cost is read-only on the form — it comes from receipts and from the
+       supplier item — so an existing record keeps its own figures rather
+       than having them overwritten by whatever the draft happened to hold. */
     const pricing = {
       currency: String(s.pricing?.currency ?? "THB"),
-      retail: num(s.price),
-      dealer: num(s.pricing?.dealer),
-      gov: num(s.pricing?.gov),
-      lastCost: num(s.pricing?.lastCost),
-      avgCost: num(s.pricing?.avgCost),
+      lastCost: existing?.pricing.lastCost ?? num(s.pricing?.lastCost),
+      avgCost: existing?.pricing.avgCost ?? num(s.pricing?.avgCost),
       vat: String(s.pricing?.vat ?? ""),
       effective: isoToDmy(s.pricing?.effective),
-      contract: existing?.pricing.contract ?? null,
     };
 
     const stocks = ((s.stocks ?? []) as GridRow[]).map((r) => ({
@@ -856,13 +900,23 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
       weight: String(s.weight ?? ""),
       dim: String(s.dim ?? ""),
       demoAllowed: Boolean(s.demoAllowed),
-      price: num(s.price),
       lowLevel: num(s.lowLevel),
       status: String(s.status ?? "Draft"),
       desc: String(s.desc ?? ""),
       supplier: String(s.supplier ?? ""),
       pricing,
       stocks,
+      warehouses: ((s.warehouses ?? []) as GridRow[]).map((w) => ({
+        wh: String(w.wh ?? ""),
+        bin: String(w.bin ?? ""),
+        /* 0 means "use the product default", which is what an untouched row
+           honestly says — not "reorder when it hits nothing". */
+        rop: num(w.rop),
+        maxQty: num(w.maxQty),
+        defaultReceiving: Boolean(w.defaultReceiving),
+        defaultIssuing: Boolean(w.defaultIssuing),
+        status: String(w.status ?? "Active"),
+      })),
       onHand: stocks.reduce((t, r) => t + r.avail + r.res, 0),
       reserved: stocks.reduce((t, r) => t + r.res, 0),
       sup: {
@@ -957,11 +1011,8 @@ export const PRODUCT_FORM: FormSchema<ProductRow> = {
           active: Boolean(u.active),
         })),
       ];
-      rec.detail.tiers = ((s.tiers ?? []) as GridRow[]).map((t) => ({
-        min: num(t.min),
-        max: t.max === "" || t.max === null || t.max === undefined ? null : num(t.max),
-        price: num(t.price),
-      }));
+      /* The volume ladder moved onto the price list line, where it belongs to
+         one price rather than to the item. */
       rec.detail.regRows = patch.reg.no
         ? [
             {

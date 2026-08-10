@@ -1,6 +1,7 @@
 import { DEFAULT_CLASS, DETAIL, PRODUCTS as RAW, type Product } from "@/data/products";
 import { DASH, daysUntil } from "@/lib/format";
 import { catalogBuild } from "./product-catalog";
+import { WAREHOUSES } from "./warehouse";
 
 /** Per-product detail payload — the shape the API will eventually return. */
 export type ProductDetail = (typeof DETAIL)[string];
@@ -86,37 +87,11 @@ function detailFor(p: Product): ProductDetail {
     },
     units: [{ unit: p.unit, type: BASE_UNIT, factor: 1, barcode: p.barcode, active: true }],
     rfid: false,
-    priceLists: [
-      {
-        name: "Standard 2569",
-        price: p.price,
-        cur: "THB",
-        from: p.pricing.effective,
-        to: "31/12/2026",
-        status: p.status === "Inactive" ? "Expired" : "Active",
-      },
-      {
-        name: "Dealer Tier A",
-        price: p.pricing.dealer,
-        cur: "THB",
-        from: p.pricing.effective,
-        to: "31/12/2026",
-        status: p.status === "Inactive" ? "Expired" : "Active",
-      },
-    ],
-    tiers: [{ min: 1, max: null, price: p.price }],
-    contracts: p.pricing.contract
-      ? [
-          {
-            cust: p.pricing.contract.name,
-            type: "Contract",
-            price: p.pricing.contract.price,
-            from: "01/01/2026",
-            to: "31/12/2026",
-            status: "Active",
-          },
-        ]
-      : [],
+    /* Selling prices are not a product fact. The lists a product appears in,
+       its tiers and its contract prices all live in the price list module —
+       see `catalogPrice()`. This payload used to fabricate two "price lists"
+       out of two fields on the product, which meant the Price tab showed a
+       list nobody had created. */
     backOrder: 0,
     lotTracked: p.cat !== "Accessory",
     serialTracked: false,
@@ -126,7 +101,11 @@ function detailFor(p: Product): ProductDetail {
       onHand: s.avail + s.res,
       res: s.res,
       onOrder: 0,
-      rop: p.lowLevel,
+      /* This column read `p.lowLevel` for every row, so a warehouse table
+         showed one company-wide figure repeated down the page and called it
+         a per-warehouse reorder point. The policy row is the authority; the
+         product's own figure is the default a warehouse has not overridden. */
+      rop: warehouseRop(p, s.wh),
     })),
     lots: p.stocks
       .filter((s) => s.lot && s.lot !== DASH)
@@ -229,6 +208,7 @@ function detailFor(p: Product): ProductDetail {
  */
 export function decorateProducts() {
   for (const p of PRODUCTS) {
+    ensureWarehousePolicy(p);
     const d = detailFor(p);
     p.detail = d;
     p.onHandTotal = d.whRows.reduce((s, r) => s + r.onHand, 0) || p.onHand;
@@ -238,6 +218,105 @@ export function decorateProducts() {
     p.availTotal = p.onHandTotal - p.resTotal;
     p.projected = p.availTotal - p.backOrder + p.onOrderTotal;
   }
+}
+
+/* ============================================================
+   WHICH WAREHOUSES MAY HOLD THIS PRODUCT
+
+   A balance says where the goods ARE. This says where they MAY
+   BE, which is the only one of the two that can answer "deliver
+   this purchase order where" before any stock exists.
+
+   Seeded from the balances, because a warehouse that has held
+   the item is one that may: the policy did exist, it was just
+   never written down anywhere a screen could read it.
+   ============================================================ */
+
+/** Warehouse-level storage rule. `wh` is written "CODE Name" everywhere. */
+const whRule = (wh: string) => {
+  const code = String(wh ?? "").trim().split(/\s+/)[0];
+  return WAREHOUSES.find((w) => w.code === code)?.rules ?? null;
+};
+
+/**
+ * Whether a warehouse's conditions suit this product.
+ *
+ * Both facts already exist — the product states a storage condition and the
+ * warehouse states a temperature — and nothing compared them, so a 2–8 °C
+ * item could be assigned to an ambient store and only the box would know.
+ * Returns the reason rather than a boolean, because a refusal nobody can
+ * read is a refusal nobody can act on.
+ */
+export function storageWarning(storage: string, wh: string): string | null {
+  const rule = whRule(wh);
+  if (!rule || !storage) return null;
+  const needsCold = /2–8|2-8|แช่เย็น/.test(storage);
+  const isCold = /cold|เย็น/i.test(rule.temp);
+  return needsCold && !isCold ? `ต้องเก็บ ${storage} · คลังนี้ ${rule.temp}` : null;
+}
+
+/** The same check against a saved product. */
+export const storageMismatch = (p: ProductRow, wh: string) =>
+  storageWarning(p.detail?.cls?.storage ?? "", wh);
+
+function ensureWarehousePolicy(p: Product) {
+  if (p.warehouses?.length) return;
+
+  /* Real per-warehouse reorder points already existed for the hand-built
+     products — 200 at the main store, 100 at Bangkok, 0 at the service store
+     — sitting in the read-only detail payload where nothing could edit them
+     and every screen showed `lowLevel` over the top. Promote them rather than
+     flatten them back to the default. */
+  const seeded = DETAIL[p.code]?.whRows ?? [];
+
+  const rows = (p.stocks ?? []).map((s) => {
+    const was = seeded.find((w) => w.wh === s.wh);
+    return {
+      wh: s.wh,
+      bin: s.loc,
+      rop: was ? was.rop : p.lowLevel,
+      maxQty: Math.round((was ? was.rop : p.lowLevel) * 1.5),
+      /* The largest holding is where goods have in fact been landing. */
+      defaultReceiving: false,
+      defaultIssuing: false,
+      status: "Active",
+    };
+  });
+
+  if (rows.length) {
+    const biggest = (p.stocks ?? []).reduce(
+      (best, s, i) => (s.avail + s.res > (p.stocks[best]?.avail ?? -1) + (p.stocks[best]?.res ?? 0) ? i : best),
+      0,
+    );
+    rows[biggest].defaultReceiving = true;
+    rows[biggest].defaultIssuing = true;
+  }
+
+  p.warehouses = rows;
+}
+
+/** Warehouses this product may be held in, policy rows only. */
+export const productWarehouses = (p: Product) =>
+  (p.warehouses ?? []).filter((w) => w.status === "Active");
+
+/**
+ * The reorder point that applies at one warehouse.
+ *
+ * A policy row answers for its own warehouse, ZERO INCLUDED: the seeded
+ * service store carries 0 and means it — it holds nothing and reorders
+ * nothing, and reading that as "unset" would put a 200-unit alert on a store
+ * that has never held one. The product's company-wide figure applies only
+ * where no policy row exists at all.
+ */
+export function warehouseRop(p: Product, wh: string): number {
+  const row = (p.warehouses ?? []).find((w) => w.wh === wh);
+  return row ? row.rop : p.lowLevel;
+}
+
+/** Where goods land by default, or the first warehouse cleared to hold them. */
+export function defaultReceivingWarehouse(p: Product): string {
+  const rows = productWarehouses(p);
+  return (rows.find((w) => w.defaultReceiving) ?? rows[0])?.wh ?? "";
 }
 
 /**
@@ -339,8 +418,10 @@ export function productStock(code: string) {
     code: p.code,
     name: p.name,
     unit: p.unit,
-    price: p.price,
-    lastCost: p.pricing?.lastCost ?? p.price,
+    /* No selling price on a stock row. What a warehouse holds is valued at
+       cost; what it will fetch belongs to whichever list is quoting it, and
+       this module cannot reach the pricing one without closing a loop. */
+    lastCost: p.pricing?.lastCost ?? p.pricing?.avgCost ?? 0,
     supplier: p.supplier ?? "",
     onHand,
     reserved,

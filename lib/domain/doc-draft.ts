@@ -4,6 +4,7 @@ import { PAY_TERMS } from "@/data/partners";
 import { QT_CHANNELS, QT_PRICE_LISTS } from "@/data/quotations";
 import { PRODUCTS, productStock } from "./product";
 import { priceMasterByProduct } from "./price-master";
+import { catalogPrice } from "./pricing";
 import { checkQuotedPrice } from "./pricing-master";
 import { addressLine, bpBillingAddress, bpDeliveryAddress } from "./partner";
 import {
@@ -769,7 +770,7 @@ export function productSearch(q: string, limit = 12): ProductHit[] {
       code: p.code,
       name: p.name,
       unit: p.unit,
-      price: p.price,
+      price: catalogPrice(p.code),
       available: p.availTotal,
       meta: p.nameTh,
     }));
@@ -791,7 +792,7 @@ export function applyProduct(line: DraftLine, code: string): DraftLine {
     name: p.name,
     unit: p.unit,
     qty: num(line.qty) > 0 ? line.qty : 1,
-    price: num(line.price) > 0 ? line.price : p.price,
+    price: num(line.price) > 0 ? line.price : catalogPrice(p.code),
     tax: line.tax === "" ? 7 : line.tax,
     disc: line.disc === "" ? 0 : line.disc,
   };
@@ -831,9 +832,13 @@ export function standardLinePrice(customerPick: string, code: string): StandardP
     }
   }
 
-  const p = PRODUCTS.find((x) => x.code === c);
-  return p && p.price > 0
-    ? { price: p.price, label: "ราคาตามแคตตาล็อก", fromPriceMaster: false }
+  /* No customer, or none of their tiers priced it: the standard list.
+     This used to read `product.price` — a fourth copy of the same figure,
+     kept on the item. The label is unchanged because it names the same
+     catalogue it always did; it is simply read from the list that owns it. */
+  const price = catalogPrice(c);
+  return price > 0
+    ? { price, label: "ราคาตามแคตตาล็อก", fromPriceMaster: false }
     : null;
 }
 

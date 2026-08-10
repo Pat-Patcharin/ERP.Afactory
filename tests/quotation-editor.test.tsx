@@ -1,3 +1,4 @@
+import { catalogPrice } from "@/lib/domain/pricing";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -273,7 +274,7 @@ describe("Quotation editor — items", () => {
     const line = applyProduct(blankLine(), PRODUCT);
     expect(line.name).toBe(p.name);
     expect(line.unit).toBe(p.unit);
-    expect(line.price).toBe(p.price);
+    expect(line.price).toBe(catalogPrice(PRODUCT));
     expect(line.qty).toBe(1);
     expect(line.tax).toBe(7);
   });
@@ -628,7 +629,7 @@ describe("Quotation editor — the standard price", () => {
     const std = standardLinePrice(CUSTOMER, PRODUCT)!;
 
     expect(std.fromPriceMaster).toBe(false);
-    expect(std.price).toBe(p.price);
+    expect(std.price).toBe(catalogPrice(PRODUCT));
     expect(standardLinePrice(CUSTOMER, "NO-SUCH-CODE")).toBeNull();
     expect(standardLinePrice(CUSTOMER, "")).toBeNull();
   });
