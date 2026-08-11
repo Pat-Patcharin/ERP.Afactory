@@ -60,7 +60,8 @@ import {
   billTypeDialogTitle,
 } from "@/components/document/BillTypeNotice";
 import { PriceApprovalNotice } from "@/components/document/PriceApprovalNotice";
-import { warehouseOptions, salesRepOptions } from "@/lib/domain/outbound";
+import { getQT, warehouseOptions, salesRepOptions } from "@/lib/domain/outbound";
+import { qtSubmit } from "@/lib/workflows-outbound";
 
 /* ============================================================
    QUOTATION EDITOR
@@ -306,12 +307,35 @@ export function QuotationEditor({ record }: { record?: Quotation }) {
         ),
       savedDraft: (res: { code: string }) =>
         ctx.toast("บันทึกฉบับร่างแล้ว", `${res.code} — แก้ไขต่อได้ทุกเมื่อ`, "success"),
+      /* ------------------------------------------------------------
+         THE BUTTON SAYS SAVE **AND** REQUEST FOR APPROVE
+
+         It only saved. `saveQuotationDraft` writes every new record as
+         Draft / Not Submitted — deliberately, because it is also what
+         Save Draft calls — so a quotation the salesperson had just sent
+         for approval sat in the list as a Draft, with nobody told and
+         nobody waiting on it. The approver's own tab was empty and the
+         rep had no way to know.
+
+         Submitting goes through `qtSubmit`, the same function the list
+         row and the decision bar call, rather than a second copy of the
+         rule here. That function is what freezes the approval level,
+         refuses a line with no cost behind it, writes the history entry
+         and notifies whoever may sign — none of which a status set from
+         this file would have done.
+
+         Only from Draft. An approver editing a quotation that is
+         already Pending Approval is correcting it in place, and must
+         not push it back through submission behind their own back.
+         ------------------------------------------------------------ */
       saved: (res: { code: string; created: boolean }) => {
-        ctx.toast(
-          res.created ? "สร้างใบเสนอราคาแล้ว" : "บันทึกการแก้ไขแล้ว",
-          `${res.code} — ${draft.customer}`,
-          "success",
-        );
+        const record = getQT(res.code);
+        if (record?.status === "Draft") {
+          /* Says what happened, and who it now waits on, in its own toast. */
+          qtSubmit(record, ctx);
+        } else {
+          ctx.toast("บันทึกการแก้ไขแล้ว", `${res.code} — ${draft.customer}`, "success");
+        }
         ctx.goto(`/m/quotation/${encodeURIComponent(res.code)}`);
       },
     }),

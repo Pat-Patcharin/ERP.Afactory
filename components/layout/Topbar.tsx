@@ -12,7 +12,7 @@ import {
   restoreAccount,
   switchAccount,
 } from "@/lib/domain/admin";
-import { markAllRead, markRead, myNotifications, unreadCount } from "@/lib/domain/notify";
+import { markAllRead, markRead, unreadNotifications } from "@/lib/domain/notify";
 import type { NotifyKind } from "@/data/notifications";
 import { DotBadge, IconButton, Menu, MenuItem, MenuSep } from "@/components/ui";
 
@@ -50,10 +50,29 @@ export function Topbar() {
   const me = currentUser();
   const myRole = getRole(me.roleCode);
   const accounts = demoAccounts();
-  /* Read on every paint, and the paint is driven by the store revision — the
-     same counter a workflow bumps when it sends one. */
-  const inbox = myNotifications();
-  const unread = unreadCount();
+  /* ------------------------------------------------------------
+     THE BELL HOLDS WHAT IS STILL OWED, NOT A LOG
+
+     It used to list everything addressed to this chair, read ones
+     included in a lighter weight. So opening a notification took
+     you to the document and left the notification sitting there,
+     and the only way to clear the list was "อ่านทั้งหมด" — which
+     meant the bell slowly filled with things already dealt with
+     and stopped being worth opening.
+
+     Unread only. Acting on one is what removes it, which makes
+     the count on the badge the number of things actually waiting
+     rather than the number of things that have ever happened.
+     The items themselves are not deleted — `markRead` stamps a
+     time and the record stays, for whoever builds the full
+     activity feed later.
+
+     Read on every paint, and the paint is driven by the store
+     revision — the same counter a workflow bumps when it sends
+     one.
+     ------------------------------------------------------------ */
+  const inbox = unreadNotifications();
+  const unread = inbox.length;
 
   /* The remembered account is applied after mount, never during render: the
      server has no localStorage, and disagreeing with it here would be a
@@ -174,7 +193,7 @@ export function Topbar() {
 
               {inbox.length === 0 ? (
                 <p className="px-3 py-4 text-center text-[13px] text-ink-3">
-                  ยังไม่มีการแจ้งเตือน
+                  ไม่มีรายการที่รอคุณอยู่
                 </p>
               ) : (
                 inbox.slice(0, 8).map((n) => (
@@ -189,9 +208,8 @@ export function Topbar() {
                     }}
                   >
                     <span className="flex min-w-0 flex-col">
-                      <span className={n.readAt ? "truncate" : "truncate font-semibold"}>
-                        {n.title}
-                      </span>
+                      {/* Every item here is unread — see the note above. */}
+                      <span className="truncate font-semibold">{n.title}</span>
                       <span className="truncate text-cap text-ink-2">{n.body}</span>
                       <span className="text-cap text-ink-3">
                         {n.createdBy} · {n.createdAt}
@@ -263,6 +281,23 @@ export function Topbar() {
                       if (active) return;
                       switchAccount(a.code);
                       refresh();
+                      /* ------------------------------------------------
+                         BACK TO THE DASHBOARD ON EVERY SWITCH
+
+                         The page you were on belonged to the chair you
+                         just left. At best it is a document this role
+                         has nothing to do with; at worst it is a module
+                         they may not open at all, and the screen ends
+                         up half re-answered — a sidebar that dropped
+                         the entry beside a page still showing its
+                         contents.
+
+                         The dashboard is the one screen every role has
+                         and the one that answers "what is mine now",
+                         which is the question somebody who just changed
+                         chairs is asking.
+                         ------------------------------------------------ */
+                      router.push("/dashboard");
                       toast(`สลับเป็น ${a.user.name}`, `${role} — ${a.purpose}`, "info");
                     }}
                   >

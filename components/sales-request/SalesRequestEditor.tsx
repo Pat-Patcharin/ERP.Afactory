@@ -60,7 +60,8 @@ import {
 } from "@/components/document/BillTypeNotice";
 import { PriceApprovalNotice } from "@/components/document/PriceApprovalNotice";
 import { PO_CURRENCIES } from "@/data/purchase-orders";
-import { warehouseOptions, salesRepOptions } from "@/lib/domain/outbound";
+import { getSR, warehouseOptions, salesRepOptions } from "@/lib/domain/outbound";
+import { srSubmit } from "@/lib/workflows-outbound";
 
 /* ============================================================
    SALES REQUEST EDITOR
@@ -228,12 +229,17 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
         ),
       savedDraft: (res: { code: string }) =>
         ctx.toast("บันทึกฉบับร่างแล้ว", `${res.code} — แก้ไขต่อได้ทุกเมื่อ`, "success"),
+      /* Submit Request submits it — see the long note on the same repair in
+         QuotationEditor. The toast here used to read "สร้างคำขอขายแล้ว —
+         รออนุมัติ" over a record written as Draft, which is the version of
+         this bug that tells the user the opposite of what happened. */
       saved: (res: { code: string; created: boolean }) => {
-        ctx.toast(
-          res.created ? "สร้างคำขอขายแล้ว — รออนุมัติ" : "บันทึกการแก้ไขแล้ว",
-          `${res.code} — ${draft.customer}`,
-          "success",
-        );
+        const record = getSR(res.code);
+        if (record?.status === "Draft") {
+          srSubmit(record, ctx);
+        } else {
+          ctx.toast("บันทึกการแก้ไขแล้ว", `${res.code} — ${draft.customer}`, "success");
+        }
         ctx.goto(`/m/sales-request/${encodeURIComponent(res.code)}`);
       },
     }),

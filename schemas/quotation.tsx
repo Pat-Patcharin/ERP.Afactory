@@ -129,6 +129,15 @@ export const QT_LIST: ListSchema<QtRow> = {
   tabs: [
     { key: "all", label: "All" },
     { key: "draft", label: "Draft", test: (q) => q.status === "Draft" },
+    /* The approver's own queue. The sales request list has had this tab
+       since it was written; the quotation list did not, so the desk that
+       signs quotations had no way to ask "what is waiting on me". */
+    {
+      key: "pending",
+      label: "รออนุมัติ",
+      test: (q) => q.status === "Pending Approval",
+    },
+    { key: "approved", label: "Approved", test: (q) => q.status === "Approved" },
     { key: "sent", label: "Sent", test: (q) => q.status === "Sent" },
     { key: "accepted", label: "Accepted", test: (q) => q.status === "Accepted" },
     { key: "expiring", label: "ใกล้หมดอายุ", test: (q) => q.isExpiring || q.isExpired },

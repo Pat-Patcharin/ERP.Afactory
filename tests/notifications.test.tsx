@@ -317,6 +317,74 @@ describe("Notifications — the bell", () => {
     render(<Topbar />);
 
     await user.click(screen.getByRole("button", { name: "Notifications" }));
-    expect(screen.getByText("ยังไม่มีการแจ้งเตือน")).toBeInTheDocument();
+    expect(screen.getByText("ไม่มีรายการที่รอคุณอยู่")).toBeInTheDocument();
+  });
+
+  /* Acting on an item is what clears it. The bell holds what is still owed,
+     not a log of everything that has ever happened — a list that only grows
+     is a list people stop opening. */
+  it("an item that has been opened leaves the bell", async () => {
+    const user = userEvent.setup();
+    setCurrentUser(SALES_ADMIN);
+    render(<Topbar />);
+
+    const before = unreadCount();
+    const bell = screen.getByRole("button", { name: "Notifications" });
+    await user.click(bell);
+    await user.click(screen.getByText("คำขอขาย SR2506-0002 รออนุมัติ"));
+
+    /* Gone from the list, and off the count on the badge. */
+    await user.click(bell);
+    expect(screen.queryByText("คำขอขาย SR2506-0002 รออนุมัติ")).toBeNull();
+    expect(unreadCount()).toBe(before - 1);
+  });
+
+  it("อ่านทั้งหมด empties it", async () => {
+    const user = userEvent.setup();
+    setCurrentUser(SALES_ADMIN);
+    render(<Topbar />);
+
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    await user.click(screen.getByRole("button", { name: "อ่านทั้งหมด" }));
+
+    /* The menu stays open — it empties under the cursor rather than after a
+       second trip to the bell. */
+    expect(screen.getByText("ไม่มีรายการที่รอคุณอยู่")).toBeInTheDocument();
+  });
+});
+
+/* ============================================================
+   CHANGING CHAIRS
+
+   The page you were on belonged to the chair you just left, and
+   may be a module the new one cannot open at all.
+   ============================================================ */
+
+describe("สลับบัญชี", () => {
+  it("กลับไปหน้า dashboard ทุกครั้งที่สลับ", async () => {
+    const user = userEvent.setup();
+    setCurrentUser(SALES_ADMIN);
+    render(<Topbar />);
+
+    await user.click(screen.getByTestId("session-name"));
+    const target = screen.getByText("Noey");
+    await user.click(target);
+
+    expect(routerPush).toHaveBeenCalledWith("/dashboard");
+    expect(actingUserName()).toBe("Noey");
+  });
+
+  it("กดบัญชีที่ใช้อยู่แล้ว ไม่พาไปไหน", async () => {
+    const user = userEvent.setup();
+    setCurrentUser(SALES_ADMIN);
+    render(<Topbar />);
+
+    await user.click(screen.getByTestId("session-name"));
+    /* The account already in force is the one with the tick beside it —
+       pressing it is not a switch, so nothing should move. */
+    const me = actingUserName();
+    await user.click(screen.getByText(me));
+
+    expect(routerPush).not.toHaveBeenCalled();
   });
 });
