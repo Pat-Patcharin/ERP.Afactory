@@ -1,3 +1,4 @@
+import { can } from "@/lib/domain/admin";
 import { printActions } from "@/lib/print/actions";
 import { PACKING_TASKS, getSO, type PackRow } from "@/lib/domain/outbound";
 import { PACK_STATUS } from "@/data/packing";
@@ -10,7 +11,13 @@ import {
   packCreateDelivery,
   packStart,
 } from "@/lib/workflows-outbound";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  QuickAction,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
 import { PackingDocument } from "@/components/packing/PackingDocument";
 import { PACK_FORM } from "./forms/packing";
@@ -123,6 +130,48 @@ export const PACK_LIST: ListSchema<PackRow> = {
       cell: (t) => <Badge tone={tone(PACK_TONE, t.status)}>{t.status}</Badge>,
     },
   ],
+
+  quickActions: (task) => {
+    const acts: QuickAction<PackRow>[] = [];
+    if (!can("packing", "edit")) return acts;
+
+    if (task.status === "Waiting")
+      acts.push({
+        label: "Start Packing",
+        short: "เริ่มแพ็ค",
+        icon: "play",
+        run: (r, c) => packStart(r, c),
+      });
+
+    if (["Waiting", "In Progress"].includes(task.status))
+      acts.push({
+        label: "Complete Packing",
+        short: "แพ็คเสร็จ",
+        icon: "checkCircle",
+        tone: "ok",
+        run: (r, c) => packComplete(r, c),
+      });
+
+    /* The delivery note is refused until every line has been answered, so
+       the row offers the answer first and the note only once it exists. */
+    if (task.status === "Completed" && !task.doRef && !task.isConfirmed)
+      acts.push({
+        label: "ยืนยันจำนวนที่ส่งได้",
+        short: "ยืนยันจำนวน",
+        icon: "checkCircle",
+        run: (r, c) => packConfirmShipQty(r, c),
+      });
+
+    if (task.status === "Completed" && !task.doRef && task.isConfirmed)
+      acts.push({
+        label: "Create Delivery Order",
+        short: "เปิดใบส่งสินค้า",
+        icon: "delivery",
+        run: (r, c) => packCreateDelivery(r, c),
+      });
+
+    return acts;
+  },
 
   rowActions: (task, ctx) => {
     const acts: RowAction<PackRow>[] = [

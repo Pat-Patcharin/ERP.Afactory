@@ -1,3 +1,4 @@
+import { can } from "@/lib/domain/admin";
 import {
   GOODS_RECEIPTS,
   grItemFinalRecv,
@@ -12,8 +13,15 @@ import { GR_QC_STATUS, GR_RECEIVERS, GR_STATUS } from "@/data/goods-receipts";
 import { GR_QC_TONE, GR_TONE, tone } from "@/lib/badges";
 import { DASH, daysUntil, fmt } from "@/lib/format";
 import { grCancel, grDelete, grPassQC } from "@/lib/workflows";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  QuickAction,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, Thumb } from "@/components/ui";
+import { GoodsReceiptDocument } from "@/components/goods-receipt/GoodsReceiptDocument";
 import { GR_FORM } from "./forms/goods-receipt";
 import { GoodsReceiptEditor } from "@/components/goods-receipt/GoodsReceiptEditor";
 
@@ -200,6 +208,30 @@ export const GR_LIST: ListSchema<GrRow> = {
     },
     { key: "receiver", label: "Receiver", muted: true, cell: (g) => g.receiver },
   ],
+
+  quickActions: (gr, ctx) => {
+    const acts: QuickAction<GrRow>[] = [];
+    if (!can("goods-receipt", "edit")) return acts;
+
+    if (gr.status === "Draft" || gr.status === "Partial")
+      acts.push({
+        label: gr.status === "Draft" ? "Edit Draft" : "Continue Receiving",
+        short: gr.status === "Draft" ? "แก้ไข" : "รับต่อ",
+        icon: "edit",
+        run: (r) => ctx.goto(`/m/goods-receipt/${r.code}/edit`),
+      });
+
+    if (gr.status === "Pending QC")
+      acts.push({
+        label: "Open QC",
+        short: "ตรวจ QC",
+        icon: "qc",
+        tone: "ok",
+        run: (r, c) => grPassQC(r, c),
+      });
+
+    return acts;
+  },
 
   rowActions: (gr, ctx) => {
     const acts: RowAction<GrRow>[] = [
@@ -569,4 +601,7 @@ export const grSchemas: EntitySchemas<GrRow> = {
      `editor` when it is present. */
   form: GR_FORM,
   editor: ({ record }) => <GoodsReceiptEditor record={record} />,
+  /* Read as the receipt. The tabbed profile above stays as what the Quick
+     View drawer renders. */
+  document: ({ record }) => <GoodsReceiptDocument record={record} />,
 };

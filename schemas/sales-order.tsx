@@ -22,7 +22,13 @@ import {
   soCreatePick,
   soDelete,
 } from "@/lib/workflows-outbound";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  QuickAction,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
 import { SalesOrderDocument } from "@/components/sales-order/SalesOrderDocument";
 import { SO_FORM } from "./forms/sales-order";
@@ -161,6 +167,50 @@ export const SO_LIST: ListSchema<SoRow> = {
     },
   ],
 
+  /* Confirming, releasing credit and opening a pick all move stock or money,
+     so they belong to the approver — the same guard the menu asks. */
+  quickActions: (so) => {
+    const acts: QuickAction<SoRow>[] = [];
+    if (!can("sales-order", "approve")) return acts;
+
+    if (so.status === "Draft")
+      acts.push({
+        label: "Confirm Order",
+        short: "ยืนยัน",
+        icon: "checkCircle",
+        tone: "ok",
+        run: (r, c) => soConfirm(r, c),
+      });
+
+    if (so.status === "On Hold")
+      acts.push({
+        label: "Approve Credit",
+        short: "อนุมัติเครดิต",
+        icon: "shield",
+        tone: "ok",
+        run: (r, c) => soApproveCredit(r, c),
+      });
+
+    if (["Confirmed", "Picking", "Partially Delivered"].includes(so.status) && so.outstandingQty > 0)
+      acts.push({
+        label: "Create Picking",
+        short: "เปิดใบจัดสินค้า",
+        icon: "picking",
+        run: (r, c) => soCreatePick(r, c),
+      });
+
+    /* Only once nothing is outstanding — a button that appears earlier and
+       then refuses is a button that lies. */
+    if (["Confirmed", "Picking", "Partially Delivered"].includes(so.status) && so.outstandingQty === 0)
+      acts.push({
+        label: "Close Order",
+        short: "ปิดใบสั่งขาย",
+        icon: "checkCircle",
+        run: (r, c) => soClose(r, c),
+      });
+
+    return acts;
+  },
   rowActions: (so, ctx) => {
     const acts: RowAction<SoRow>[] = [
       { label: "View", icon: "eye", run: (r) => ctx.openEntity("sales-order", r.code) },

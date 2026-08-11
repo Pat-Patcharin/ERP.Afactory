@@ -84,10 +84,29 @@ export interface Column<T> {
   cell: (rec: T) => ReactNode;
 }
 
-/** An icon button on the row itself — see `ListSchema.quickActions`. */
+/**
+ * A button on the row itself — see `ListSchema.quickActions`.
+ *
+ * It reads as a button with words on it, not an icon. A row of bare glyphs
+ * makes somebody hover each one to find out what it does, and the tick and
+ * the cross beside each other are exactly the pair you do not want anybody
+ * guessing at.
+ */
 export interface QuickAction<T> {
-  /** Used as the tooltip and the accessible name. Icons alone say nothing. */
+  /**
+   * The act, named as the row menu names it.
+   *
+   * Also the accessible name, and the string that must appear in
+   * `rowActions` too — the menu is where somebody looks when the button they
+   * expected is not there, so a quick action that exists only on the row is
+   * a feature that disappears the moment the row is narrow.
+   */
   label: string;
+  /**
+   * Shorter text for the button, when the full label is too long to sit on a
+   * row. The full label stays as the tooltip and the accessible name.
+   */
+  short?: string;
   icon: IconName;
   tone?: "ok" | "neutral";
   danger?: boolean;

@@ -1,3 +1,4 @@
+import { can } from "@/lib/domain/admin";
 import { printActions } from "@/lib/print/actions";
 import {
   PICKING_TASKS,
@@ -6,7 +7,7 @@ import {
   pickShortLines,
   type PickRow,
 } from "@/lib/domain/outbound";
-import { PICK_STATUS } from "@/data/picking";
+import { PICK_STAFF, PICK_STATUS } from "@/data/picking";
 import { PICK_LINE_TONE, PICK_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
 import { DASH, fmt } from "@/lib/format";
 import { paBinShort } from "@/lib/domain/inbound";
@@ -18,7 +19,13 @@ import {
   pickFillAvailable,
   pickStart,
 } from "@/lib/workflows-outbound";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  QuickAction,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
 import { PickingDocument } from "@/components/picking/PickingDocument";
 import { PICK_FORM } from "./forms/picking";
@@ -166,6 +173,51 @@ export const PICK_LIST: ListSchema<PickRow> = {
     },
   ],
 
+  /* What the floor does next with this task. Warehouse work, warehouse
+     permission — the same guard the workflow enforces on the way to the
+     write, so the button and the function cannot disagree. */
+  quickActions: (task) => {
+    const acts: QuickAction<PickRow>[] = [];
+    if (!can("picking", "edit")) return acts;
+
+    /* Picking staff are a warehouse roster, not login accounts, so this is
+       not "assign to me" — it is the default picker, named on the button. */
+    if (task.status === "Waiting")
+      acts.push({
+        label: `มอบหมายให้ ${PICK_STAFF[0]}`,
+        short: "มอบหมาย",
+        icon: "user",
+        run: (r, c) => pickAssign(r, PICK_STAFF[0], c),
+      });
+
+    if (task.status === "Assigned")
+      acts.push({
+        label: "Start Picking",
+        short: "เริ่มจัด",
+        icon: "play",
+        run: (r, c) => pickStart(r, c),
+      });
+
+    if (["Assigned", "In Progress"].includes(task.status))
+      acts.push({
+        label: "Complete Picking",
+        short: "จัดเสร็จ",
+        icon: "checkCircle",
+        tone: "ok",
+        run: (r, c) => pickComplete(r, c),
+      });
+
+    if (task.status === "Completed" && !task.packRef)
+      acts.push({
+        label: "Create Packing",
+        short: "เปิดงานแพ็ค",
+        icon: "packing",
+        run: (r, c) => pickCreatePack(r, c),
+      });
+
+    return acts;
+  },
+
   rowActions: (task, ctx) => {
     const acts: RowAction<PickRow>[] = [
       { label: "View", icon: "eye", run: (r) => ctx.openEntity("picking", r.code) },
@@ -177,11 +229,14 @@ export const PICK_LIST: ListSchema<PickRow> = {
 
     acts.push({ sep: true });
 
+    /* Named after the picker it actually assigns to. It said "Assign to me"
+       and assigned to Warin S. whoever pressed it — picking staff are a
+       warehouse roster, not login accounts. */
     if (task.status === "Waiting")
       acts.push({
-        label: "Assign to me",
+        label: `มอบหมายให้ ${PICK_STAFF[0]}`,
         icon: "user",
-        run: (r) => pickAssign(r, "Warin S.", ctx),
+        run: (r) => pickAssign(r, PICK_STAFF[0], ctx),
       });
 
     if (task.status === "Assigned")

@@ -1,3 +1,4 @@
+import { can } from "@/lib/domain/admin";
 import { printActions } from "@/lib/print/actions";
 import { displayName } from "@/lib/domain/lines";
 import { DELIVERY_ORDERS, getSO, type DoRow } from "@/lib/domain/outbound";
@@ -13,7 +14,13 @@ import {
   doReady,
   doShip,
 } from "@/lib/workflows-outbound";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  QuickAction,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
 import { DeliveryOrderDocument } from "@/components/delivery-order/DeliveryOrderDocument";
 import { DO_FORM } from "./forms/delivery-order";
@@ -158,6 +165,49 @@ export const DO_LIST: ListSchema<DoRow> = {
         ),
     },
   ],
+
+  quickActions: (d) => {
+    const acts: QuickAction<DoRow>[] = [];
+    if (!can("delivery-order", "edit")) return acts;
+
+    if (d.status === "Draft")
+      acts.push({
+        label: "Mark Ready",
+        short: "พร้อมส่ง",
+        icon: "checkCircle",
+        run: (r, c) => doReady(r, c),
+      });
+
+    if (d.status === "Ready")
+      acts.push({
+        label: "Ship Now",
+        short: "ออกรถ",
+        icon: "truck",
+        tone: "ok",
+        run: (r, c) => doShip(r, c),
+      });
+
+    /* The two answers a driver comes back with, offered together. */
+    if (["Shipped", "Failed"].includes(d.status))
+      acts.push({
+        label: "Confirm Delivery",
+        short: "ลูกค้ารับของ",
+        icon: "checkCircle",
+        tone: "ok",
+        run: (r, c) => doConfirmDelivery(r, c),
+      });
+
+    if (d.status === "Shipped")
+      acts.push({
+        label: "Mark Failed",
+        short: "ส่งไม่สำเร็จ",
+        icon: "xCircle",
+        danger: true,
+        run: (r, c) => doFail(r, c),
+      });
+
+    return acts;
+  },
 
   rowActions: (d, ctx) => {
     const acts: RowAction<DoRow>[] = [

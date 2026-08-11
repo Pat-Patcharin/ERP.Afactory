@@ -486,7 +486,9 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
                     {c.label}
                   </Th>
                 ))}
-                <Th align="right" className="w-14">
+                {/* Sized by its content rather than fixed: `w-14` was narrow
+                    enough that three acts stacked vertically down the row. */}
+                <Th align="right" className="w-px whitespace-nowrap">
                   Action
                 </Th>
               </tr>
@@ -532,46 +534,66 @@ export function ListView<T extends RecordBase>({ schema }: { schema: ListSchema<
                         {c.cell(rec)}
                       </Td>
                     ))}
-                    <Td align="right" className="w-14">
-                      {/* The one or two acts this row is actually waiting for,
-                          on the row itself. Everything else stays behind the
-                          menu — a decision somebody is queueing to make should
-                          not cost two clicks and a read of eight labels. */}
-                      {(schema.quickActions?.(rec, ctx) ?? []).map((a) => (
-                        <IconButton
-                          key={a.label}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            a.run(rec, ctx);
-                          }}
-                          aria-label={a.label}
-                          title={a.label}
-                          className={
-                            a.danger
-                              ? "text-danger hover:bg-danger-soft"
-                              : a.tone === "ok"
-                                ? "text-success-text hover:bg-success-soft"
-                                : "text-ink-2 hover:bg-surface"
-                          }
+                    <Td align="right" className="w-px whitespace-nowrap">
+                      {/* ------------------------------------------------
+                          THE ACTS THIS ROW IS WAITING FOR, AS BUTTONS
+
+                          They were icon-only, stacked three deep in a
+                          fourteen-unit column, so an approver working down
+                          a queue met a tick, a circular arrow and a cross
+                          in a vertical pile and had to hover each to find
+                          out which was which. The tick and the cross being
+                          the pair anybody would guess at is exactly the
+                          reason not to make them guess.
+
+                          Now they read as buttons with words on them, in a
+                          row, and the column takes the width it needs.
+                          Everything else stays behind the menu — a decision
+                          somebody is queueing to make should not cost two
+                          clicks and a read of eight labels, and a list of
+                          eight buttons is the same fault the other way.
+                          ------------------------------------------------ */}
+                      <div className="flex items-center justify-end gap-1.5">
+                        {(schema.quickActions?.(rec, ctx) ?? []).map((a) => (
+                          <button
+                            key={a.label}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              a.run(rec, ctx);
+                            }}
+                            aria-label={a.label}
+                            title={a.label}
+                            className={cn(
+                              "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-btn border border-line",
+                              "bg-card px-2.5 text-cap font-medium transition-colors duration-fast",
+                              a.danger
+                                ? "text-danger-text hover:border-danger hover:bg-danger-soft"
+                                : a.tone === "ok"
+                                  ? "text-success-text hover:border-success hover:bg-success-soft"
+                                  : "text-ink-2 hover:border-line-strong hover:bg-surface hover:text-ink",
+                            )}
+                          >
+                            <Icon name={a.icon} size={15} strokeWidth={2.2} />
+                            {a.short ?? a.label}
+                          </button>
+                        ))}
+                        <Menu
+                          trigger={({ toggle }) => (
+                            <IconButton onClick={toggle} aria-label="Row actions">
+                              <Icon name="more" size={18} />
+                            </IconButton>
+                          )}
                         >
-                          <Icon name={a.icon} size={17} strokeWidth={2.2} />
-                        </IconButton>
-                      ))}
-                      <Menu
-                        trigger={({ toggle }) => (
-                          <IconButton onClick={toggle} aria-label="Row actions">
-                            <Icon name="more" size={18} />
-                          </IconButton>
-                        )}
-                      >
-                        {(close) => (
-                          <ActionMenuItems
-                            actions={schema.rowActions(rec, ctx)}
-                            record={rec}
-                            close={close}
-                          />
-                        )}
-                      </Menu>
+                          {(close) => (
+                            <ActionMenuItems
+                              actions={schema.rowActions(rec, ctx)}
+                              record={rec}
+                              close={close}
+                            />
+                          )}
+                        </Menu>
+                      </div>
                     </Td>
                   </Tr>
                 ))

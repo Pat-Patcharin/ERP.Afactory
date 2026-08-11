@@ -21,7 +21,13 @@ import {
   srReopen,
   srSubmit,
 } from "@/lib/workflows-outbound";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  QuickAction,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
 import { SalesRequestDocument } from "@/components/sales-request/SalesRequestDocument";
 import { SalesRequestEditor } from "@/components/sales-request/SalesRequestEditor";
@@ -158,6 +164,34 @@ export const SR_LIST: ListSchema<SrRow> = {
       cell: (s) => <Badge tone={tone(SRQ_TONE, s.status)}>{s.status}</Badge>,
     },
   ],
+
+  quickActions: (sr) => {
+    const acts: QuickAction<SrRow>[] = [];
+    const mayApprove = can("sales-request", "approve");
+
+    if (sr.status === "Draft")
+      acts.push({
+        label: "Submit for Approval",
+        short: "ส่งขออนุมัติ",
+        icon: "send",
+        run: (r, c) => srSubmit(r, c),
+      });
+
+    if (sr.status === "Submitted" && mayApprove) {
+      acts.push({ label: "Approve", icon: "checkCircle", tone: "ok", run: (r, c) => srApprove(r, c) });
+      acts.push({ label: "Reject", icon: "xCircle", danger: true, run: (r, c) => srReject(r, c) });
+    }
+
+    if (sr.isConvertible && mayApprove)
+      acts.push({
+        label: "Convert to Sales Order",
+        short: "เปิดใบสั่งขาย",
+        icon: "salesOrder",
+        run: (r, c) => srConvert(r, c),
+      });
+
+    return acts;
+  },
 
   rowActions: (sr, ctx) => {
     const acts: RowAction<SrRow>[] = [

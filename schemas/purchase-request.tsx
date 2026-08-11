@@ -138,10 +138,16 @@ export const PR_LIST: ListSchema<PrRow> = {
   quickActions: (pr) => {
     const acts: QuickAction<PrRow>[] = [];
     if (prCanSubmit(pr))
-      acts.push({ label: "ส่งขออนุมัติ", icon: "send", run: (r, c) => prSubmit(r, c) });
+      acts.push({
+        label: "Submit for Approval",
+        short: "ส่งขออนุมัติ",
+        icon: "send",
+        run: (r, c) => prSubmit(r, c),
+      });
     if (prCanOpen(pr))
       acts.push({
         label: "ตรวจแล้ว — เปิดเอกสาร",
+        short: "เปิดเอกสาร",
         icon: "checkCircle",
         tone: "ok",
         run: (r, c) => prOpen(r, c),
@@ -149,12 +155,23 @@ export const PR_LIST: ListSchema<PrRow> = {
     if (prCanApprove(pr))
       acts.push({ label: "Approve", icon: "check", tone: "ok", run: (r, c) => prApprove(r, c) });
     if (prCanRevise(pr))
-      acts.push({ label: "Revise — ส่งกลับแก้ไข", icon: "refresh", run: (r, c) => prRevise(r, c) });
+      acts.push({
+        label: "Revise — ส่งกลับแก้ไข",
+        short: "Revise",
+        icon: "refresh",
+        run: (r, c) => prRevise(r, c),
+      });
     if (prCanApprove(pr) || prCanOpen(pr))
       acts.push({ label: "Reject", icon: "close", danger: true, run: (r, c) => prReject(r, c) });
     if (prCanConvert(pr))
       acts.push({
-        label: "ออกใบสั่งซื้อ",
+        /* Named exactly as the menu names it — a partly-ordered request says
+           which round this is, and the two must not disagree. */
+        label:
+          pr.openLines < pr.itemCount
+            ? `ออกใบสั่งซื้อรอบถัดไป (${pr.openLines} รายการ)`
+            : "Convert to Purchase Order",
+        short: "ออกใบสั่งซื้อ",
         icon: "purchaseOrder",
         run: (r, c) => prConvert(r, c),
       });

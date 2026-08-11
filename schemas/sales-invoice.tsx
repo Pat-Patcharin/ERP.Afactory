@@ -1,3 +1,4 @@
+import { can } from "@/lib/domain/admin";
 import { printActions } from "@/lib/print/actions";
 import { displayName } from "@/lib/domain/lines";
 import {
@@ -31,7 +32,13 @@ import {
   invViewPayments,
   invVoid,
 } from "@/lib/workflows-invoice";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  QuickAction,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
 import { SalesInvoiceDocument } from "@/components/sales-invoice/SalesInvoiceDocument";
 import { INV_FORM } from "./forms/sales-invoice";
@@ -327,6 +334,45 @@ export const INV_LIST: ListSchema<InvRow> = {
     },
     { label: "Cancel Selected", icon: "circleSlash", danger: true, run: () => invBulk(rows, "cancel", ctx) },
   ],
+
+  quickActions: (inv) => {
+    const acts: QuickAction<InvRow>[] = [];
+
+    if (inv.status === "Draft" && can("sales-invoice", "edit"))
+      acts.push({
+        label: "Submit for Review",
+        short: "ส่งตรวจสอบ",
+        icon: "send",
+        run: (r, c) => invSubmit(r, c),
+      });
+
+    if (inv.status === "Pending Review" && can("sales-invoice", "approve")) {
+      acts.push({
+        label: "Approve",
+        icon: "checkCircle",
+        tone: "ok",
+        run: (r, c) => invApprove(r, c),
+      });
+      acts.push({
+        label: "Request Revision",
+        short: "ส่งกลับแก้",
+        icon: "refresh",
+        danger: true,
+        run: (r, c) => invReject(r, c),
+      });
+    }
+
+    if (inv.isIssuable && can("sales-invoice", "edit"))
+      acts.push({
+        label: "Issue Invoice",
+        short: "ออกใบแจ้งหนี้",
+        icon: "invoice",
+        tone: "ok",
+        run: (r, c) => invIssue(r, c),
+      });
+
+    return acts;
+  },
 
   rowActions: (inv, ctx) => {
     const acts: RowAction<InvRow>[] = [

@@ -1,5 +1,6 @@
 import { printActions } from "@/lib/print/actions";
 import { QUOTATIONS, creditCheck, getCustomer, type QtRow } from "@/lib/domain/outbound";
+import { can } from "@/lib/domain/admin";
 import { displayName, docDiscTotal, docSubtotal, docTaxTotal, lineNet } from "@/lib/domain/lines";
 import { QT_APPROVAL_STATUS, QT_STATUS } from "@/data/quotations";
 import { QT_APPROVAL_TONE, QT_TONE, tone } from "@/lib/badges";
@@ -22,6 +23,7 @@ import type {
   DetailSchema,
   EntitySchemas,
   ListSchema,
+  QuickAction,
   RowAction,
 } from "@/lib/types";
 import { Icon } from "@/lib/icons";
@@ -268,6 +270,53 @@ export const QT_LIST: ListSchema<QtRow> = {
         ),
     },
   ],
+
+  /* What this row is waiting for, on the row. Same functions and the same
+     labels as the menu below, gated the same way — see the note on
+     `QuickAction`. Never more than the answers to one question. */
+  quickActions: (qt) => {
+    const acts: QuickAction<QtRow>[] = [];
+    const mayApprove = can("quotation", "approve");
+    const mayEdit = can("quotation", "edit");
+
+    if (qt.status === "Draft" && mayEdit)
+      acts.push({
+        label: "Submit for Approval",
+        short: "ส่งขออนุมัติ",
+        icon: "upload",
+        run: (r, c) => qtSubmit(r, c),
+      });
+
+    /* The approver's answer. Request Revision stays in the menu: it is the
+       middle answer, and the two that belong on a row are yes and no. */
+    if (qt.status === "Pending Approval" && mayApprove) {
+      acts.push({ label: "Approve", icon: "checkCircle", tone: "ok", run: (r, c) => qtApprove(r, c) });
+      acts.push({
+        label: "Reject",
+        icon: "xCircle",
+        danger: true,
+        run: (r, c) => qtRejectApproval(r, c),
+      });
+    }
+
+    if (qt.status === "Approved" && mayEdit)
+      acts.push({
+        label: "Send to Customer",
+        short: "ส่งให้ลูกค้า",
+        icon: "send",
+        run: (r, c) => qtSend(r, c),
+      });
+
+    if (qt.status === "Accepted")
+      acts.push({
+        label: "Convert to Sales Request",
+        short: "ออกคำขอขาย",
+        icon: "salesRequest",
+        run: (r, c) => qtConvert(r, c),
+      });
+
+    return acts;
+  },
 
   rowActions: (qt, ctx) => {
     const acts: RowAction<QtRow>[] = [

@@ -1,3 +1,4 @@
+import { can } from "@/lib/domain/admin";
 import {
   QC_INSPECTIONS,
   qcChecklistStats,
@@ -8,7 +9,13 @@ import { QC_INSPECTORS, QC_PRIORITY, QC_RESULT, QC_STATUS } from "@/data/qc";
 import { PRIORITY_TONE, QC_RESULT_TONE, QC_TONE, tone } from "@/lib/badges";
 import { DASH, fmt } from "@/lib/format";
 import { qcDecide, qcStart } from "@/lib/workflows";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  QuickAction,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, Thumb } from "@/components/ui";
 import { QC_FORM } from "./forms/qc-inspection";
 
@@ -142,6 +149,40 @@ export const QC_LIST: ListSchema<QcRow> = {
       cell: (q) => <Badge tone={tone(PRIORITY_TONE, q.priority)}>{q.priority}</Badge>,
     },
   ],
+
+  quickActions: (qc) => {
+    const acts: QuickAction<QcRow>[] = [];
+    if (!can("qc-inspection", "edit")) return acts;
+
+    if (qc.status === "Waiting")
+      acts.push({
+        label: "Start Inspection",
+        short: "เริ่มตรวจ",
+        icon: "play",
+        run: (r, c) => qcStart(r, c),
+      });
+
+    /* Pass and fail, together or not at all — an inspection with only one
+       answer on the row is an inspection with a default. */
+    if (qc.status === "In Progress" || qc.status === "Hold") {
+      acts.push({
+        label: "Record Pass",
+        short: "ผ่าน",
+        icon: "checkCircle",
+        tone: "ok",
+        run: (r, c) => qcDecide(r, true, c),
+      });
+      acts.push({
+        label: "Record Fail",
+        short: "ไม่ผ่าน",
+        icon: "xCircle",
+        danger: true,
+        run: (r, c) => qcDecide(r, false, c),
+      });
+    }
+
+    return acts;
+  },
 
   rowActions: (qc, ctx) => {
     const acts: RowAction<QcRow>[] = [

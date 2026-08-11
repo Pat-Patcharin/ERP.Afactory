@@ -1,3 +1,4 @@
+import { can } from "@/lib/domain/admin";
 import {
   PURCHASE_ORDERS,
   poDiscTotal,
@@ -13,8 +14,15 @@ import { PO_STATUS } from "@/data/purchase-orders";
 import { PO_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money0 } from "@/lib/format";
 import { poCancel, poDelete, poIssue, poReceive } from "@/lib/workflows";
-import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
+import type {
+  DetailSchema,
+  EntitySchemas,
+  ListSchema,
+  QuickAction,
+  RowAction,
+} from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
+import { PurchaseOrderDocument } from "@/components/purchase-order/PurchaseOrderDocument";
 import { PO_FORM } from "./forms/purchase-order";
 
 /* ============================================================
@@ -139,6 +147,31 @@ export const PO_LIST: ListSchema<PoRow> = {
         ),
     },
   ],
+
+  quickActions: (po) => {
+    const acts: QuickAction<PoRow>[] = [];
+    if (!can("purchase-order", "edit")) return acts;
+
+    if (po.status === "Draft")
+      acts.push({
+        label: "Issue PO",
+        short: "ส่งให้ผู้ขาย",
+        icon: "send",
+        tone: "ok",
+        run: (r, c) => poIssue(r, c),
+      });
+
+    /* Receiving stays available while there is outstanding quantity. */
+    if (["Open", "Partial Received"].includes(po.status) && poRemainingQty(po) > 0)
+      acts.push({
+        label: "Receive Goods",
+        short: "รับของ",
+        icon: "goodsReceipt",
+        run: (r, c) => poReceive(r, c),
+      });
+
+    return acts;
+  },
 
   rowActions: (po, ctx) => {
     const acts: RowAction<PoRow>[] = [
@@ -443,4 +476,7 @@ export const poSchemas: EntitySchemas<PoRow> = {
   list: PO_LIST,
   detail: PO_DETAIL,
   form: PO_FORM,
+  /* Read as the order the supplier receives. The tabbed profile above stays
+     as what the Quick View drawer renders. */
+  document: ({ record }) => <PurchaseOrderDocument record={record} />,
 };
