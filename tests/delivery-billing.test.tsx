@@ -245,4 +245,45 @@ describe("ใบส่งของที่มีบิลแล้ว", () => {
 
     expect(within(screen.getByTestId("doc-related")).getByText(inv.code)).toBeInTheDocument();
   });
+
+  it("ใบที่ยังไม่มีบิลและส่งไม่ครบ มีสองปุ่มให้เลือก", () => {
+    const { ctx } = billingCtx();
+    const pack = readyPack({ short: 5 });
+    packCreateDelivery(pack, ctx);
+    /* Leave the question unanswered, so the note exists with no bill. */
+
+    const dobj = DELIVERY_ORDERS.find((d) => d.code === pack.doRef)!;
+    dobj.status = "Delivered";
+    decorateOutbound();
+    render(<DeliveryOrderDocument record={dobj} />);
+
+    /* Both figures are on the sheet already, so the two answers are two
+       buttons rather than a dialog asking what the reader can see. */
+    const bar = within(screen.getByTestId("do-decision-bar"));
+    expect(bar.getByRole("button", { name: "ออกใบแจ้งหนี้ตามที่ส่ง" })).toBeInTheDocument();
+    expect(
+      bar.getByRole("button", { name: "ออกใบแจ้งหนี้เต็มตามใบสั่งขาย" }),
+    ).toBeInTheDocument();
+  });
+
+  it("ใบที่ส่งครบ มีปุ่มเดียว เพราะมีคำตอบเดียวที่ตรง", () => {
+    const { ctx } = billingCtx();
+    const pack = readyPack();
+    packCreateDelivery(pack, ctx);
+
+    const dobj = DELIVERY_ORDERS.find((d) => d.code === pack.doRef)!;
+    /* Drop the invoice the note raised, to reach the un-billed state. */
+    const bills = invoicesForSource(dobj.code);
+    for (const b of bills) SALES_INVOICES.splice(SALES_INVOICES.indexOf(b), 1);
+    dobj.status = "Delivered";
+    decorateOutbound();
+    decorateInvoices();
+    render(<DeliveryOrderDocument record={dobj} />);
+
+    const bar = within(screen.getByTestId("do-decision-bar"));
+    expect(bar.getByRole("button", { name: "ออกใบแจ้งหนี้ตามที่ส่ง" })).toBeInTheDocument();
+    expect(
+      bar.queryByRole("button", { name: "ออกใบแจ้งหนี้เต็มตามใบสั่งขาย" }),
+    ).toBeNull();
+  });
 });

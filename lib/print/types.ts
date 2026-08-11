@@ -59,6 +59,7 @@ export type PrintDocType =
   /* Buy side. Internal paperwork: no customer, and the sheet exists to be
      filed as the evidence that a spend was approved. */
   | "purchase-request"
+  | "goods-receipt"
   | "quotation"
   | "quotation-non-vat"
   | "sales-request"

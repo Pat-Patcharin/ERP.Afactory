@@ -5,9 +5,10 @@ import { getSO, type DoRow } from "@/lib/domain/outbound";
 import { invoicesForSource } from "@/lib/domain/invoice";
 import { displayName } from "@/lib/domain/lines";
 import {
+  doBillOrder,
+  doBillShipped,
   doCancel,
   doConfirmDelivery,
-  doCreateInvoice,
   doFail,
   doReady,
   doShip,
@@ -139,6 +140,10 @@ export function DeliveryOrderDocument({ record }: { record: DeliveryOrder }) {
      ------------------------------------------------------------ */
   const bills = invoicesForSource(d.code);
   const form = docFormOf(bills.length ? "delivery-tax-invoice" : "delivery-order");
+
+  /* What the order still owes beyond this note. Nought when it went whole —
+     and then there is only one honest bill to raise, so only one button. */
+  const aheadOfDelivery = so ? Math.max(0, so.orderedQty - d.totalQty) : 0;
 
   const notices: (DocNotice | false)[] = [
     d.status === "Failed" && {
@@ -291,7 +296,7 @@ export function DeliveryOrderDocument({ record }: { record: DeliveryOrder }) {
         </div>
       </DocPaper>
 
-      <DoDecisionBar d={d} billed={bills.length > 0} />
+      <DoDecisionBar d={d} billed={bills.length > 0} short={aheadOfDelivery} />
 
       <RelatedStrip
         items={[
@@ -319,7 +324,16 @@ export function DeliveryOrderDocument({ record }: { record: DeliveryOrder }) {
 
 /* ---------- The decision ---------- */
 
-function DoDecisionBar({ d, billed }: { d: DoRow; billed: boolean }) {
+function DoDecisionBar({
+  d,
+  billed,
+  short,
+}: {
+  d: DoRow;
+  billed: boolean;
+  /** Units the order still owes beyond this note — nought when it went whole. */
+  short: number;
+}) {
   const ctx = useActionCtx();
 
   const acts = docActs([
@@ -351,16 +365,36 @@ function DoDecisionBar({ d, billed }: { d: DoRow; billed: boolean }) {
       variant: "danger" as const,
       run: () => doFail(d, ctx),
     },
-    /* Raising the note raises the bill, so this is the way back for a note
-       that somehow has none — raised by a role without billing rights, or
-       one whose invoice was cancelled. Offering it beside an invoice that
-       already exists is an invitation to bill the same goods twice. */
+    /* ------------------------------------------------------------
+       TWO BILLS, TWO BUTTONS
+
+       Raising the note raises the bill, so these are the way back
+       for a note that somehow has none — raised by a role without
+       billing rights, or one whose invoice was cancelled.
+
+       Both figures are already on the sheet above: what shipped is
+       in the summary, what was ordered is on the order it came
+       from. So they are two buttons rather than one that opens a
+       dialog asking what the reader can already see.
+
+       Neither appears beside an invoice that already exists —
+       that would be an invitation to bill the same goods twice.
+       ------------------------------------------------------------ */
     !billed &&
       ["Shipped", "Delivered"].includes(d.status) && {
-        key: "invoice",
-        label: "ออกใบแจ้งหนี้",
+        key: "bill-shipped",
+        label: "ออกใบแจ้งหนี้ตามที่ส่ง",
         icon: "invoice" as const,
-        run: () => doCreateInvoice(d, ctx),
+        variant: "primary" as const,
+        run: () => doBillShipped(d, ctx),
+      },
+    !billed &&
+      short > 0 &&
+      ["Shipped", "Delivered"].includes(d.status) && {
+        key: "bill-order",
+        label: "ออกใบแจ้งหนี้เต็มตามใบสั่งขาย",
+        icon: "salesOrder" as const,
+        run: () => doBillOrder(d, ctx),
       },
     !["Cancelled", "Delivered"].includes(d.status) && {
       key: "cancel",

@@ -112,9 +112,11 @@ const cfg = (over: Partial<PrintConfig> = {}): PrintConfig => ({
 
 describe("Print framework — configuration", () => {
   it("configures every declared document type", () => {
-    /* Grew from sixteen when the two Non VAT forms were added, and to
-       nineteen when the purchase request became the first inbound sheet. */
-    expect(PRINT_DOC_TYPES).toHaveLength(19);
+    /* Grew from sixteen when the two Non VAT forms were added, to nineteen
+       when the purchase request became the first inbound sheet, and to
+       twenty when the goods receipt got one — which is what finally gave the
+       receipt editor's Print Preview something to show. */
+    expect(PRINT_DOC_TYPES).toHaveLength(20);
     for (const t of PRINT_DOC_TYPES) {
       const c = PRINT_CONFIGS[t];
       expect(c.documentType, t).toBe(t);
@@ -294,6 +296,7 @@ describe("Print framework — data mapping", () => {
   it("maps every configured document type without throwing", () => {
     const SAMPLE: Record<string, string> = {
       "purchase-request": "PR2506-0124",
+      "goods-receipt": "GR25060002",
       quotation: "QT2506-0001",
       "sales-request": "SR2506-0001",
       "sales-order": "SO2506-0001",

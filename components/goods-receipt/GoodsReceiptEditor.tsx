@@ -20,6 +20,7 @@ import {
 } from "@/lib/domain/goods-receipt-draft";
 import { grItemRemaining, grItemVariance } from "@/lib/domain/inbound";
 import { productSearch } from "@/lib/domain/doc-draft";
+import { buildPrintJob } from "@/lib/print";
 import { DASH, fmt, isoToDmy } from "@/lib/format";
 import { useActionCtx } from "@/components/engine/useActionCtx";
 import { useCrumbCode } from "@/components/layout/Topbar";
@@ -123,6 +124,7 @@ export function GoodsReceiptEditor({ record }: { record?: GoodsReceipt }) {
     invalid,
     shownIssues,
     docMode,
+    preview,
     setPasteOpen,
     savedLabel,
     user,
@@ -140,6 +142,30 @@ export function GoodsReceiptEditor({ record }: { record?: GoodsReceipt }) {
 
   const t = grTotals(draft);
   const mayClose = canForceClose();
+
+  /* ------------------------------------------------------------
+     PRINT PREVIEW, ON THE ONE DOCUMENT EDITOR THAT HAD NONE
+
+     The shell offers Print Preview on every document editor, and
+     this one passed  — so the menu item existed,
+     the overlay opened, and nothing was inside it. A dead control
+     is worse than an absent one: it teaches people the feature is
+     broken rather than missing.
+
+     There was no goods-receipt form in the print config either,
+     which is why. There is one now, and this reads it the same
+     way the quotation and the request do — built from what is on
+     screen, not from the last saved version, so the preview shows
+     the receipt being typed.
+     ------------------------------------------------------------ */
+  const printJob = useMemo(() => {
+    if (preview !== "print") return null;
+    /* From the store, because a receipt is saved before it is printed and
+       the mapper reads a record. An unsaved one has nothing to show yet. */
+    return buildPrintJob("goods-receipt", draft.code, {
+      watermark: draft.status === "Draft" ? "DRAFT" : undefined,
+    });
+  }, [draft.code, draft.status, preview]);
   const withPO = draft.type === "With PO";
 
   const reporter = useMemo(
@@ -320,7 +346,7 @@ export function GoodsReceiptEditor({ record }: { record?: GoodsReceipt }) {
           document: "goods-receipt-document",
           stickySummary: "gr-sticky-summary",
         }}
-        printJob={null}
+        printJob={printJob}
         settings={settings}
         onSaveDraft={() => saveDraftNow(reporter)}
         onSave={() => saveDocument(reporter)}

@@ -10,6 +10,7 @@ import { poSchemas } from "@/schemas/purchase-order";
 import { grSchemas } from "@/schemas/goods-receipt";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 import { fmt } from "@/lib/format";
+import { buildPrintJob, getPrintConfig } from "@/lib/print";
 
 /* ============================================================
    READING THE BUY-SIDE DOCUMENTS
@@ -159,5 +160,49 @@ describe("ใบรับสินค้า", () => {
        that matters most and the one easiest to fake by accident. */
     const block = screen.getByText(/Inspected By/).closest("div")!;
     expect(within(block).getByText(/Date ____/)).toBeInTheDocument();
+  });
+});
+
+/* ============================================================
+   PREVIEW ON EVERY DOCUMENT-ENTRY PAGE
+
+   The shell offers Print Preview on all four document editors,
+   and the goods receipt passed no job — so the menu item existed,
+   the overlay opened, and nothing was inside it. A dead control
+   is worse than an absent one: it teaches people the feature is
+   broken rather than missing.
+   ============================================================ */
+
+describe("ใบรับสินค้า — พรีวิวก่อนพิมพ์", () => {
+  it("มีฟอร์มพิมพ์ของตัวเองใน print config", () => {
+    const form = getPrintConfig("goods-receipt")!;
+    expect(form, "ไม่มีฟอร์ม พรีวิวก็ว่างเปล่า").toBeTruthy();
+    expect(form.entity).toBe("goods-receipt");
+    expect(form.family, "เอกสารฝั่งซื้อ").toBe("inbound");
+    /* Operational: the person counting boxes off a lorry has no business
+       with what the goods cost. */
+    expect(form.showPrice).toBe(false);
+  });
+
+  it("พรีวิวสร้างงานพิมพ์ได้จริง พร้อมสามจำนวนต่อบรรทัด", () => {
+    const rec = gr("Completed");
+    const job = buildPrintJob("goods-receipt", rec.code)!;
+    expect(job, "สร้างงานพิมพ์ได้").toBeTruthy();
+    expect(job.pages.length).toBeGreaterThan(0);
+
+    const line = job.doc.lines[0];
+    /* Ordered, received and accepted — the three that can legitimately
+       disagree, and the reason anybody reads the paper afterwards. */
+    expect(line.requiredQty).toBe(rec.items[0].ordered);
+    expect(line.qty).toBe(rec.items[0].accepted);
+  });
+
+  it("หัวกระดาษบอกว่าเป็นใบรับสินค้า และผู้ขายคือคู่ค้าบนใบ", () => {
+    const rec = gr("Completed");
+    const job = buildPrintJob("goods-receipt", rec.code)!;
+    expect(job.config.titleTH).toBe("ใบรับสินค้า");
+    /* No customer on this side — the party block carries the supplier the
+       goods came from, which is who a discrepancy is taken up with. */
+    expect(job.doc.billTo.name).toBe(rec.supplier);
   });
 });

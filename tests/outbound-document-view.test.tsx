@@ -293,6 +293,37 @@ describe("ใบสั่งขาย", () => {
     ).toBeInTheDocument();
   });
 
+  it("ส่งไม่ครบ — มีหัวข้อสรุปของที่ยังไม่ได้ส่ง", () => {
+    const rec = so("Partially Delivered");
+    render(<SalesOrderDocument record={rec} />);
+
+    /* Reading the Outstanding column and adding it up in your head is not a
+       summary. The lines still owed get a block of their own. */
+    expect(screen.getByText("Back Order")).toBeInTheDocument();
+    const head = screen.getAllByRole("table")[1].querySelector("thead")!;
+    expect(within(head).getByText("ค้างส่ง")).toBeInTheDocument();
+    expect(within(head).getByText("หยิบไว้แล้ว")).toBeInTheDocument();
+  });
+
+  it("ใบที่ส่งครบแล้ว ไม่มีหัวข้อของค้างส่ง", () => {
+    const rec = so("Completed");
+    render(<SalesOrderDocument record={rec} />);
+    /* On a completed order it is empty by definition; on a cancelled one it
+       is a list of goods nobody is going to send. */
+    expect(screen.queryByText("Back Order")).toBeNull();
+  });
+
+  it("ส่งไปแล้วหลายรอบ ปุ่มบอกว่าเป็นรอบถัดไป", () => {
+    setCurrentUser(ADMIN);
+    const rec = so("Partially Delivered");
+    render(<SalesOrderDocument record={rec} />);
+
+    const bar = within(screen.getByTestId("so-decision-bar"));
+    /* A plain "เปิดใบจัดสินค้า" on an order that has already shipped reads as
+       though the first round went missing. */
+    expect(bar.getByRole("button", { name: "เปิดรอบส่งถัดไป" })).toBeInTheDocument();
+  });
+
   it("เอกสารที่เกี่ยวข้องกดไปต่อได้", () => {
     const rec = so("Picking");
     render(<SalesOrderDocument record={rec} />);

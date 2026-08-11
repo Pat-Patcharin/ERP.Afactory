@@ -13,6 +13,7 @@ import { SHIPMENTS } from "@/lib/domain/shipment";
 import { SALES_RETURNS } from "@/lib/domain/sales-return";
 import { CREDIT_NOTES } from "@/lib/domain/credit-note";
 import { PURCHASE_REQUESTS } from "@/lib/domain/purchase";
+import { GOODS_RECEIPTS, grItemFinalRecv } from "@/lib/domain/inbound";
 import {
   billShows,
   displayName,
@@ -456,6 +457,72 @@ export function mapDocument(source: Source, config: PrintConfig): PrintDoc | nul
     }
 
     /* ---------- Quotation ---------- */
+    /* ---------- Goods receipt ----------
+       The other inbound sheet, and the one signed at the dock. No customer:
+       the party block carries the SUPPLIER the goods came from, which is who
+       the receipt concerns and who a discrepancy is taken up with.
+
+       Three quantities per line, mapped onto the three the engine already
+       has: what the order asked for, what came off the lorry, and what we
+       are keeping. A receipt where they disagree is the whole reason anybody
+       reads the paper afterwards. */
+    case "goods-receipt": {
+      const d = GOODS_RECEIPTS.find((x) => x.code === source.code);
+      if (!d) return null;
+      const supplier: PrintParty = {
+        name: d.supplier,
+        code: "",
+        address: d.deliveryNote ? `ใบส่งของผู้ขาย ${d.deliveryNote}` : "",
+        taxId: "",
+        branch: "",
+        phone: "",
+        contact: d.transporter,
+      };
+      return {
+        entity: source.entity,
+        code: d.code,
+        status: d.status,
+        statusTone: d.status === "Completed" ? "success" : "warning",
+        date: d.receiptDate || d.created.split(" ")[0],
+        company,
+        billTo: supplier,
+        shipTo: {
+          ...supplier,
+          name: d.warehouse,
+          contact: d.receiver,
+          address: d.dock ? `ท่ารับของ ${d.dock}` : "",
+        },
+        meta: buildMeta(config, {
+          docNo: d.code,
+          docDate: d.receiptDate,
+          reference: d.poRef || d.invoiceRef,
+          warehouse: d.warehouse,
+        }),
+        lines: (d.items ?? []).map((it, i) => ({
+          ...blankLine(i + 1),
+          code: it.code,
+          description: it.name,
+          extraLines: extraFrom(it.disc),
+          warehouse: it.warehouse || d.warehouse,
+          location: it.location,
+          lot: (it.lots ?? []).map((x) => x.lot).filter(Boolean).join(", "),
+          /* requiredQty is what the order asked for, pickedQty what arrived,
+             qty what we are keeping — see the config's column list. */
+          requiredQty: num(it.ordered),
+          pickedQty: grItemFinalRecv(it),
+          qty: num(it.accepted),
+          uom: it.unit,
+        })),
+        totals: null,
+        bank: null,
+        remarks: [
+          ...config.remarks,
+          ...(d.discrepancy ? [`ความไม่ตรงกัน: ${d.discrepancy}`] : []),
+          ...(d.remark ? [d.remark] : []),
+        ],
+      };
+    }
+
     case "quotation": {
       const d = QUOTATIONS.find((x) => x.code === source.code);
       if (!d) return null;

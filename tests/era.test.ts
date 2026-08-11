@@ -343,6 +343,7 @@ describe("a printed sheet carries one era", () => {
   */
   const SAMPLE: Record<string, string> = {
     "purchase-request": "PR2506-0124",
+    "goods-receipt": "GR25060002",
     quotation: "QT2506-0001",
     "sales-request": "SR2506-0001",
     "sales-order": "SO2506-0001",

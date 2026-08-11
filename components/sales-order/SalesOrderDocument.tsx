@@ -129,6 +129,56 @@ const ITEM_COLUMNS: PaperColumn<Line>[] = [
   },
 ];
 
+/** A line the order still owes, with how many rounds have already gone out. */
+type BackorderLine = Line & { left: number };
+
+const BACKORDER_COLUMNS: PaperColumn<BackorderLine>[] = [
+  lineNoColumn(),
+  { key: "product", label: "Product", cell: (l) => productCell(l.code, displayName(l)) },
+  {
+    key: "qty",
+    label: "Ordered",
+    th: "สั่ง",
+    align: "right",
+    width: "w-[80px]",
+    cell: (l) => <span className="text-ink-2">{fmt(l.qty)}</span>,
+  },
+  {
+    key: "delivered",
+    label: "Delivered",
+    th: "ส่งแล้ว",
+    align: "right",
+    width: "w-[86px]",
+    cell: (l) => fmt(l.delivered),
+  },
+  {
+    key: "left",
+    label: "Still Owed",
+    th: "ค้างส่ง",
+    align: "right",
+    width: "w-[92px]",
+    cell: (l) => <span className="font-semibold text-warning-text">{fmt(l.left)}</span>,
+  },
+  { key: "unit", label: "Unit", width: "w-[70px]", cell: (l) => <span className="text-ink-2">{l.unit}</span> },
+  {
+    key: "picked",
+    label: "Picked",
+    th: "หยิบไว้แล้ว",
+    align: "right",
+    width: "w-[92px]",
+    /* Picked but not delivered is a round already in flight — worth telling
+       apart from a line nobody has touched, which needs a new pick. */
+    cell: (l) => {
+      const inFlight = Math.max(0, Number(l.picked) - Number(l.delivered));
+      return inFlight > 0 ? (
+        <span className="text-info-text">{fmt(inFlight)}</span>
+      ) : (
+        <span className="text-ink-3">{DASH}</span>
+      );
+    },
+  },
+];
+
 export function SalesOrderDocument({ record }: { record: SalesOrder }) {
   const so = record as SoRow;
   const bp = getCustomer(so.customerCode);
@@ -137,6 +187,17 @@ export function SalesOrderDocument({ record }: { record: SalesOrder }) {
   const credit = creditCheck(`${so.customerCode} - ${so.customer}`, so.total);
   const linked = soLinkedDocs(so.code);
   const taxed = (so.items ?? []).some((l) => Number(l.tax) > 0);
+
+  /* Live orders only — see the note on the Back Order block. */
+  const open = !["Cancelled", "Completed"].includes(so.status);
+  const backorder: BackorderLine[] = open
+    ? (so.items ?? [])
+        .map((l) => ({ ...l, left: Math.max(0, Number(l.qty) - Number(l.delivered)) }))
+        .filter((l) => l.left > 0)
+    : [];
+  /* Rounds that have already gone out, which is what makes the next one "the
+     next one" rather than the first. */
+  const rounds = linked.deliveries.filter((x) => x.status !== "Cancelled").length;
 
   /* Everything somebody must know before releasing this order to the floor.
      On the paper, above the lines — a credit hold read after the decision is
@@ -157,6 +218,23 @@ export function SalesOrderDocument({ record }: { record: SalesOrder }) {
       title: "เลยกำหนดส่งมอบแล้ว",
       message: `กำหนดส่ง ${so.deliveryDate} — ยังส่งมอบไม่ครบ คงเหลือ ${fmt(so.outstandingQty)} หน่วย`,
     },
+    /* ------------------------------------------------------------
+       SAID PLAINLY: THIS ORDER IS NOT FINISHED
+
+       "Partially Delivered" is a status, not an answer. What the
+       person reading it wants to know is whether anything more is
+       coming, and while the order is live the answer is yes — the
+       remainder is still owed and another round can be raised from
+       this page. The Back Order block below lists exactly what.
+       ------------------------------------------------------------ */
+    rounds > 0 &&
+      so.outstandingQty > 0 &&
+      open && {
+        tone: "info",
+        title: `ส่งไปแล้ว ${rounds} รอบ · ยังค้างส่ง ${fmt(so.outstandingQty)} หน่วย`,
+        message:
+          "ใบสั่งขายนี้ยังไม่จบ — เปิดรอบส่งถัดไปได้จากปุ่มด้านล่าง รายการที่ค้างอยู่ในหัวข้อ Back Order",
+      },
     /* Which price tier this customer is on, and anything odd about how it was
        decided — the same notice the editors show, read back where the order
        that used those prices is read. */
@@ -241,6 +319,26 @@ export function SalesOrderDocument({ record }: { record: SalesOrder }) {
           <PaperTable cols={ITEM_COLUMNS} rows={so.items ?? []} minWidth={920} />
         </DocSection>
 
+        {/* ------------------------------------------------------------
+            WHAT IS STILL OWED
+
+            A partial delivery leaves the order half done, and until
+            now the only way to see what was still outstanding was to
+            read the Outstanding column of the table above and add it
+            up. The lines that are finished are not the question; the
+            ones that are not are the whole question, so they get a
+            block of their own with nothing else in it.
+
+            Only while the order is still live. On a cancelled order
+            it is a list of goods nobody is going to send, and on a
+            completed one it is empty by definition.
+            ------------------------------------------------------------ */}
+        {backorder.length > 0 && (
+          <DocSection title="Back Order">
+            <PaperTable cols={BACKORDER_COLUMNS} rows={backorder} minWidth={720} />
+          </DocSection>
+        )}
+
         <div className="mt-5 grid grid-cols-[1fr_minmax(280px,360px)] gap-5 max-[1000px]:grid-cols-1">
           <DocPanel title="Remarks" titleTh="หมายเหตุ">
             <DocPanelText value={so.remark} />
@@ -284,7 +382,7 @@ export function SalesOrderDocument({ record }: { record: SalesOrder }) {
         </div>
       </DocPaper>
 
-      <SoDecisionBar so={so} credit={credit} />
+      <SoDecisionBar so={so} credit={credit} rounds={rounds} />
 
       <RelatedStrip
         items={[
@@ -340,9 +438,12 @@ export function SalesOrderDocument({ record }: { record: SalesOrder }) {
 function SoDecisionBar({
   so,
   credit,
+  rounds,
 }: {
   so: SoRow;
   credit: ReturnType<typeof creditCheck>;
+  /** Delivery rounds already sent — decides what the pick button is called. */
+  rounds: number;
 }) {
   const ctx = useActionCtx();
   const mayRun = can("sales-order", "approve");
@@ -369,7 +470,9 @@ function SoDecisionBar({
       so.outstandingQty > 0 &&
       mayRun && {
         key: "pick",
-        label: "เปิดใบจัดสินค้า",
+        /* Named for which round it is. "เปิดใบจัดสินค้า" on an order that has
+           already shipped twice reads as though the first one went missing. */
+        label: rounds > 0 ? "เปิดรอบส่งถัดไป" : "เปิดใบจัดสินค้า",
         icon: "picking" as const,
         /* The order's own next step while it is still whole; once picking has
            started it is one of several things somebody might do. */

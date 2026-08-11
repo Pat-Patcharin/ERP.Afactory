@@ -241,6 +241,46 @@ export const PRINT_CONFIGS: Record<PrintDocType, PrintConfig> = {
   },
 
   /* ---------- Warehouse operations ---------- */
+  /**
+   * The receipt, printed to be signed at the dock and filed.
+   *
+   * Operational: no prices anywhere. What the goods cost is on the purchase
+   * order, and the person counting boxes off a lorry has no business with
+   * it — the same reason the picking sheet carries none.
+   *
+   * Three quantities per line, because a receipt where they disagree is the
+   * whole reason anybody looks at the paper afterwards: what was ordered,
+   * what came off the lorry, and what we are keeping.
+   */
+  "goods-receipt": {
+    ...BASE,
+    ...OPERATIONAL,
+    documentType: "goods-receipt",
+    entity: "goods-receipt",
+    titleTH: "ใบรับสินค้า",
+    titleEN: "GOODS RECEIPT",
+    family: "inbound",
+    showLot: true,
+    showSerial: true,
+    showWarehouse: true,
+    showShipTo: false,
+    /* Internal paper — nobody outside the company holds it, so there is
+       nobody to scan a verification mark and nothing to verify against. */
+    showQRCode: false,
+    showBarcode: false,
+    itemColumns: ["no", "code", "description", "warehouse", "lot", "requiredQty", "pickedQty", "qty", "uom"],
+    firstPageRows: 17,
+    continuationPageRows: 22,
+    lastPageRows: 18,
+    metaFields: ["docNo", "docDate", "reference", "warehouse"],
+    remarks: [
+      "กรุณาตรวจนับจำนวนและสภาพหีบห่อก่อนลงนามรับสินค้า",
+      "สินค้าที่ต้องตรวจคุณภาพจะยังไม่พร้อมใช้งานจนกว่า QC จะผ่าน",
+    ],
+    signatureRoles: ["receivedBy", "checkedBy", "deliveredBy", "approvedBy"],
+    supportedCopyTypes: ["ORIGINAL", "WAREHOUSE", "REPRINT"],
+  },
+
   picking: {
     ...BASE,
     ...OPERATIONAL,

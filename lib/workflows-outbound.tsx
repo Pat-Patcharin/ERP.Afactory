@@ -2601,6 +2601,71 @@ function BillBasisForm({
   );
 }
 
+/* ------------------------------------------------------------
+   THE SAME TWO ANSWERS, AS BUTTONS
+
+   `doBillFor` asks the question when the note is raised. These
+   two are the same choice offered afterwards, on the delivery
+   note itself — for a note raised by somebody without billing
+   rights, or one whose invoice was cancelled and has to be
+   raised again.
+
+   Two buttons rather than one that asks: standing in front of a
+   note that shipped short, the reader can already see both
+   figures on the sheet, and a dialog that asks what they can
+   read is a dialog in the way.
+   ------------------------------------------------------------ */
+
+/** Bill what actually went out on this note. */
+export function doBillShipped(d: DoRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-invoice", "create", "ออกใบแจ้งหนี้ไม่ได้")) return;
+  raiseInvoice("Delivery Order", d.code, d.code, ctx);
+}
+
+/**
+ * Bill the whole order, including what has not shipped yet.
+ *
+ * Charges for goods that are not there, so it asks first — and it names the
+ * shortfall in the question, because that is the part somebody has to have
+ * agreed with the customer.
+ */
+export function doBillOrder(d: DoRow, ctx: ActionCtx) {
+  if (denied(ctx, "sales-invoice", "create", "ออกใบแจ้งหนี้ไม่ได้")) return;
+  const so = getSO(d.soRef);
+  if (!so) {
+    ctx.toast("ออกใบแจ้งหนี้เต็มไม่ได้", `${d.code} — ไม่พบใบสั่งขาย ${d.soRef}`, "warning");
+    return;
+  }
+
+  const shipped = doTotalQty(d);
+  const ordered = soOrderedQty(so);
+  const ahead = Math.max(0, ordered - shipped);
+
+  ctx.confirm({
+    title: "ออกใบแจ้งหนี้เต็มตามใบสั่งขาย?",
+    message: (
+      <>
+        ตั้งบิลจาก <strong>{so.code}</strong> ทั้งใบ — {fmt(ordered)} หน่วย
+        <br />
+        ใบส่งของ {d.code} ส่งไปแล้ว {fmt(shipped)} หน่วย
+        {ahead > 0 && (
+          <>
+            <br />
+            <span className="font-semibold text-warning-text">
+              ลูกค้าจะถูกเรียกเก็บค่าของที่ยังไม่ได้รับ {fmt(ahead)} หน่วย
+            </span>
+            <br />
+            <span className="text-ink-2">ต้องแน่ใจว่าตกลงกับลูกค้าไว้แล้ว</span>
+          </>
+        )}
+      </>
+    ),
+    confirmText: "ออกใบแจ้งหนี้เต็ม",
+    tone: ahead > 0 ? "danger" : "primary",
+    onConfirm: () => raiseInvoice("Sales Order", so.code, d.code, ctx),
+  });
+}
+
 /** Write it, say so, and land on it. */
 function raiseInvoice(
   sourceType: string,
