@@ -752,27 +752,4 @@ export const cycleCountForm: FormSchema<CntRow> = {
     },
   ],
 
-  previewCard: (state) => {
-    const lines = ((state.lines as GridRow[]) ?? []).filter((l) => l.code);
-    const systemTotal = lines.reduce((t, l) => t + num(l.systemQty), 0);
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="text-body font-semibold">{String(state.type)}</div>
-        <div className="text-cap text-ink-2">
-          {whCode(String(state.warehouse))} ·{" "}
-          {[state.zone, state.rack, state.bin].filter(Boolean).join("-") || "ทั้งคลัง"}
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className="tnum text-2xl font-bold">{fmt(lines.length)}</span>
-          <span className="text-cap text-ink-2">บรรทัด · ยอดระบบ {fmt(systemTotal)}</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <Badge tone={state.method === "Blind Count" ? "primary" : "info"}>
-            {String(state.method)}
-          </Badge>
-          <Badge tone="neutral">{String(state.statusScope)}</Badge>
-        </div>
-      </div>
-    );
-  },
 };

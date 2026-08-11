@@ -60,10 +60,6 @@ describe("Product form — คำถามที่ตัดออก", () => {
     expect(demo.offText).toBe("เบิกเป็นสินค้า Demo ไม่ได้");
   });
 
-  it("ไม่มีการ์ดสรุปด้านข้าง", () => {
-    expect(PRODUCT_FORM.sidePanel).toBeUndefined();
-    expect(PRODUCT_FORM.previewCard).toBeUndefined();
-  });
 });
 
 describe("Product form — grouping กับ classification อยู่หัวข้อเดียวกัน", () => {

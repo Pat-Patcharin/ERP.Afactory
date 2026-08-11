@@ -18,7 +18,7 @@ import {
 } from "@/lib/domain/inbound";
 import { fmt, stamp } from "@/lib/format";
 import type { FormSchema, GridRow } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, RailTotal, opts, saved } from "./common";
+import { FORM_USER, opts, saved } from "./common";
 
 /* ============================================================
    PUT AWAY FORM — the last inbound step. Confirming a task is
@@ -284,59 +284,6 @@ export const PA_FORM: FormSchema<PaRow> = {
     destBin: "",
     status: "Waiting",
   }),
-
-  previewCard: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const assigned = rows.filter((r) => String(r.destBin ?? "").trim()).length;
-    return (
-      <RailCard icon="putAway" title="Task Preview" tone="accent">
-        <RailRow label="เลขที่งาน" value={String(s.code ?? "")} />
-        <RailRow label="อ้างอิงใบรับ" value={String(s.grRef ?? "") || "—"} />
-        <RailRow
-          label="เลือก Bin แล้ว"
-          value={`${assigned}/${rows.length}`}
-          tone={rows.length && assigned === rows.length ? "ok" : "warn"}
-        />
-        <RailTotal label="จำนวนที่จัดเก็บ" value={fmt(paTotalQty({ items: rows }))} />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const missing = rows.filter((r) => !String(r.destBin ?? "").trim());
-    const tight = rows.filter((r) => {
-      const info = paBinInfo(String(r.destBin ?? ""));
-      return info && info.free < num(r.qty);
-    });
-    const crowded = rows.filter((r) => {
-      const info = paBinInfo(String(r.destBin ?? ""));
-      return info && info.used > 80;
-    });
-
-    return (
-      <RailCard
-        icon="warehouse"
-        title="Storage Insight"
-        tone={tight.length || missing.length ? "warn" : "default"}
-      >
-        <RailRow label="ยังไม่เลือก Bin" value={`${missing.length} บรรทัด`} tone={missing.length ? "warn" : "ok"} />
-        <RailRow label="พื้นที่ไม่พอ" value={`${tight.length} บรรทัด`} tone={tight.length ? "danger" : "ok"} />
-        <RailRow label="Bin ที่ใช้งานเกิน 80%" value={`${crowded.length} บรรทัด`} />
-        <RailRow label="Bin ที่รับของได้ทั้งระบบ" value={paAllBins().length} />
-        {tight.length > 0 && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            บาง Bin มีพื้นที่ว่างน้อยกว่าจำนวนที่จะจัดเก็บ — เลือก Bin อื่นหรือแบ่งจัดเก็บหลายช่อง
-          </p>
-        )}
-        {missing.length > 0 && (
-          <p className="mt-2 text-cap leading-relaxed text-ink-2">
-            งานที่ยังเลือก Bin ไม่ครบจะบันทึกเป็นสถานะรอได้ แต่ยืนยันการจัดเก็บไม่ได้
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   save: (s, ctx) => {
     const now = stamp();

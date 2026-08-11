@@ -18,7 +18,7 @@ import {
 } from "@/lib/domain/warehouse";
 import { fmt, stamp } from "@/lib/format";
 import type { FormSchema } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, isCreate, opts, saved } from "./common";
+import { FORM_USER, isCreate, opts, saved } from "./common";
 
 /* ============================================================
    WAREHOUSE FORM — the only master with a tree field. The

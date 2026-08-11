@@ -16,7 +16,7 @@ import {
 } from "@/lib/domain/pricing";
 import { daysUntil, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, isCreate, opts, saved } from "./common";
+import { FORM_USER, isCreate, opts, saved } from "./common";
 
 /* ============================================================
    PRICE LIST FORM — pricing POLICY only. Per-product prices are
@@ -398,31 +398,6 @@ export const PRICE_LIST_FORM: FormSchema<PriceListRow> = {
   },
 
   openDuplicate: (code, ctx) => ctx.openEntity("price-list", code),
-
-  sidePanel: (s) => {
-    const scope = scopeList(s.scopeFlags);
-    const headroom = 100 - num(s.rule?.maxDiscount) - num(s.rule?.minMargin);
-
-    return (
-      <RailCard icon="priceList" title="Rule Preview" tone={headroom < 0 ? "warn" : "default"}>
-        <RailRow label="กฎการคิดราคา" value={plRuleSummary(s.rule)} />
-        <RailRow label="ขอบเขตลูกค้า" value={scope.length ? scope.join(", ") : "ยังไม่ได้เลือก"} />
-        <RailRow label="ช่องทาง" value={String(s.channel ?? "") || "ทุกช่องทาง"} />
-        <RailRow label="พื้นที่" value={String(s.area ?? "") || "ทุกพื้นที่"} />
-        <RailRow label="ลำดับความสำคัญ" value={num(s.priority)} />
-        <RailRow
-          label="ส่วนต่างที่เหลือ"
-          value={`${headroom}%`}
-          tone={headroom < 0 ? "danger" : headroom < 10 ? "warn" : "ok"}
-        />
-        {headroom < 0 && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            ส่วนลดสูงสุดกับกำไรขั้นต่ำรวมกันเกิน 100% — พนักงานขายจะไม่สามารถใช้ส่วนลดเต็มเพดานได้
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   save: (s, ctx) => {
     const now = stamp();

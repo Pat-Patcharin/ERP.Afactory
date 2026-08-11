@@ -736,28 +736,4 @@ export const stockTransferForm: FormSchema<TrfRow> = {
     },
   ],
 
-  previewCard: (state) => {
-    const rows = ((state.items as GridRow[]) ?? []).filter((r) => r.code);
-    const total = rows.reduce((t, r) => t + num(r.requested), 0);
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-body">
-          <span className="font-semibold">{whCode(String(state.srcWarehouse))}</span>
-          <span className="text-ink-3">→</span>
-          <span className="font-semibold">{whCode(String(state.dstWarehouse))}</span>
-        </div>
-        <div className="text-cap text-ink-2">
-          {String(state.srcBin || "—")} → {String(state.dstBin || "—")} ·{" "}
-          {String(state.srcStatus)} → {String(state.dstStatus)}
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className="tnum text-2xl font-bold">{fmt(total)}</span>
-          <span className="text-cap text-ink-2">หน่วย · {rows.length} รายการ</span>
-        </div>
-        <Badge tone={state.method === "Two-Step Transfer" ? "primary" : "info"}>
-          {String(state.method)}
-        </Badge>
-      </div>
-    );
-  },
 };

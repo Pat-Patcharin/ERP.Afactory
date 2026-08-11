@@ -435,14 +435,6 @@ export function MasterForm<T extends RecordBase>({
   const statusValue = String(getPath(state, "status") ?? "");
   const statusTone = schema.statusBadge?.[statusValue];
 
-  const aside = (
-    <>
-      {schema.previewCard?.(state)}
-      {schema.sidePanel?.(state)}
-    </>
-  );
-  const hasAside = Boolean(schema.previewCard || schema.sidePanel);
-
   return (
     <div>
       {/* ---------- Header ---------- */}
@@ -518,12 +510,23 @@ export function MasterForm<T extends RecordBase>({
 
       {/* ---------- Body ---------- */}
       <main
-        className={cn(
-          "grid max-w-[1440px] items-start gap-5 px-6 pb-16 pt-6 max-md:px-4",
-          hasAside
-            ? "grid-cols-[228px_minmax(0,1fr)_320px] max-[1280px]:grid-cols-[228px_minmax(0,1fr)] max-[900px]:grid-cols-1"
-            : "grid-cols-[228px_minmax(0,1fr)] max-[900px]:grid-cols-1",
-        )}
+        /* ------------------------------------------------------------
+           NO SUMMARY RAIL
+
+           Every form used to carry one on the right: a preview card
+           and a readiness checklist, both assembled out of figures
+           already on the page. The pick form is the clearest case —
+           "หยิบแล้ว / ต้องหยิบ" restated a column of the grid it sat
+           beside, and "หยิบไม่ครบ 3 บรรทัด" counted the rows whose
+           ขาด column was already amber.
+
+           A summary of what is visible is not a summary, it is the
+           same thing twice, and it cost 320px of the width the form
+           itself was short of. What the rail said that the form did
+           not is now said where it applies: on the line, or in the
+           validation summary above Save.
+           ------------------------------------------------------------ */
+        className="grid max-w-[1440px] grid-cols-[228px_minmax(0,1fr)] items-start gap-5 px-6 pb-16 pt-6 max-md:px-4 max-[900px]:grid-cols-1"
       >
         <StepRail
           steps={steps}
@@ -639,11 +642,6 @@ export function MasterForm<T extends RecordBase>({
           </div>
         </div>
 
-        {hasAside && (
-          <aside className="flex flex-col gap-4 max-[1280px]:col-span-full max-[1280px]:flex-row max-[1280px]:flex-wrap max-md:flex-col">
-            {aside}
-          </aside>
-        )}
       </main>
     </div>
   );

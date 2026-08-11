@@ -790,10 +790,9 @@ export interface FormSchema<T extends RecordBase = RecordBase> {
   findDuplicates?: (state: FormState) => DuplicateHit[];
   openDuplicate?: (code: string, ctx: ActionCtx) => void;
 
-  /** Right rail: purchasing recommendation, QC insights, validation checklist. */
-  sidePanel?: (state: FormState) => ReactNode;
-  /** Live document preview card (PR/PO/GR totals). */
-  previewCard?: (state: FormState) => ReactNode;
+  /* No  and no . Every form carried a summary
+     rail assembled out of figures already on the page — see the note in
+     MasterForm. A summary of what is visible is the same thing twice. */
   /** Review step layout; falls back to listing every required field. */
   reviewCards?: (
     state: FormState,

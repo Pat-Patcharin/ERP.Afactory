@@ -19,7 +19,7 @@ import {
 } from "@/lib/domain/outbound";
 import { fmt, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema, GridRow } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, RailTotal, opts, saved } from "./common";
+import { FORM_USER, opts, saved } from "./common";
 
 /* ============================================================
    PICKING FORM
@@ -323,68 +323,6 @@ export const PICK_FORM: FormSchema<PickRow> = {
     status: "Pending",
     note: "",
   }),
-
-  previewCard: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const ordered = rows.reduce((t, r) => t + num(r.ordered), 0);
-    const picked = rows.reduce((t, r) => t + num(r.picked), 0);
-    return (
-      <RailCard icon="picking" title="Pick Preview" tone="accent">
-        <RailRow label="เลขที่งาน" value={String(s.code ?? "")} />
-        <RailRow label="ใบสั่งขาย" value={String(s.soRef ?? "") || "—"} />
-        <RailRow label="ลูกค้า" value={String(s.customer ?? "") || "—"} />
-        <RailRow label="จำนวนบรรทัด" value={rows.length} />
-        <RailTotal label="หยิบแล้ว / ต้องหยิบ" value={`${fmt(picked)} / ${fmt(ordered)}`} />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const short = rows.filter((r) => shortOf(r) > 0);
-    const noBin = rows.filter((r) => num(r.picked) > 0 && !String(r.bin ?? "").trim());
-    const stockShort = rows.filter((r) => {
-      const st = productStock(String(r.code ?? ""));
-      return st && st.available < num(r.ordered);
-    });
-
-    return (
-      <RailCard
-        icon="warehouse"
-        title="Pick Readiness"
-        tone={short.length || stockShort.length ? "warn" : "default"}
-      >
-        <RailRow label="บรรทัดทั้งหมด" value={rows.length} />
-        <RailRow
-          label="หยิบครบแล้ว"
-          value={`${rows.length - short.length} บรรทัด`}
-          tone={short.length ? undefined : "ok"}
-        />
-        <RailRow
-          label="หยิบไม่ครบ"
-          value={`${short.length} บรรทัด`}
-          tone={short.length ? "warn" : "ok"}
-        />
-        <RailRow
-          label="ยังไม่ระบุช่องเก็บ"
-          value={`${noBin.length} บรรทัด`}
-          tone={noBin.length ? "danger" : "ok"}
-        />
-        <RailRow label="สต๊อกไม่พอตั้งแต่ต้น" value={`${stockShort.length} บรรทัด`} />
-        {stockShort.length > 0 && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            {stockShort.map((r) => r.code).slice(0, 3).join(", ")} มีสต๊อกน้อยกว่าที่ต้องหยิบ —
-            แจ้งฝ่ายจัดซื้อหรือแบ่งส่งบางส่วน
-          </p>
-        )}
-        {short.length > 0 && (
-          <p className="mt-2 text-cap leading-relaxed text-ink-2">
-            บรรทัดที่หยิบไม่ครบต้องเลือกเหตุผลในช่อง Note ก่อนจึงจะบันทึกได้
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   save: (s, ctx) => {
     const now = stamp();

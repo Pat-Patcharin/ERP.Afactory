@@ -924,34 +924,5 @@ export const stockAdjustmentForm: FormSchema<AdjRow> = {
     },
   ],
 
-  previewCard: (state) => {
-    const doc = toDocument(state);
-    const rows = doc.items.filter((l) => l.code);
-    const qtyIn = rows.filter(isIncrease).reduce((t, l) => t + l.qty, 0);
-    const qtyOut = rows.filter(isDecrease).reduce((t, l) => t + l.qty, 0);
-    const statusQty = rows.filter(isStatusChange).reduce((t, l) => t + l.qty, 0);
-
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="text-body font-semibold">{String(state.reason)}</div>
-        <div className="text-cap text-ink-2">
-          {whCode(String(state.warehouse))} · {String(state.bin || "—")}
-        </div>
-        <div className="flex flex-wrap items-baseline gap-3">
-          {qtyIn > 0 && (
-            <span className="tnum text-xl font-bold text-success">+{fmt(qtyIn)}</span>
-          )}
-          {qtyOut > 0 && (
-            <span className="tnum text-xl font-bold text-danger">−{fmt(qtyOut)}</span>
-          )}
-          {statusQty > 0 && (
-            <span className="tnum text-xl font-bold text-warning">±{fmt(statusQty)}</span>
-          )}
-          <span className="text-cap text-ink-2">{rows.length} รายการ</span>
-        </div>
-        <Badge tone="info">{String(state.type)}</Badge>
-      </div>
-    );
-  },
 };
 

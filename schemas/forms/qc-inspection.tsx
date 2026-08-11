@@ -23,14 +23,7 @@ import {
 } from "@/lib/domain/inbound";
 import { fmt, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow } from "@/lib/types";
-import {
-  FORM_USER,
-  RailCard,
-  RailRow,
-  RailTotal,
-  opts,
-  saved,
-} from "./common";
+import { FORM_USER, opts, saved } from "./common";
 
 /* ============================================================
    QC INSPECTION FORM
@@ -466,66 +459,6 @@ export const QC_FORM: FormSchema<QcRow> = {
   },
 
   newRow: () => ({ item: "", result: "", comment: "" }),
-
-  previewCard: (s) => {
-    const stats = qcChecklistStats(s);
-    const done = stats.total - stats.pending;
-    return (
-      <RailCard icon="qc" title="Checklist Progress" tone={stats.fail ? "warn" : "accent"}>
-        <RailRow label="ตรวจแล้ว" value={`${done}/${stats.total}`} />
-        <RailRow label="ผ่าน" value={stats.pass} tone="ok" />
-        <RailRow label="ไม่ผ่าน" value={stats.fail} tone={stats.fail ? "danger" : undefined} />
-        <RailRow label="ไม่เกี่ยวข้อง" value={stats.na} />
-        <RailTotal
-          label="ตัดสินแล้ว"
-          value={`${fmt(num(s.acceptedQty) + num(s.rejectedQty))} / ${fmt(s.receivedQty)}`}
-        />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const supplier = String(s.supplier ?? "");
-    if (!supplier) {
-      return (
-        <RailCard icon="truck" title="Supplier Quality">
-          <p className="text-cap leading-relaxed text-ink-2">
-            เลือกใบรับของเพื่อดูสถิติคุณภาพย้อนหลังของผู้ขายรายนี้
-          </p>
-        </RailCard>
-      );
-    }
-
-    const stat = qcSupplierStat(supplier);
-    const stats = qcChecklistStats(s);
-    const failRate = num(s.receivedQty)
-      ? Math.round((num(s.rejectedQty) / num(s.receivedQty)) * 100)
-      : 0;
-    const worseThanNorm = failRate > stat.failRate;
-
-    return (
-      <RailCard icon="shield" title="Supplier Quality" tone={worseThanNorm ? "warn" : "default"}>
-        <RailRow label="ผู้ขาย" value={supplier} />
-        <RailRow label="อัตราไม่ผ่านปกติ" value={`${stat.failRate}%`} />
-        <RailRow
-          label="อัตราไม่ผ่านครั้งนี้"
-          value={`${failRate}%`}
-          tone={worseThanNorm ? "danger" : "ok"}
-        />
-        <RailRow label="NCR ที่ยังเปิดอยู่" value={stat.openNcr} tone={stat.openNcr ? "warn" : undefined} />
-        {worseThanNorm && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            อัตราไม่ผ่านครั้งนี้สูงกว่าค่าปกติของผู้ขาย — ควรออก NCR และแจ้งฝ่ายจัดซื้อ
-          </p>
-        )}
-        {stats.fail > 0 && (
-          <p className="mt-2 text-cap leading-relaxed text-ink-2">
-            มี {stats.fail} รายการตรวจที่ไม่ผ่าน — ผลสรุปต้องไม่ใช่ Pass
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   /* Failing an inspection creates an NCR and moves stock to the claim warehouse. */
   beforeSave: (s, proceed, ctx) => {

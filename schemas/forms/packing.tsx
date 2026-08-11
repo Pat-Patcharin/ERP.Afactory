@@ -16,7 +16,7 @@ import {
 } from "@/lib/domain/outbound";
 import { fmt, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema, GridRow } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, RailTotal, opts, saved } from "./common";
+import { FORM_USER, opts, saved } from "./common";
 
 /* ============================================================
    PACKING FORM
@@ -331,62 +331,6 @@ export const PACK_FORM: FormSchema<PackRow> = {
     if (path === "packages")
       return { box: "", type: "Carton M (40×30×25 cm)", weight: 0, dim: "", sealNo: "", note: "" };
     return { line: 0, code: "", name: "", unit: "", qty: 0, packedQty: 0, box: "", note: "" };
-  },
-
-  previewCard: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const boxes = (s.packages ?? []) as GridRow[];
-    const packed = rows.reduce((t, r) => t + num(r.packedQty), 0);
-    const total = rows.reduce((t, r) => t + num(r.qty), 0);
-    const weight = Math.round(boxes.reduce((t, b) => t + num(b.weight), 0) * 100) / 100;
-
-    return (
-      <RailCard icon="packing" title="Pack Preview" tone="accent">
-        <RailRow label="เลขที่งาน" value={String(s.code ?? "") || "ออกให้ตอนบันทึก"} />
-        <RailRow label="ใบสั่งขาย" value={String(s.soRef ?? "") || "—"} />
-        <RailRow label="จำนวนกล่อง" value={boxes.length} />
-        <RailRow label="น้ำหนักรวม" value={`${weight} กก.`} />
-        <RailTotal label="แพ็คแล้ว / ทั้งหมด" value={`${fmt(packed)} / ${fmt(total)}`} />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const boxes = boxNumbers(s);
-    const unboxed = rows.filter((r) => num(r.packedQty) > 0 && !String(r.box ?? "").trim());
-    const partial = rows.filter((r) => num(r.packedQty) < num(r.qty));
-    const emptyBoxes = boxes.filter(
-      (b) => !rows.some((r) => String(r.box ?? "").trim() === b),
-    );
-
-    return (
-      <RailCard
-        icon="box"
-        title="Packing Check"
-        tone={unboxed.length || emptyBoxes.length ? "warn" : "default"}
-      >
-        <RailRow label="กล่องที่สร้างไว้" value={boxes.length} tone={boxes.length ? "ok" : "warn"} />
-        <RailRow
-          label="บรรทัดที่ยังไม่จับกล่อง"
-          value={`${unboxed.length} บรรทัด`}
-          tone={unboxed.length ? "danger" : "ok"}
-        />
-        <RailRow label="แพ็คไม่ครบจำนวน" value={`${partial.length} บรรทัด`} tone={partial.length ? "warn" : "ok"} />
-        <RailRow label="กล่องที่ยังว่าง" value={`${emptyBoxes.length} ใบ`} />
-        {String(s.handling ?? "") !== "ปกติ" && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            งานนี้ต้องระวังพิเศษ ({String(s.handling)}) — ติดสัญลักษณ์บนกล่องทุกใบ
-            และระบุในใบส่งของ
-          </p>
-        )}
-        {emptyBoxes.length > 0 && (
-          <p className="mt-2 text-cap leading-relaxed text-ink-2">
-            กล่อง {emptyBoxes.join(", ")} ยังไม่มีสินค้าอยู่ข้างใน — ลบทิ้งหรือจับสินค้าลงไป
-          </p>
-        )}
-      </RailCard>
-    );
   },
 
   save: (s, ctx) => {

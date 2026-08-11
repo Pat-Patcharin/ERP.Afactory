@@ -18,15 +18,7 @@ import {
 } from "@/lib/domain/purchase";
 import { fmt, money, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
-import {
-  FORM_USER,
-  RailCard,
-  RailRow,
-  RailTotal,
-  isCreate,
-  opts,
-  saved,
-} from "./common";
+import { FORM_USER, isCreate, opts, saved } from "./common";
 
 /* ============================================================
    PURCHASE ORDER FORM
@@ -333,63 +325,6 @@ export const PO_FORM: FormSchema<PoRow> = {
   },
 
   newRow: () => ({ code: "", name: "", unit: "", qty: "", price: "", disc: 0, tax: 7, recv: 0 }),
-
-  previewCard: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const doc = { items: rows };
-    const cur = String(s.currency ?? "THB");
-    return (
-      <RailCard icon="purchaseOrder" title="Order Preview" tone="accent">
-        <RailRow label="เลขที่ใบสั่งซื้อ" value={String(s.code ?? "")} />
-        <RailRow label="จำนวนรายการ" value={rows.length} />
-        <RailRow label="ยอดก่อนส่วนลด" value={money(poSubtotal(doc))} />
-        <RailRow label="ส่วนลดรวม" value={`− ${money(poDiscTotal(doc))}`} />
-        <RailRow label="ภาษีรวม" value={money(poTaxTotal(doc))} />
-        <RailTotal label={`ยอดรวมสุทธิ (${cur})`} value={money(poGrandTotal(doc))} />
-        {cur !== "THB" && num(s.fx) > 0 && (
-          <p className="mt-2 text-cap text-ink-2 tnum">
-            ≈ {money(poGrandTotal(doc) * num(s.fx))} THB @ {num(s.fx)}
-          </p>
-        )}
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const name = String(s.supplier ?? "");
-    if (!name) {
-      return (
-        <RailCard icon="truck" title="Supplier Insight">
-          <p className="text-cap leading-relaxed text-ink-2">
-            เลือกผู้ขายสินค้าเพื่อดูประวัติการส่งมอบ ราคาล่าสุด และยอดค้างชำระ
-          </p>
-        </RailCard>
-      );
-    }
-
-    const info = poSupplierInfo(name);
-    const lateRisk = info.otd < 90;
-
-    return (
-      <RailCard icon="truck" title="Supplier Insight" tone={lateRisk ? "warn" : "default"}>
-        <RailRow label="เรตติ้ง" value={`${info.rating} · ${info.ratingLabel}`} />
-        <RailRow
-          label="ส่งตรงเวลา"
-          value={`${info.otd}%`}
-          tone={lateRisk ? "warn" : "ok"}
-        />
-        <RailRow label="Lead time เฉลี่ย" value={`${info.lead} วัน`} />
-        <RailRow label="ราคาซื้อล่าสุด" value={money(info.lastPrice)} />
-        <RailRow label="ยอดค้างกับผู้ขาย" value={money(info.outstanding)} />
-        {lateRisk && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            ผู้ขายรายนี้ส่งตรงเวลา {info.otd}% — เผื่อเวลาในวันที่คาดว่าจะได้รับ
-            หรือแจ้งคลังล่วงหน้า
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   save: (s, ctx) => {
     const now = stamp();

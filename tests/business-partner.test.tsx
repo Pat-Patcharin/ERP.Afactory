@@ -1488,10 +1488,6 @@ const fieldsOf = (stepKey: string, state: FormState) => {
 };
 
 describe("BP Master — form revisions", () => {
-  it("carries no side summary of the draft", () => {
-    expect(BP_FORM.sidePanel).toBeUndefined();
-  });
-
   it("issues the partner code and never asks for it", () => {
     const blank = BP_FORM.blank();
     expect(String(blank.code)).toMatch(/^BP\d+$/);

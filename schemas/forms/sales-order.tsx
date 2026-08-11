@@ -35,15 +35,7 @@ import {
 } from "@/lib/domain/outbound";
 import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, FormState, GridRow, LookupHit } from "@/lib/types";
-import {
-  FORM_USER,
-  RailCard,
-  RailRow,
-  RailTotal,
-  ReviewCard,
-  opts,
-  saved,
-} from "./common";
+import { FORM_USER, ReviewCard, opts, saved } from "./common";
 import { catalogPrice } from "@/lib/domain/pricing";
 
 /* ============================================================
@@ -552,123 +544,6 @@ export const SO_FORM: FormSchema<SoRow> = {
     delivered: 0,
     note: "",
   }),
-
-  previewCard: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const t = recordTotals({ items: rows, ...chargesOf(s) });
-    const cur = String(s.currency ?? "THB");
-    return (
-      <RailCard icon="salesOrder" title="Order Preview" tone="accent">
-        <RailRow label="เลขที่" value={String(s.code ?? "")} />
-        <RailRow label="ลูกค้า" value={String(s.customer ?? "") || "ยังไม่ได้เลือก"} />
-        <RailRow label="ยอดก่อนส่วนลด" value={money0(t.subtotal)} />
-        <RailRow label="ส่วนลดรวม" value={`− ${money0(t.lineDiscount + t.headerDiscount)}`} />
-        {t.freight > 0 && <RailRow label="ค่าขนส่ง" value={money0(t.freight)} />}
-        {t.otherCharges > 0 && <RailRow label="ค่าใช้จ่ายอื่น" value={money0(t.otherCharges)} />}
-        <RailRow label="ภาษีรวม" value={money0(t.vat)} />
-        <RailTotal label={`ยอดรวมสุทธิ (${cur})`} value={money0(t.grandTotal)} />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const total = draftTotal(s);
-    const credit = creditCheck(String(s.customerPick ?? ""), total);
-    const short = rows
-      .map((r) => ({ row: r, a: availabilityFor(String(r.code ?? ""), num(r.qty)) }))
-      .filter((x) => x.a && x.a.shortBy > 0);
-
-    if (!s.customerPick) {
-      return (
-        <RailCard icon="shield" title="Credit & Stock Check">
-          <p className="text-cap leading-relaxed text-ink-2">
-            เลือกลูกค้าและใส่รายการสินค้า เพื่อตรวจวงเงินเครดิตและความพร้อมของสต๊อก
-          </p>
-        </RailCard>
-      );
-    }
-
-    const blocked = !credit.withinLimit || short.length > 0;
-
-    /* What flipping the bill type would do, measured against the SAVED order:
-       the lines on screen have already been retaxed by onChange, so the
-       document as it stands is the only honest "before". Same plan, same
-       component, same figures as the dialog in the two document editors. */
-    const original = SALES_ORDERS.find((x) => x.code === String(s.code ?? ""));
-    const billPlan =
-      original && String(s.billType ?? "") !== original.billType
-        ? planBillTypeChange(
-            {
-              items: original.items ?? [],
-              billType: original.billType,
-              headerDisc: original.headerDisc,
-              freight: original.freight,
-              otherCharges: original.otherCharges,
-            },
-            String(s.billType ?? ""),
-          )
-        : null;
-
-    /* The same wrapper the two document editors read — no second opinion
-       about what a price needs. */
-    const price = priceApproval(rows);
-
-    return (
-      <>
-        {(price.level === "manager" || price.noCost.length || price.uncheckable.length) && (
-          <RailCard
-            icon="shield"
-            title="การอนุมัติราคา"
-            tone={price.noCost.length || price.level === "manager" ? "warn" : "default"}
-          >
-            <PriceApprovalNotice plan={price} />
-          </RailCard>
-        )}
-        {billPlan && (
-          <RailCard icon="pricing" title="เปลี่ยนประเภทใบกำกับ" tone="warn">
-            <BillTypeNotice plan={billPlan} />
-            <p className="mt-3 text-cap leading-relaxed text-ink-2">
-              ระบบจะถามยืนยันอีกครั้งตอนกดบันทึก
-            </p>
-          </RailCard>
-        )}
-      <RailCard icon="shield" title="Credit & Stock Check" tone={blocked ? "warn" : "default"}>
-        <RailRow label="สถานะเครดิต" value={credit.status} />
-        <RailRow
-          label="วงเงินคงเหลือ"
-          value={credit.cashOnly ? "เงินสดเท่านั้น" : money0(credit.available)}
-        />
-        <RailRow
-          label="ยอดหลังรวมใบนี้"
-          value={credit.cashOnly ? "—" : money0(credit.projected)}
-          tone={credit.withinLimit ? "ok" : "danger"}
-        />
-        <RailRow
-          label="บรรทัดที่สต๊อกไม่พอ"
-          value={`${short.length} รายการ`}
-          tone={short.length ? "danger" : "ok"}
-        />
-        {!credit.withinLimit && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            เกินวงเงิน {money0(credit.overBy)} บาท — เมื่อกดยืนยันใบสั่งขาย ระบบจะตั้งเป็น
-            On Hold รอฝ่ายบัญชีอนุมัติ
-          </p>
-        )}
-        {short.length > 0 && (
-          <p className="mt-2 text-cap leading-relaxed text-ink-2">
-            {short
-              .slice(0, 3)
-              .map((x) => `${x.row.code} ขาด ${fmt(x.a!.shortBy)}`)
-              .join(", ")}
-            {short.length > 3 ? ` และอีก ${short.length - 3} รายการ` : ""} — ยังบันทึกได้
-            แต่จะหยิบของไม่ครบในรอบเดียว
-          </p>
-        )}
-      </RailCard>
-      </>
-    );
-  },
 
   reviewCards: (s, row) => {
     const rows = (s.items ?? []) as GridRow[];

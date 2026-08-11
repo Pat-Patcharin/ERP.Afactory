@@ -27,7 +27,7 @@ import {
 } from "@/lib/domain/sales-return";
 import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, RailTotal, ReviewCard, opts, saved } from "./common";
+import { FORM_USER, ReviewCard, opts, saved } from "./common";
 import { catalogPrice } from "@/lib/domain/pricing";
 
 /* ============================================================
@@ -668,84 +668,6 @@ export const RTN_FORM: FormSchema<RtnRow> = {
     sealOpened: false,
     note: "",
   }),
-
-  previewCard: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    return (
-      <RailCard icon="return" title="Return Preview" tone="accent">
-        <RailRow label="เลขที่" value={String(s.code ?? "")} />
-        <RailRow label="ลูกค้า" value={String(s.customer ?? "") || "ยังไม่ได้เลือก"} />
-        <RailRow label="ต้นทาง" value={String(s.sourceDoc ?? "") || "Manual"} />
-        <RailRow label="ประเภทการคืน" value={String(s.returnType ?? "") || "—"} />
-        <RailRow label="จำนวนบรรทัด" value={rows.length} />
-        <RailRow
-          label="จำนวนที่ขอคืน"
-          value={`${fmt(rows.reduce((t, r) => t + num(r.requestedQty), 0))} หน่วย`}
-        />
-        <RailTotal label="Estimated Credit (THB)" value={money(draftCredit(rows))} />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const issues = submitReadiness({
-      items: (s.items ?? []) as never,
-      customer: String(s.customer ?? ""),
-      returnType: String(s.returnType ?? ""),
-      returnReason: String(s.returnReason ?? ""),
-      returnWarehouse: String(s.returnWarehouse ?? ""),
-      requestedResolution: String(s.requestedResolution ?? ""),
-      shipmentRef: String(s.shipmentRef ?? ""),
-      returnDate: String(s.returnDate ?? ""),
-      originalInvoiceDate: String(s.originalInvoiceDate ?? ""),
-    });
-    const blocking = issues.filter((i) => i.blocking);
-    const warnings = issues.filter((i) => !i.blocking);
-    const mismatch = serialMismatches({
-      shipmentRef: String(s.shipmentRef ?? ""),
-      items: (s.items ?? []) as never,
-    });
-
-    if (!s.sourceDoc && !isManual(s)) {
-      return (
-        <RailCard icon="shield" title="Return Readiness">
-          <p className="text-cap leading-relaxed text-ink-2">
-            เลือกเอกสารต้นทางในขั้นแรก เพื่อตรวจว่าคำขอคืนนี้ส่งขออนุมัติได้หรือยัง
-          </p>
-        </RailCard>
-      );
-    }
-
-    return (
-      <RailCard icon="shield" title="Return Readiness" tone={blocking.length ? "warn" : "default"}>
-        <RailRow
-          label="สถานะความพร้อม"
-          value={blocking.length ? `ติด ${blocking.length} เรื่อง` : "ส่งขออนุมัติได้"}
-          tone={blocking.length ? "danger" : "ok"}
-        />
-        <RailRow label="บรรทัดทั้งหมด" value={((s.items ?? []) as GridRow[]).length} />
-        <RailRow
-          label="ขอคืนเกินสิทธิ์"
-          value={`${((s.items ?? []) as GridRow[]).filter(overReturn).length} บรรทัด`}
-          tone={((s.items ?? []) as GridRow[]).filter(overReturn).length ? "danger" : "ok"}
-        />
-        <RailRow label="Serial ไม่ตรงต้นทาง" value={`${mismatch.length} รายการ`} tone={mismatch.length ? "warn" : "ok"} />
-        <RailRow label="ข้อควรระวัง" value={`${warnings.length} เรื่อง`} />
-        {blocking.length > 0 && (
-          <ul className="mt-3 flex flex-col gap-1 text-cap leading-relaxed text-warning-text">
-            {blocking.slice(0, 5).map((b) => (
-              <li key={b.label}>• {b.label}</li>
-            ))}
-          </ul>
-        )}
-        {blocking.length === 0 && warnings.length > 0 && (
-          <p className="mt-3 text-cap leading-relaxed text-ink-2">
-            {warnings.map((w) => w.label).join(" · ")}
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   reviewCards: (s, row) => {
     const rows = (s.items ?? []) as GridRow[];

@@ -25,7 +25,7 @@ import {
 } from "@/lib/domain/sales";
 import { money0, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, isCreate, opts, saved } from "./common";
+import { FORM_USER, isCreate, opts, saved } from "./common";
 
 /* ============================================================
    SALES REPRESENTATIVE FORM
@@ -464,56 +464,6 @@ export const SALES_REP_FORM: FormSchema<SalesRepRow> = {
   },
 
   openDuplicate: (code, ctx) => ctx.openEntity("sales-rep", code),
-
-  sidePanel: (s) => {
-    const monthly = num(s.monthlyTarget);
-    const annual = num(s.annualTarget);
-    const consistent = !annual || annual >= monthly * 6;
-
-    const area = salesArea(str(s.area));
-    const province = str(s.province);
-    const provinceFits = !area || !province || inSalesArea(area.code, province);
-
-    return (
-      <>
-        <RailCard
-          icon="mapPin"
-          title="Sales Area"
-          tone={area && !provinceFits ? "warn" : "default"}
-        >
-          <RailRow label="เขต" value={area?.name ?? "ยังไม่ได้เลือก"} />
-          <RailRow label="กลุ่ม" value={salesAreaGroup(str(s.area))?.short ?? "—"} />
-          <RailRow label="จังหวัดในเขต" value={area ? String(area.provinces.length) : "—"} />
-          <RailRow
-            label="เขต กทม."
-            value={area?.districts.length ? String(area.districts.length) : "—"}
-          />
-          <RailRow label="จังหวัดฐาน" value={province || "—"} />
-          {area && !provinceFits && (
-            <p className="mt-3 text-cap leading-relaxed text-warning-text">
-              {province} ไม่ได้อยู่ในเขต {area.name} — เลือกเขตใหม่หรือเปลี่ยนจังหวัดฐาน
-            </p>
-          )}
-        </RailCard>
-
-        <RailCard icon="salesRep" title="Target Sanity Check" tone={consistent ? "default" : "warn"}>
-          <RailRow label="เป้าเดือน" value={monthly ? money0(monthly) : "—"} />
-          <RailRow label="เป้าไตรมาส" value={num(s.quarterTarget) ? money0(s.quarterTarget) : "—"} />
-          <RailRow label="เป้าปี" value={annual ? money0(annual) : "—"} />
-          <RailRow label="เพดานส่วนลด" value={`${num(s.discountLimit)}%`} />
-          <RailRow
-            label="วงเงินอนุมัติ"
-            value={num(s.approvalLimit) ? money0(s.approvalLimit) : "ไม่จำกัด"}
-          />
-          {!consistent && (
-            <p className="mt-3 text-cap leading-relaxed text-warning-text">
-              เป้าปีต่ำกว่า 6 เท่าของเป้าเดือน — ตรวจสอบว่ากรอกหน่วยถูกต้องหรือไม่
-            </p>
-          )}
-        </RailCard>
-      </>
-    );
-  },
 
   save: (s, ctx) => {
     const now = stamp();

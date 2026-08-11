@@ -37,7 +37,7 @@ import type { ShpRow } from "@/lib/domain/shipment";
 import { warehouseOptions } from "@/lib/domain/outbound";
 import { fmt, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, RailTotal, ReviewCard, opts, saved } from "./common";
+import { FORM_USER, ReviewCard, opts, saved } from "./common";
 
 /* ============================================================
    SHIPMENT FORM
@@ -767,78 +767,6 @@ export const SHP_FORM: FormSchema<ShpRow> = {
     rows.forEach((p, i) => {
       if (!String(p.no ?? "").trim()) p.no = nextPackageNo({ packages: rows.slice(0, i) as never });
     });
-  },
-
-  previewCard: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const boxes = (s.packages ?? []) as GridRow[];
-    return (
-      <RailCard icon="truck" title="Shipment Preview" tone="accent">
-        <RailRow label="เลขที่" value={String(s.code ?? "")} />
-        <RailRow label="ใบส่งของ" value={String(s.doRef ?? "") || "—"} />
-        <RailRow label="ลูกค้า" value={String(s.customer ?? "") || "ยังไม่ได้เลือก"} />
-        <RailRow label="ผู้ขนส่ง" value={String(s.carrier ?? "")} />
-        <RailRow label="กล่อง / น้ำหนัก" value={`${boxes.length} · ${draftWeight(s)} kg`} />
-        <RailRow label="คาดว่าถึง" value={isoToDmy(s.expectedDelivery) || "—"} />
-        <RailTotal
-          label="จำนวนที่ส่ง"
-          value={`${fmt(rows.reduce((t, r) => t + num(r.shipmentQty), 0))} หน่วย`}
-        />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const issues = dispatchReadiness({
-      items: (s.items ?? []) as never,
-      packages: (s.packages ?? []) as never,
-      carrier: String(s.carrier ?? ""),
-      driver: String(s.driver ?? ""),
-      vehicleNo: String(s.vehicleNo ?? ""),
-      trackingNo: String(s.trackingNo ?? ""),
-      shippingMethod: String(s.shippingMethod ?? ""),
-      deliveryAddress: String(s.deliveryAddress ?? ""),
-      contactPerson: String(s.contactPerson ?? ""),
-      contactPhone: String(s.contactPhone ?? ""),
-    });
-    const blocking = issues.filter((i) => i.blocking);
-    const warnings = issues.filter((i) => !i.blocking);
-
-    if (!s.doRef) {
-      return (
-        <RailCard icon="shield" title="Dispatch Readiness">
-          <p className="text-cap leading-relaxed text-ink-2">
-            เลือกใบส่งของในขั้นตอนแรก เพื่อตรวจว่าใบขนส่งนี้พร้อมนำส่งหรือยัง
-          </p>
-        </RailCard>
-      );
-    }
-
-    return (
-      <RailCard icon="shield" title="Dispatch Readiness" tone={blocking.length ? "warn" : "default"}>
-        <RailRow
-          label="สถานะความพร้อม"
-          value={blocking.length ? `ติด ${blocking.length} เรื่อง` : "พร้อมนำส่ง"}
-          tone={blocking.length ? "danger" : "ok"}
-        />
-        <RailRow label="บรรทัดทั้งหมด" value={((s.items ?? []) as GridRow[]).length} />
-        <RailRow label="กล่อง" value={((s.packages ?? []) as GridRow[]).length} />
-        <RailRow label="น้ำหนักรวม" value={`${draftWeight(s)} kg`} />
-        <RailRow label="ข้อควรระวัง" value={`${warnings.length} เรื่อง`} />
-        {blocking.length > 0 && (
-          <ul className="mt-3 flex flex-col gap-1 text-cap leading-relaxed text-warning-text">
-            {blocking.slice(0, 5).map((b) => (
-              <li key={b.label}>• {b.label}</li>
-            ))}
-          </ul>
-        )}
-        {blocking.length === 0 && warnings.length > 0 && (
-          <p className="mt-3 text-cap leading-relaxed text-ink-2">
-            {warnings.map((w) => w.label).join(" · ")} — บันทึกและ Dispatch ได้ แต่ควรตรวจก่อน
-          </p>
-        )}
-      </RailCard>
-    );
   },
 
   reviewCards: (s, row) => {

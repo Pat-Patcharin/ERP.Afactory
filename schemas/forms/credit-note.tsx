@@ -27,7 +27,7 @@ import {
 } from "@/lib/domain/credit-note";
 import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, RailTotal, ReviewCard, opts, saved } from "./common";
+import { FORM_USER, ReviewCard, opts, saved } from "./common";
 import { catalogPrice } from "@/lib/domain/pricing";
 
 /* ============================================================
@@ -679,85 +679,6 @@ export const CN_FORM: FormSchema<CnRow> = {
     reason: "",
     note: "",
   }),
-
-  previewCard: (s) => {
-    const t = draftTotals(s);
-    return (
-      <RailCard icon="creditNote" title="Credit Note Preview" tone="accent">
-        <RailRow label="เลขที่" value={String(s.code ?? "")} />
-        <RailRow label="ลูกค้า" value={String(s.customer ?? "") || "ยังไม่ได้เลือก"} />
-        <RailRow label="ต้นทาง" value={String(s.sourceDoc ?? "") || "Manual"} />
-        <RailRow label="ประเภท" value={String(s.creditType ?? "")} />
-        <RailRow label="Subtotal" value={money(t.taxable)} />
-        <RailRow label={`Tax (${num(s.vatRate)}%)`} value={money(t.tax)} />
-        <RailTotal label={`Total Credit (${String(s.currency ?? "THB")})`} value={money(t.totalCredit)} />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const issues = submitReadiness({
-      items: (s.items ?? []) as never,
-      customer: String(s.customer ?? ""),
-      creditType: String(s.creditType ?? ""),
-      reason: String(s.reason ?? ""),
-      taxMode: String(s.taxMode ?? ""),
-      vatRate: num(s.vatRate),
-      headerDisc: num(s.headerDisc),
-      rounding: num(s.rounding),
-      sourceType: String(s.sourceType ?? ""),
-    });
-    const blocking = issues.filter((i) => i.blocking);
-    const triggers = approvalTriggers({
-      items: (s.items ?? []) as never,
-      taxMode: String(s.taxMode ?? ""),
-      headerDisc: num(s.headerDisc),
-      rounding: num(s.rounding),
-      creditType: String(s.creditType ?? ""),
-      sourceType: String(s.sourceType ?? ""),
-      vatRate: num(s.vatRate),
-    });
-    const over = ((s.items ?? []) as GridRow[]).filter(isOverCredit);
-
-    if (!s.sourceDoc && !isManual(s)) {
-      return (
-        <RailCard icon="shield" title="Credit Readiness">
-          <p className="text-cap leading-relaxed text-ink-2">
-            เลือกเอกสารต้นทางในขั้นตอน Source Document เพื่อดึงรายการและตรวจเพดานจำนวนที่ลดหนี้ได้
-          </p>
-        </RailCard>
-      );
-    }
-
-    return (
-      <RailCard icon="shield" title="Credit Readiness" tone={blocking.length ? "warn" : "default"}>
-        <RailRow
-          label="สถานะความพร้อม"
-          value={blocking.length ? `ติด ${blocking.length} เรื่อง` : "ส่งขออนุมัติได้"}
-          tone={blocking.length ? "danger" : "ok"}
-        />
-        <RailRow label="บรรทัดทั้งหมด" value={((s.items ?? []) as GridRow[]).length} />
-        <RailRow
-          label="ลดหนี้เกินสิทธิ์"
-          value={`${over.length} บรรทัด`}
-          tone={over.length ? "danger" : "ok"}
-        />
-        <RailRow label="ต้องผ่านการอนุมัติ" value={triggers.length ? "ใช่" : "ไม่ต้อง"} tone={triggers.length ? "warn" : "ok"} />
-        {blocking.length > 0 && (
-          <ul className="mt-3 flex flex-col gap-1 text-cap leading-relaxed text-warning-text">
-            {blocking.slice(0, 5).map((b) => (
-              <li key={b.label}>• {b.label}</li>
-            ))}
-          </ul>
-        )}
-        {blocking.length === 0 && triggers.length > 0 && (
-          <p className="mt-3 text-cap leading-relaxed text-ink-2">
-            เหตุที่ต้องอนุมัติ: {triggers.join(" · ")}
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   reviewCards: (s, row) => {
     const rows = (s.items ?? []) as GridRow[];

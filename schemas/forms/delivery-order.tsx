@@ -20,7 +20,7 @@ import {
 } from "@/lib/domain/outbound";
 import { fmt, money0, stamp, isoToDmy, dmyToIso } from "@/lib/format";
 import type { FormSchema, GridRow } from "@/lib/types";
-import { FORM_USER, RailCard, RailRow, RailTotal, opts, saved } from "./common";
+import { FORM_USER, opts, saved } from "./common";
 
 /* ============================================================
    DELIVERY ORDER FORM
@@ -399,75 +399,6 @@ export const DO_FORM: FormSchema<DoRow> = {
   },
 
   newRow: () => ({ line: 0, code: "", name: "", unit: "", qty: "", delivered: 0, box: "", note: "" }),
-
-  previewCard: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const qty = rows.reduce((t, r) => t + num(r.qty), 0);
-    return (
-      <RailCard icon="delivery" title="Shipment Preview" tone="accent">
-        <RailRow label="เลขที่ใบส่งของ" value={String(s.code ?? "")} />
-        <RailRow label="ใบสั่งขาย" value={String(s.soRef ?? "") || "—"} />
-        <RailRow label="ผู้ขนส่ง" value={String(s.carrier ?? "")} />
-        <RailRow label="กล่อง / น้ำหนัก" value={`${fmt(s.packages)} · ${num(s.weight)} กก.`} />
-        {num(s.codAmount) > 0 && (
-          <RailRow label="เก็บเงินปลายทาง" value={money0(s.codAmount)} tone="warn" />
-        )}
-        <RailTotal label="จำนวนที่ส่ง" value={`${fmt(qty)} หน่วย`} />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const so = getSO(String(s.soRef ?? ""));
-    const qty = rows.reduce((t, r) => t + num(r.qty), 0);
-    const selfPickup = isSelfPickup(s);
-    const missingTracking =
-      !selfPickup && s.carrier !== "A-Factory Fleet" && !String(s.trackingNo ?? "").trim();
-    const missingDriver =
-      s.carrier === "A-Factory Fleet" &&
-      (!String(s.driver ?? "").trim() || !String(s.vehicle ?? "").trim());
-
-    return (
-      <RailCard
-        icon="truck"
-        title="Dispatch Check"
-        tone={missingTracking || missingDriver ? "warn" : "default"}
-      >
-        <RailRow label="วิธีจัดส่ง" value={selfPickup ? "ลูกค้ามารับเอง" : String(s.service ?? "")} />
-        <RailRow label="จำนวนบรรทัด" value={rows.length} />
-        <RailRow label="จำนวนที่ส่ง" value={`${fmt(qty)} หน่วย`} />
-        {so && (
-          <RailRow
-            label="ค้างส่งในใบสั่งขาย"
-            value={`${fmt(so.outstandingQty)} หน่วย`}
-            tone={so.outstandingQty > qty ? "warn" : "ok"}
-          />
-        )}
-        <RailRow
-          label="ข้อมูลขนส่งครบ"
-          value={missingTracking || missingDriver ? "ยังไม่ครบ" : "ครบ"}
-          tone={missingTracking || missingDriver ? "danger" : "ok"}
-        />
-        {missingDriver && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            ส่งด้วยรถบริษัทต้องระบุคนขับและทะเบียนรถก่อนจึงจะบันทึกได้
-          </p>
-        )}
-        {missingTracking && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            ส่งผ่าน {String(s.carrier)} ต้องมีเลขติดตามเพื่อให้ลูกค้าเช็คสถานะได้
-          </p>
-        )}
-        {so && so.outstandingQty > qty && (
-          <p className="mt-2 text-cap leading-relaxed text-ink-2">
-            ใบสั่งขายยังค้างอีก {fmt(so.outstandingQty - qty)} หน่วยหลังรอบนี้ —
-            ต้องออกใบส่งของเพิ่มภายหลัง
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   save: (s, ctx) => {
     const now = stamp();

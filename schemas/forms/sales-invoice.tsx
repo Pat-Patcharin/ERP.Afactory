@@ -35,15 +35,7 @@ import {
 } from "@/lib/domain/invoice";
 import { fmt, money, money0, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
-import {
-  FORM_USER,
-  RailCard,
-  RailRow,
-  RailTotal,
-  ReviewCard,
-  opts,
-  saved,
-} from "./common";
+import { FORM_USER, ReviewCard, opts, saved } from "./common";
 import { catalogPrice } from "@/lib/domain/pricing";
 
 /* ============================================================
@@ -912,74 +904,6 @@ export const INV_FORM: FormSchema<InvRow> = {
     priceOverride: false,
     overrideReason: "",
   }),
-
-  previewCard: (s) => {
-    const t = draftTotals(s);
-    return (
-      <RailCard icon="invoice" title="Invoice Preview" tone="accent">
-        <RailRow label="เลขที่" value={String(s.code ?? "")} />
-        <RailRow label="ลูกค้า" value={String(s.customer ?? "") || "ยังไม่ได้เลือก"} />
-        <RailRow label="ต้นทาง" value={String(s.sourceDoc ?? "") || "Manual"} />
-        <RailRow label="ครบกำหนด" value={isoToDmy(s.dueDate) || "—"} />
-        <RailRow label="Subtotal" value={money(t.taxable)} />
-        <RailRow label={`Tax (${num(s.vatRate)}%)`} value={money(t.tax)} />
-        <RailTotal label={`Grand Total (${String(s.currency ?? "THB")})`} value={money(t.grandTotal)} />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const type = String(s.sourceType ?? "Manual");
-    const over = rows.filter((r) => overBilled(r, type));
-    const overrides = rows.filter((r) => r.priceOverride);
-    const missingReason = overrides.filter((r) => !String(r.overrideReason ?? "").trim());
-    const fullyBilled = rows.filter((r) => remainingBillable(r, type) === 0 && !isManual(s));
-    const warnings = billingWarnings(s);
-
-    const blocked = over.length > 0 || missingReason.length > 0 || warnings.length > 0;
-
-    return (
-      <RailCard icon="shield" title="Billing Check" tone={blocked ? "warn" : "default"}>
-        <RailRow label="บรรทัดทั้งหมด" value={rows.length} />
-        <RailRow
-          label="วางบิลเกินสิทธิ์"
-          value={`${over.length} บรรทัด`}
-          tone={over.length ? "danger" : "ok"}
-        />
-        <RailRow
-          label="แก้ราคาจากต้นทาง"
-          value={`${overrides.length} บรรทัด`}
-          tone={overrides.length ? "warn" : "ok"}
-        />
-        <RailRow label="วางบิลครบแล้ว" value={`${fullyBilled.length} บรรทัด`} />
-        <RailRow
-          label="ข้อมูลภาษีครบ"
-          value={warnings.length ? "ยังไม่ครบ" : "ครบ"}
-          tone={warnings.length ? "danger" : "ok"}
-        />
-        {over.length > 0 && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            {over.map((r) => r.code).slice(0, 3).join(", ")} วางบิลเกินจำนวนที่ส่งมอบ/สั่งไว้ —
-            ลดจำนวนก่อนจึงจะบันทึกได้
-          </p>
-        )}
-        {missingReason.length > 0 && (
-          <p className="mt-2 text-cap leading-relaxed text-warning-text">
-            มี {missingReason.length} บรรทัดที่แก้ราคาแต่ยังไม่ระบุเหตุผล — ต้องเลือกเหตุผลในคอลัมน์สุดท้าย
-          </p>
-        )}
-        {warnings.length > 0 && (
-          <p className="mt-2 text-cap leading-relaxed text-ink-2">{warnings.join(" · ")}</p>
-        )}
-        {overrides.length > 0 && missingReason.length === 0 && (
-          <p className="mt-2 text-cap leading-relaxed text-ink-2">
-            ใบนี้มีการแก้ราคา — ต้องผ่านการอนุมัติก่อนออกใบแจ้งหนี้
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   reviewCards: (s, row) => {
     const rows = (s.items ?? []) as GridRow[];

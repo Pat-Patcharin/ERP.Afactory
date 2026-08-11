@@ -13,16 +13,7 @@ import {
 } from "@/lib/domain/purchase";
 import { fmt, money, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
-import {
-  FORM_USER,
-  RailCard,
-  RailRow,
-  RailTotal,
-  ReviewCard,
-  isCreate,
-  opts,
-  saved,
-} from "./common";
+import { FORM_USER, ReviewCard, isCreate, opts, saved } from "./common";
 
 /* ============================================================
    PURCHASE REQUEST FORM
@@ -321,61 +312,6 @@ export const PR_FORM: FormSchema<PrRow> = {
   },
 
   newRow: () => ({ code: "", name: "", unit: "", qty: "", price: "", note: "" }),
-
-  previewCard: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    return (
-      <RailCard icon="purchaseRequest" title="Request Preview" tone="accent">
-        <RailRow label="เลขที่ใบขอซื้อ" value={String(s.code ?? "")} />
-        <RailRow label="จำนวนรายการ" value={rows.length} />
-        <RailRow
-          label="จำนวนหน่วยรวม"
-          value={fmt(rows.reduce((t, r) => t + num(r.qty), 0))}
-        />
-        <RailTotal label="มูลค่าประมาณการ" value={money(prTotal({ items: rows }))} />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const low = rows.filter(isBelowRop);
-    const overSuggested = rows.filter((r) => {
-      const st = lineStock(r);
-      return st && st.suggested > 0 && num(r.qty) > st.suggested * 2;
-    });
-
-    return (
-      <RailCard
-        icon="bulb"
-        title="Purchasing Insight"
-        tone={low.length ? "warn" : "default"}
-      >
-        <RailRow
-          label="ต่ำกว่าจุดสั่งซื้อ"
-          value={`${low.length} รายการ`}
-          tone={low.length ? "warn" : "ok"}
-        />
-        <RailRow label="ขอเกินคำแนะนำมาก" value={`${overSuggested.length} รายการ`} />
-        <RailRow label="ผู้ขายที่เสนอ" value={String(s.supplier ?? "") || "ยังไม่ระบุ"} />
-        {low.length > 0 && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            {low
-              .slice(0, 3)
-              .map((r) => r.code)
-              .join(", ")}
-            {low.length > 3 ? ` และอีก ${low.length - 3} รายการ` : ""} อยู่ต่ำกว่าจุดสั่งซื้อ —
-            ใบขอซื้อนี้มีเหตุผลรองรับชัดเจน
-          </p>
-        )}
-        {overSuggested.length > 0 && (
-          <p className="mt-2 text-cap leading-relaxed text-ink-2">
-            บางรายการขอมากกว่าคำแนะนำเกินสองเท่า — ผู้อนุมัติมักขอเหตุผลเพิ่มเติม
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   reviewCards: (s, row) => {
     const rows = (s.items ?? []) as GridRow[];

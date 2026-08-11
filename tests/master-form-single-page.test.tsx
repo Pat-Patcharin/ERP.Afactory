@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { MasterForm } from "@/components/engine/MasterForm";
 import { BP_FORM } from "@/schemas/forms/business-partner";
 import { resetCurrentUser } from "@/lib/domain/admin";
+import { REGISTRY } from "@/schemas/registry";
 
 /* ============================================================
    ONE PAGE, EIGHT HEADINGS
@@ -186,5 +187,46 @@ describe("MasterForm — บทบาทมาก่อน และสองฝ
     /* Said in words too — the colour is not carrying it alone. */
     expect(within(at("customer")).getByText("ฝั่งลูกค้า")).toBeInTheDocument();
     expect(within(at("supplier")).getByText("ฝั่งผู้ขาย")).toBeInTheDocument();
+  });
+});
+
+/* ============================================================
+   NO SUMMARY RAIL
+
+   Every form used to carry one on the right — a preview card and
+   a readiness checklist, both assembled out of figures already on
+   the page. The pick form was the clearest case: "หยิบแล้ว /
+   ต้องหยิบ" restated a column of the grid beside it.
+
+   Held here rather than per form, because the rule is about the
+   engine: eighteen schemas declared one and each would otherwise
+   need its own assertion, which is how the nineteenth quietly
+   gets one back.
+   ============================================================ */
+
+describe("MasterForm — ไม่มีแถบสรุปด้านข้าง", () => {
+  it("ไม่มี aside ในหน้าฟอร์ม", () => {
+    const { container } = render(<MasterForm schema={BP_FORM} />);
+    expect(container.querySelector("aside")).toBeNull();
+  });
+
+  it("ฟอร์มกินความกว้างที่เหลือทั้งหมด", () => {
+    /* The rail cost 320px of width the form itself was short of. Two columns
+       now: the section rail on the left and the form. */
+    const { container } = render(<MasterForm schema={BP_FORM} />);
+    const main = container.querySelector("main")!;
+    expect(main.className).toContain("grid-cols-[228px_minmax(0,1fr)]");
+    expect(main.className).not.toContain("320px");
+  });
+
+  it("ไม่มีสคีมาไหนประกาศแถบสรุปได้อีก", () => {
+    /* The two fields are gone from FormSchema, so a form that tried would
+       not compile — this asserts what a reader of the schemas sees. */
+    for (const [key, schemas] of Object.entries(REGISTRY)) {
+      const form = schemas.form as Record<string, unknown> | undefined;
+      if (!form) continue;
+      expect(form.sidePanel, key).toBeUndefined();
+      expect(form.previewCard, key).toBeUndefined();
+    }
   });
 });

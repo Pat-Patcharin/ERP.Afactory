@@ -24,14 +24,7 @@ import {
 } from "@/lib/domain/inbound";
 import { fmt, stamp, isoToDmy, dmyToIso, today } from "@/lib/format";
 import type { FormSchema, GridRow, LookupHit } from "@/lib/types";
-import {
-  FORM_USER,
-  RailCard,
-  RailRow,
-  RailTotal,
-  opts,
-  saved,
-} from "./common";
+import { FORM_USER, opts, saved } from "./common";
 
 /* ============================================================
    GOODS RECEIPT FORM
@@ -531,51 +524,6 @@ export const GR_FORM: FormSchema<GrRow> = {
     qc: false,
     disc: "",
   }),
-
-  previewCard: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const qcLines = rows.filter((r) => r.qc).length;
-    return (
-      <RailCard icon="goodsReceipt" title="Receipt Preview" tone="accent">
-        <RailRow label="เลขที่ใบรับ" value={String(s.code ?? "")} />
-        <RailRow label="อ้างอิง" value={String(s.poRef ?? "") || String(s.nonPoReason ?? "—")} />
-        <RailRow label="จำนวนบรรทัด" value={rows.length} />
-        <RailRow label="ต้องตรวจ QC" value={`${qcLines} บรรทัด`} tone={qcLines ? "warn" : "ok"} />
-        <RailTotal label="รับเข้าทั้งหมด" value={fmt(grTotalReceiving({ items: rows }))} />
-      </RailCard>
-    );
-  },
-
-  sidePanel: (s) => {
-    const rows = (s.items ?? []) as GridRow[];
-    const over = rows.filter((r) => grItemVariance(r) > 0);
-    const short = rows.filter((r) => grItemVariance(r) < 0);
-    const qcLines = rows.filter((r) => r.qc);
-
-    return (
-      <RailCard
-        icon="alert"
-        title="Receiving Check"
-        tone={over.length || s.pkgCondition !== "Good" ? "warn" : "default"}
-      >
-        <RailRow label="รับครบพอดี" value={`${rows.length - over.length - short.length} บรรทัด`} tone="ok" />
-        <RailRow label="รับเกิน" value={`${over.length} บรรทัด`} tone={over.length ? "warn" : undefined} />
-        <RailRow label="รับขาด" value={`${short.length} บรรทัด`} />
-        <RailRow label="สภาพหีบห่อ" value={String(s.pkgCondition ?? "")} tone={s.pkgCondition === "Good" ? "ok" : "warn"} />
-        {qcLines.length > 0 && (
-          <p className="mt-3 text-cap leading-relaxed text-warning-text">
-            {qcLines.length} บรรทัดจะถูกรับเข้า {String(s.qc?.qcWh ?? "คลังพักตรวจ")} —
-            ยังไม่นับเป็นสต๊อกพร้อมขายจนกว่าจะผ่าน QC และจัดเก็บ
-          </p>
-        )}
-        {short.length > 0 && (
-          <p className="mt-2 text-cap leading-relaxed text-ink-2">
-            ใบสั่งซื้อจะยังคงสถานะ Partial Received เพราะยังรับไม่ครบ
-          </p>
-        )}
-      </RailCard>
-    );
-  },
 
   /* Receiving moves real stock, so it asks before it commits. */
   beforeSave: (s, proceed, ctx) => {
