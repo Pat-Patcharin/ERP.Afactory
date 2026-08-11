@@ -23,6 +23,7 @@ import {
 } from "@/lib/workflows-outbound";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb } from "@/components/ui";
+import { SalesRequestDocument } from "@/components/sales-request/SalesRequestDocument";
 import { SalesRequestEditor } from "@/components/sales-request/SalesRequestEditor";
 import { CommentThread } from "@/components/document/CommentThread";
 
@@ -553,6 +554,10 @@ export const SR_DETAIL: DetailSchema<SrRow> = {
 export const srSchemas: EntitySchemas<SrRow> = {
   list: SR_LIST,
   detail: SR_DETAIL,
+  /* Read as the request. The tabbed profile above stays as what the Quick
+     View drawer renders — a glance from the list is a different job from
+     standing in front of the paper with a signature to give. */
+  document: ({ record }) => <SalesRequestDocument record={record} />,
   /* No `form`: a sales request is created and edited as the document itself.
      The three-step wizard is gone, and with it the schema that described it —
      validation and save now live in lib/domain/sales-request-draft.ts, which

@@ -5,23 +5,28 @@ import { PICKING_TASKS as RAW_PICK } from "@/data/picking";
 import { PACKING_TASKS as RAW_PACK } from "@/data/packing";
 import { DELIVERY_ORDERS as RAW_DO } from "@/data/delivery-orders";
 import { SALES_INVOICES as RAW_INV } from "@/data/sales-invoices";
+import { SALES_REQUESTS as RAW_SR } from "@/data/sales-requests";
 import {
   DELIVERY_ORDERS,
   PACKING_TASKS,
   PICKING_TASKS,
   SALES_ORDERS,
+  SALES_REQUESTS,
   decorateOutbound,
   type DoRow,
   type PackRow,
   type PickRow,
   type SoRow,
+  type SrRow,
 } from "@/lib/domain/outbound";
 import { SALES_INVOICES, decorateInvoices, type InvRow } from "@/lib/domain/invoice";
+import { SalesRequestDocument } from "@/components/sales-request/SalesRequestDocument";
 import { SalesOrderDocument } from "@/components/sales-order/SalesOrderDocument";
 import { PickingDocument } from "@/components/picking/PickingDocument";
 import { PackingDocument } from "@/components/packing/PackingDocument";
 import { DeliveryOrderDocument } from "@/components/delivery-order/DeliveryOrderDocument";
 import { SalesInvoiceDocument } from "@/components/sales-invoice/SalesInvoiceDocument";
+import { srSchemas } from "@/schemas/sales-request";
 import { soSchemas } from "@/schemas/sales-order";
 import { pickSchemas } from "@/schemas/picking";
 import { packSchemas } from "@/schemas/packing";
@@ -33,13 +38,13 @@ import { invoiceTotals } from "@/lib/domain/invoice";
 import { fmt } from "@/lib/format";
 
 /* ============================================================
-   READING THE FIVE DOCUMENTS AFTER THE ORDER
+   READING THE SELL-SIDE DOCUMENTS
 
-   Sales order, picking, packing, delivery and invoice all used
-   to open as a tabbed profile: KPI tiles, then cards, then a
-   menu to act from. Somebody standing in front of one of them
-   was reading a summary of the document rather than the
-   document, which is the same complaint the purchase request
+   Sales request, sales order, picking, packing, delivery and
+   invoice all used to open as a tabbed profile: KPI tiles, then
+   cards, then a menu to act from. Somebody standing in front of
+   one of them was reading a summary of the document rather than
+   the document, which is the same complaint the purchase request
    and the quotation answered first.
 
    What these tests hold is the shape, not the wording: the sheet
@@ -54,6 +59,7 @@ const SNAP = {
   pack: JSON.stringify(RAW_PACK),
   delivery: JSON.stringify(RAW_DO),
   inv: JSON.stringify(RAW_INV),
+  sr: JSON.stringify(RAW_SR),
 };
 
 const ADMIN = "EMP001"; // Super Admin — may press everything
@@ -65,6 +71,7 @@ beforeEach(() => {
     live.push(...(JSON.parse(snap) as T[]));
   };
   restore(SALES_ORDERS, SNAP.so);
+  restore(SALES_REQUESTS, SNAP.sr);
   restore(PICKING_TASKS, SNAP.pick);
   restore(PACKING_TASKS, SNAP.pack);
   restore(DELIVERY_ORDERS, SNAP.delivery);
@@ -97,6 +104,7 @@ function withStatus<T extends { code: string; status: string }>(
   return rec;
 }
 
+const salesRequest = (status: string) => withStatus(SALES_REQUESTS as SrRow[], status, "SR");
 const so = (status: string) => withStatus(SALES_ORDERS as SoRow[], status, "SO");
 const pick = (status: string) => withStatus(PICKING_TASKS as PickRow[], status, "PK");
 const pack = (status: string) => withStatus(PACKING_TASKS as PackRow[], status, "PACK");
@@ -104,11 +112,18 @@ const delivery = (status: string) => withStatus(DELIVERY_ORDERS as DoRow[], stat
 const invoice = (status: string) => withStatus(SALES_INVOICES as InvRow[], status, "INV");
 
 /* ============================================================
-   1. ALL FIVE ARE DOCUMENTS NOW
+   1. EVERY ONE OF THEM IS A DOCUMENT NOW
    ============================================================ */
 
-describe("เอกสารขาออกทั้งห้าใบ เปิดดูเป็นใบเอกสาร", () => {
+describe("เอกสารขาออกทุกใบ เปิดดูเป็นใบเอกสาร", () => {
   const cases = [
+    {
+      name: "คำขอขาย",
+      testId: "sales-request-document",
+      title: /^SALES REQUEST/,
+      bar: "sr-decision-bar",
+      render: () => render(<SalesRequestDocument record={salesRequest("Approved")} />),
+    },
     {
       name: "ใบสั่งขาย",
       testId: "sales-order-document",
@@ -168,8 +183,8 @@ describe("เอกสารขาออกทั้งห้าใบ เปิ
     });
   }
 
-  it("route ของทั้งห้าเลือก document ก่อน detail", () => {
-    for (const s of [soSchemas, pickSchemas, packSchemas, doSchemas, invSchemas]) {
+  it("route ของทุกใบเลือก document ก่อน detail", () => {
+    for (const s of [srSchemas, soSchemas, pickSchemas, packSchemas, doSchemas, invSchemas]) {
       expect(s.document).toBeTruthy();
       /* The tabbed schema stays as the fallback rather than being deleted —
          it is still what the Quick View drawer renders. */
@@ -181,6 +196,48 @@ describe("เอกสารขาออกทั้งห้าใบ เปิ
 /* ============================================================
    2. WHAT EACH SHEET SAYS THAT THE OTHERS DO NOT
    ============================================================ */
+
+describe("คำขอขาย", () => {
+  it("โชว์ของที่มีในคลังข้างจำนวนที่ขอ พร้อมบอกว่ายังไม่จองสต๊อก", () => {
+    render(<SalesRequestDocument record={salesRequest("Submitted")} />);
+
+    /* The approver is deciding whether the company can actually do this, and
+       half that question is whether the goods are on the shelf. */
+    expect(screen.getByText("พร้อมขาย")).toBeInTheDocument();
+    const paper = screen.getByTestId("sales-request-document");
+    expect(within(paper).getByText("คำขอขายไม่จองสต๊อก")).toBeInTheDocument();
+  });
+
+  it("บอกสถานะเครดิตลูกค้าบนกระดาษ", () => {
+    /* Internal paper, so the credit position may sit on it — it never could
+       on a quotation, which the customer holds. */
+    render(<SalesRequestDocument record={salesRequest("Submitted")} />);
+    expect(screen.getByText("Credit Position")).toBeInTheDocument();
+  });
+
+  it("ใบที่รออนุมัติ ผู้อนุมัติเห็น Approve และ Reject", () => {
+    setCurrentUser(ADMIN);
+    render(<SalesRequestDocument record={salesRequest("Submitted")} />);
+
+    const bar = screen.getByTestId("sr-decision-bar");
+    expect(within(bar).getByRole("button", { name: /^Approve/ })).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: /^Reject/ })).toBeInTheDocument();
+  });
+
+  it("ใบที่อนุมัติแล้วและยังไม่แปลง มีปุ่มเปิดใบสั่งขาย", () => {
+    setCurrentUser(ADMIN);
+    const rec = salesRequest("Approved");
+    rec.soRef = "";
+    decorateOutbound();
+
+    render(<SalesRequestDocument record={rec} />);
+    expect(
+      within(screen.getByTestId("sr-decision-bar")).getByRole("button", {
+        name: /เปิดใบสั่งขาย/,
+      }),
+    ).toBeInTheDocument();
+  });
+});
 
 describe("ใบสั่งขาย", () => {
   it("ชื่อเอกสารมาจาก print config ใบเดียวกับที่พิมพ์ออกมา", () => {
