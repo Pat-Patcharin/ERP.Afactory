@@ -23,7 +23,6 @@ import {
 } from "@/lib/domain/price-master";
 import { PRICING_CONFIG, grossProfitRate } from "@/lib/domain/pricing-master";
 import { NAV } from "@/lib/nav";
-import { pageHref } from "@/lib/routes";
 import { REGISTRY, getSchemas } from "@/schemas/registry";
 import { priceListMasterSchemas } from "@/schemas/price-list-master";
 import type { ActionCtx } from "@/lib/types";
@@ -401,20 +400,32 @@ describe("Price List Master — navigation", () => {
     expect(getSchemas("price-list-master")!.form).toBeUndefined();
   });
 
-  it("sits in Master Data beside the policy list", () => {
-    const group = NAV.find((g) => g.label === "Master Data")!;
-    const labels = group.items.map((i) => i.label);
-    expect(labels).toContain("Price List Master");
-    expect(pageHref("Price List Master")).toBe("/m/price-list-master");
+  it("ซ่อนจากเมนู Master Data แต่โมดูลยังอยู่ครบ", () => {
+    /* The four pricing masters are hidden from the sidebar until they are
+       wanted — see lib/nav.ts. The modules are untouched: the routes resolve
+       and the schemas are registered. Restoring the four lines is what puts
+       them back on the menu. */
+    const labels = NAV.flatMap((g) => g.items).map((i) => i.label);
+    for (const l of [
+      "Price Policy",
+      "Price List Master",
+      "Product Pricing",
+      "Unit of Measure",
+    ]) {
+      expect(labels, l).not.toContain(l);
+    }
+    /* Still registered, so the route still resolves for anyone who has the
+       URL — hidden is not deleted. */
+    expect(getSchemas("price-list-master")).toBeTruthy();
+    expect(getSchemas("price-list")).toBeTruthy();
   });
 
-  it("renames the older module to what it actually holds", () => {
+  it("ยังแยกกันสองโมดูลตามเดิม ชื่อไม่ทับกัน", () => {
     /* One is pricing policy and priority, the other is the price per SKU.
-       Two things called "Price List" was the confusion worth removing. */
-    const group = NAV.find((g) => g.label === "Master Data")!;
-    expect(group.items.map((i) => i.label)).toContain("Price Policy");
-    expect(pageHref("Price Policy")).toBe("/m/price-list");
+       Two things called "Price List" was the confusion worth removing, and
+       hiding the menu entries does not undo the rename. */
     expect(getSchemas("price-list")!.list.title).toBe("Price Policy");
+    expect(getSchemas("price-list-master")!.list.title).not.toBe("Price Policy");
   });
 
   it("keeps the two modules separate", () => {

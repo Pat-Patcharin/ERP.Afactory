@@ -25,8 +25,7 @@ export const NAV: NavGroup[] = [
     label: "Master Data",
     /* Ordered by how often the business opens them, not alphabetically:
        partners first, then the item master, then where stock lives, then
-       who sells it and at what price. Product Pricing and Unit of Measure
-       are supporting masters and trail the five.
+       who sells it.
 
        Category has no screen of its own — a category is picked while
        creating a product, and a master list for a plain option set was
@@ -36,6 +35,17 @@ export const NAV: NavGroup[] = [
       { label: "Product", href: "/m/product", icon: "product" },
       { label: "Warehouse", href: "/m/warehouse", icon: "warehouse" },
       { label: "Sales Rep", href: "/m/sales-rep", icon: "salesRep" },
+      /* The four pricing masters are HIDDEN, not removed.
+
+         Price Policy, Price List Master, Product Pricing and Unit of Measure
+         are parked until they are wanted. Everything behind them still runs:
+         the price master still resolves what a customer pays, the tier rules
+         still decide it, and every document that quotes a price still reads
+         the same source. What is gone is the way in from the sidebar.
+
+         Same treatment as the Inventory group below — put these four lines
+         back and nothing else has to change.
+
       { label: "Price Policy", href: "/m/price-list", icon: "priceList" },
       { label: "Price List Master", href: "/m/price-list-master", icon: "pricing" },
       { label: "Product Pricing", href: "/pricing", icon: "pricing" },
@@ -45,6 +55,7 @@ export const NAV: NavGroup[] = [
         icon: "uom",
         soon: true,
       },
+      */
     ],
   },
   {
