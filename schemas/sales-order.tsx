@@ -24,6 +24,7 @@ import {
 } from "@/lib/workflows-outbound";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
+import { SalesOrderDocument } from "@/components/sales-order/SalesOrderDocument";
 import { SO_FORM } from "./forms/sales-order";
 
 /* ============================================================
@@ -637,4 +638,8 @@ export const soSchemas: EntitySchemas<SoRow> = {
   list: SO_LIST,
   detail: SO_DETAIL,
   form: SO_FORM,
+  /* Opened, an order is read as the order. The tabbed profile above stays as
+     what the Quick View drawer renders — a glance from the list is a
+     different job from standing in front of the paper. */
+  document: ({ record }) => <SalesOrderDocument record={record} />,
 };

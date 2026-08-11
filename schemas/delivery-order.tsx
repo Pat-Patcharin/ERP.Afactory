@@ -15,6 +15,7 @@ import {
 } from "@/lib/workflows-outbound";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
+import { DeliveryOrderDocument } from "@/components/delivery-order/DeliveryOrderDocument";
 import { DO_FORM } from "./forms/delivery-order";
 
 /* ============================================================
@@ -483,4 +484,5 @@ export const doSchemas: EntitySchemas<DoRow> = {
   list: DO_LIST,
   detail: DO_DETAIL,
   form: DO_FORM,
+  document: ({ record }) => <DeliveryOrderDocument record={record} />,
 };

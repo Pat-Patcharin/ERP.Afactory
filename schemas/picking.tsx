@@ -20,6 +20,7 @@ import {
 } from "@/lib/workflows-outbound";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
+import { PickingDocument } from "@/components/picking/PickingDocument";
 import { PICK_FORM } from "./forms/picking";
 
 /* ============================================================
@@ -510,4 +511,7 @@ export const pickSchemas: EntitySchemas<PickRow> = {
   list: PICK_LIST,
   detail: PICK_DETAIL,
   form: PICK_FORM,
+  /* The picker walks the floor with this sheet, so opening it gives them the
+     sheet rather than a summary of it. */
+  document: ({ record }) => <PickingDocument record={record} />,
 };

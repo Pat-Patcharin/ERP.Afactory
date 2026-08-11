@@ -12,6 +12,7 @@ import {
 } from "@/lib/workflows-outbound";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
+import { PackingDocument } from "@/components/packing/PackingDocument";
 import { PACK_FORM } from "./forms/packing";
 
 /* ============================================================
@@ -414,4 +415,5 @@ export const packSchemas: EntitySchemas<PackRow> = {
   list: PACK_LIST,
   detail: PACK_DETAIL,
   form: PACK_FORM,
+  document: ({ record }) => <PackingDocument record={record} />,
 };

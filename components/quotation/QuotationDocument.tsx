@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import type { Quotation } from "@/data/quotations";
 import { getCustomer, type QtRow } from "@/lib/domain/outbound";
 import { can } from "@/lib/domain/admin";
@@ -17,10 +16,27 @@ import {
 import { lineNet, lineBase, lineDisc } from "@/lib/domain/lines";
 import { DASH, fmt, money, money0 } from "@/lib/format";
 import { useActionCtx } from "@/components/engine/useActionCtx";
-import { DocHeader, DocLabel, SignatureRow } from "@/components/document/parts";
+import { DocHeader, SignatureRow } from "@/components/document/parts";
 import { CommentThread } from "@/components/document/CommentThread";
-import { Badge, Button } from "@/components/ui";
-import { Icon } from "@/lib/icons";
+import {
+  DecisionBar,
+  DocPage,
+  DocPanel,
+  DocPanelRow,
+  DocPanelText,
+  DocPaper,
+  DocPrintButton,
+  DocSection,
+  HistoryStrip,
+  PaperTable,
+  docActs,
+  historyRows,
+  idleNote,
+  lineNoColumn,
+  productCell,
+  type PaperColumn,
+} from "@/components/document/DocumentView";
+import { Badge } from "@/components/ui";
 import { QT_TONE, tone } from "@/lib/badges";
 
 /* ============================================================
@@ -33,6 +49,10 @@ import { QT_TONE, tone } from "@/lib/badges";
         back to change it, and only the ones this chair may make
      2. what has happened to it
      3. nothing else
+
+   The furniture — the paper, the panels, the item table, the
+   decision bar, the history — is shared with the other six
+   documents read this way; see components/document/DocumentView.
 
    THE SIGNATURE IS A MOCK, AND SAYS SO.
 
@@ -58,8 +78,37 @@ const QT_SIGNATURES = (qt: QtRow) => [
   { en: "Customer", th: "ลูกค้า" },
 ];
 
+type Line = QtRow["items"][number];
+
+const ITEM_COLUMNS: PaperColumn<Line>[] = [
+  lineNoColumn(),
+  { key: "product", label: "Product", cell: (l) => productCell(l.code, l.name) },
+  {
+    key: "qty",
+    label: "Qty",
+    align: "right",
+    width: "w-[70px]",
+    cell: (l) => <span className="font-medium">{fmt(l.qty)}</span>,
+  },
+  { key: "unit", label: "Unit", width: "w-[70px]", cell: (l) => <span className="text-ink-2">{l.unit}</span> },
+  { key: "price", label: "Unit Price", align: "right", width: "w-[100px]", cell: (l) => money(l.price) },
+  {
+    key: "disc",
+    label: "Disc %",
+    align: "right",
+    width: "w-[80px]",
+    cell: (l) => <span className="text-ink-2">{l.disc ? `${l.disc}%` : DASH}</span>,
+  },
+  {
+    key: "amount",
+    label: "Amount",
+    align: "right",
+    width: "w-[110px]",
+    cell: (l) => <span className="font-medium">{money(lineNet(l))}</span>,
+  },
+];
+
 export function QuotationDocument({ record }: { record: Quotation }) {
-  const ctx = useActionCtx();
   const qt = record as QtRow;
   const bp = getCustomer(qt.customer);
 
@@ -69,20 +118,8 @@ export function QuotationDocument({ record }: { record: Quotation }) {
   const net = lines.reduce((s, l) => s + lineNet(l), 0);
 
   return (
-    <div data-doc-family="outbound" className="px-6 py-5">
-      <button
-        type="button"
-        onClick={() => ctx.goto("/m/quotation")}
-        className="mb-4 inline-flex items-center gap-1.5 text-body text-ink-2 hover:text-ink-1"
-      >
-        <Icon name="arrowLeft" size={16} />
-        Back to Quotation List
-      </button>
-
-      <article
-        data-testid="quotation-document"
-        className="mx-auto max-w-[1100px] rounded-card border border-line bg-card p-8 shadow-sm"
-      >
+    <DocPage backTo="/m/quotation" backLabel="Back to Quotation List">
+      <DocPaper testId="quotation-document">
         <DocHeader
           title="QUOTATION"
           titleTh="ใบเสนอราคา"
@@ -92,10 +129,10 @@ export function QuotationDocument({ record }: { record: Quotation }) {
         />
 
         <div className="mt-5 grid grid-cols-3 gap-4 max-[1000px]:grid-cols-1">
-          <Panel title="Bill To" titleTh="ลูกค้า">
-            <Row label="ลูกค้า" value={qt.customer} />
-            <Row label="เลขผู้เสียภาษี" value={bp?.tax?.taxId} />
-            <Row label="รหัสลูกค้า" value={qt.customerCode} />
+          <DocPanel title="Bill To" titleTh="ลูกค้า">
+            <DocPanelRow label="ลูกค้า" value={qt.customer} />
+            <DocPanelRow label="เลขผู้เสียภาษี" value={bp?.tax?.taxId} />
+            <DocPanelRow label="รหัสลูกค้า" value={qt.customerCode} />
             {/* A customer the rep raised is quotable and not yet orderable.
                 Saying so on the sheet is what stops somebody promising
                 delivery against a partner nobody has checked. */}
@@ -104,21 +141,21 @@ export function QuotationDocument({ record }: { record: Quotation }) {
                 ลูกค้ารายนี้ยังรอฝ่ายขายยืนยัน — เสนอราคาได้ แต่ยังเปิดใบสั่งขายไม่ได้
               </p>
             )}
-          </Panel>
-          <Panel title="Terms" titleTh="เงื่อนไข">
-            <Row label="ผู้แทนขาย" value={qt.salesRep} />
-            <Row label="ยืนราคาถึง" value={qt.validUntil} />
-            <Row label="เงื่อนไขชำระ" value={qt.payTerm} />
-            <Row label="ประเภทบิล" value={qt.billType} />
-          </Panel>
-          <Panel title="Document" titleTh="เอกสาร">
-            <Row label="เลขที่" value={qt.code} />
-            <Row label="วันที่" value={qt.quoteDate} />
-            <Row
+          </DocPanel>
+          <DocPanel title="Terms" titleTh="เงื่อนไข">
+            <DocPanelRow label="ผู้แทนขาย" value={qt.salesRep} />
+            <DocPanelRow label="ยืนราคาถึง" value={qt.validUntil} />
+            <DocPanelRow label="เงื่อนไขชำระ" value={qt.payTerm} />
+            <DocPanelRow label="ประเภทบิล" value={qt.billType} />
+          </DocPanel>
+          <DocPanel title="Document" titleTh="เอกสาร">
+            <DocPanelRow label="เลขที่" value={qt.code} />
+            <DocPanelRow label="วันที่" value={qt.quoteDate} />
+            <DocPanelRow
               label="สถานะ"
               value={<Badge tone={tone(QT_TONE, qt.status)}>{qt.status}</Badge>}
             />
-            <Row
+            <DocPanelRow
               label="การอนุมัติ"
               value={
                 <Badge tone={qt.approvalStatus === "Approved" ? "success" : "warning"}>
@@ -126,65 +163,32 @@ export function QuotationDocument({ record }: { record: Quotation }) {
                 </Badge>
               }
             />
-          </Panel>
+          </DocPanel>
         </div>
 
-        <section className="mt-6">
-          <h2 className="mb-2 text-[13px] font-bold uppercase tracking-[0.06em]">Items</h2>
-          <div className="overflow-x-auto rounded-card border border-line">
-            <table className="w-full min-w-[820px] border-collapse text-[13px]">
-              <thead>
-                <tr className="border-b border-line bg-surface text-cap text-ink-2">
-                  <th className="w-[40px] px-2 py-2 text-right">#</th>
-                  <th className="px-2 py-2 text-left">Product</th>
-                  <th className="w-[70px] px-2 py-2 text-right">Qty</th>
-                  <th className="w-[70px] px-2 py-2 text-left">Unit</th>
-                  <th className="w-[100px] px-2 py-2 text-right">Unit Price</th>
-                  <th className="w-[80px] px-2 py-2 text-right">Disc %</th>
-                  <th className="w-[110px] px-2 py-2 text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((l, i) => (
-                  <tr key={`${l.code}-${i}`} className="border-b border-line last:border-b-0">
-                    <td className="tnum px-2 py-2 text-right text-ink-3">{i + 1}</td>
-                    <td className="px-2 py-2">
-                      <span className="block font-medium">{l.code}</span>
-                      <span className="block text-cap text-ink-3">{l.name}</span>
-                    </td>
-                    <td className="tnum px-2 py-2 text-right font-medium">{fmt(l.qty)}</td>
-                    <td className="px-2 py-2 text-ink-2">{l.unit}</td>
-                    <td className="tnum px-2 py-2 text-right">{money(l.price)}</td>
-                    <td className="tnum px-2 py-2 text-right text-ink-2">
-                      {l.disc ? `${l.disc}%` : DASH}
-                    </td>
-                    <td className="tnum px-2 py-2 text-right font-medium">{money(lineNet(l))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <DocSection title="Items">
+          <PaperTable cols={ITEM_COLUMNS} rows={lines} />
+        </DocSection>
 
         <div className="mt-5 grid grid-cols-[1fr_minmax(280px,360px)] gap-5 max-[1000px]:grid-cols-1">
-          <Panel title="Remarks" titleTh="หมายเหตุ">
-            <p className="whitespace-pre-wrap text-[13px]">{qt.note || DASH}</p>
-          </Panel>
-          <Panel title="Summary" titleTh="สรุป">
-            <Row label="รวมเป็นเงิน" value={`${money0(subtotal)} THB`} />
-            <Row label="ส่วนลด" value={`${money0(discount)} THB`} />
-            <Row label="ยอดสุทธิ" value={`${money0(net)} THB`} />
-            <Row label="มูลค่าเอกสาร" value={`${money0(qt.amount)} THB`} />
-          </Panel>
+          <DocPanel title="Remarks" titleTh="หมายเหตุ">
+            <DocPanelText value={qt.note} />
+          </DocPanel>
+          <DocPanel title="Summary" titleTh="สรุป">
+            <DocPanelRow label="รวมเป็นเงิน" value={`${money0(subtotal)} THB`} />
+            <DocPanelRow label="ส่วนลด" value={`${money0(discount)} THB`} />
+            <DocPanelRow label="ยอดสุทธิ" value={`${money0(net)} THB`} />
+            <DocPanelRow label="มูลค่าเอกสาร" value={`${money0(qt.amount)} THB`} />
+          </DocPanel>
         </div>
 
         <div className="mt-6">
           <SignatureRow blocks={QT_SIGNATURES(qt)} />
         </div>
-      </article>
+      </DocPaper>
 
-      <DecisionBar qt={qt} />
-      <HistoryStrip qt={qt} />
+      <QtDecisionBar qt={qt} />
+      <HistoryStrip rows={historyRows(qt.history)} />
 
       {/* A question about a price belongs beside the price, asked of the
           person who typed it — not on the phone, where the answer ends up
@@ -194,35 +198,9 @@ export function QuotationDocument({ record }: { record: Quotation }) {
         people={[qt.createdBy, qt.salesRep, qt.approvedBy, ...(qt.history ?? []).map((h) => h.u)]}
         departments={["Sales"]}
       />
-    </div>
+    </DocPage>
   );
 }
-
-/* ---------- Paper furniture ---------- */
-
-function Panel({
-  title,
-  titleTh,
-  children,
-}: {
-  title: string;
-  titleTh: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-card border border-line p-4">
-      <DocLabel en={title} th={titleTh} />
-      <div className="mt-2 flex flex-col gap-1.5">{children}</div>
-    </div>
-  );
-}
-
-const Row = ({ label, value }: { label: string; value?: React.ReactNode }) => (
-  <div className="flex items-center justify-between gap-3 text-[13px]">
-    <span className="text-ink-2">{label}</span>
-    <span className="text-right font-medium">{value || DASH}</span>
-  </div>
-);
 
 /* ---------- The decision ---------- */
 
@@ -233,12 +211,12 @@ const Row = ({ label, value }: { label: string; value?: React.ReactNode }) => (
  * Every act here is the same workflow function the list menu calls, so the
  * guard behind it holds whichever surface the click came from.
  */
-function DecisionBar({ qt }: { qt: QtRow }) {
+function QtDecisionBar({ qt }: { qt: QtRow }) {
   const ctx = useActionCtx();
   const mayApprove = can("quotation", "approve");
   const mayEdit = can("quotation", "edit");
 
-  const acts = [
+  const acts = docActs([
     qt.status === "Draft" &&
       mayEdit && {
         key: "submit",
@@ -271,7 +249,6 @@ function DecisionBar({ qt }: { qt: QtRow }) {
         key: "edit-here",
         label: "แก้ไขเอง",
         icon: "edit" as const,
-        variant: "default" as const,
         run: () => ctx.goto(`/m/quotation/${encodeURIComponent(qt.code)}/edit`),
       },
     qt.status === "Pending Approval" &&
@@ -279,7 +256,6 @@ function DecisionBar({ qt }: { qt: QtRow }) {
         key: "revise",
         label: "ส่งกลับให้ผู้แทนขายแก้",
         icon: "refresh" as const,
-        variant: "default" as const,
         run: () => qtRequestRevision(qt, ctx),
       },
     qt.status === "Pending Approval" &&
@@ -298,7 +274,6 @@ function DecisionBar({ qt }: { qt: QtRow }) {
         key: "edit",
         label: "แก้ไข (ต้องขออนุมัติใหม่)",
         icon: "edit" as const,
-        variant: "default" as const,
         run: () => qtRequestEdit(qt, ctx),
       },
     qt.status === "Approved" &&
@@ -306,7 +281,6 @@ function DecisionBar({ qt }: { qt: QtRow }) {
         key: "send",
         label: "ส่งให้ลูกค้า",
         icon: "send" as const,
-        variant: "default" as const,
         run: () => qtSend(qt, ctx),
       },
     (qt.status === "Approved" || qt.status === "Sent") &&
@@ -314,7 +288,6 @@ function DecisionBar({ qt }: { qt: QtRow }) {
         key: "accept",
         label: "ลูกค้ายืนยันสั่งซื้อ",
         icon: "checkCircle" as const,
-        variant: "default" as const,
         run: () => qtAccept(qt, ctx),
       },
     qt.status === "Accepted" && {
@@ -324,96 +297,27 @@ function DecisionBar({ qt }: { qt: QtRow }) {
       variant: "primary" as const,
       run: () => qtConvert(qt, ctx),
     },
-  ].filter(Boolean) as {
-    key: string;
-    label: string;
-    icon: "upload" | "checkCircle" | "refresh" | "close" | "edit" | "send" | "salesRequest";
-    variant: "primary" | "danger" | "default";
-    run: () => void;
-  }[];
+  ]);
 
   return (
-    <section
-      data-testid="qt-decision-bar"
-      className="mx-auto mt-4 max-w-[1100px] rounded-card border border-line bg-card p-4"
-    >
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <DocLabel en="Decision" th="การตัดสินใจ" />
-          <p className="mt-1 text-cap text-ink-2">
-            {qt.approvalStatus === "Approved"
-              ? `อนุมัติโดย ${qt.approvedBy || DASH} เมื่อ ${qt.approvedAt || DASH} — ดาวน์โหลดส่งลูกค้าได้`
-              : acts.length
-                ? `สถานะ ${qt.status} — ${qt.approvalStatus || "ยังไม่ได้ส่งขออนุมัติ"}`
-                : `ไม่มีสิ่งที่คุณต้องทำกับเอกสารนี้ตอนนี้ — สถานะ ${qt.status}`}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {/* Downloading is not a decision, so it sits apart from them — and
-              it is offered only once the sheet has been signed. A PDF of an
-              unapproved quotation is a price nobody agreed to, in the
-              customer's inbox. */}
-          {qt.approvalStatus === "Approved" && (
-            <Button
-              onClick={() => ctx.goto(`/print/quotation/${encodeURIComponent(qt.code)}`)}
-            >
-              <Icon name="printer" size={16} strokeWidth={2.2} />
-              ดาวน์โหลด PDF
-            </Button>
-          )}
-          {acts.map((a) => (
-            <Button
-              key={a.key}
-              variant={a.variant === "default" ? undefined : a.variant}
-              onClick={a.run}
-            >
-              <Icon name={a.icon} size={16} strokeWidth={2.2} />
-              {a.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ---------- History ---------- */
-
-function HistoryStrip({ qt }: { qt: QtRow }) {
-  const rows = useMemo(
-    () =>
-      (qt.history ?? []).map((h) => ({
-        title: h.t,
-        detail: h.d,
-        by: h.u,
-        when: h.when,
-        kind: h.kind,
-      })),
-    [qt.history],
-  );
-
-  return (
-    <section className="mx-auto mt-4 max-w-[1100px] rounded-card border border-line bg-card p-4">
-      <DocLabel en="History" th="ประวัติเอกสาร" />
-      <ol className="mt-3 flex flex-col gap-2">
-        {rows.length === 0 && <li className="text-cap text-ink-3">ยังไม่มีประวัติ</li>}
-        {rows.map((r, i) => (
-          <li key={i} className="flex items-start gap-3 text-[13px]">
-            <span
-              className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${
-                r.kind === "warn" ? "bg-warning" : r.kind === "danger" ? "bg-danger" : "bg-success"
-              }`}
-            />
-            <span className="min-w-0 flex-1">
-              <span className="font-medium">{r.title}</span>
-              {r.detail && <span className="text-ink-2"> — {r.detail}</span>}
-            </span>
-            <span className="whitespace-nowrap text-cap text-ink-3">
-              {r.by || DASH} · {r.when || DASH}
-            </span>
-          </li>
-        ))}
-      </ol>
-    </section>
+    <DecisionBar
+      testId="qt-decision-bar"
+      note={
+        qt.approvalStatus === "Approved"
+          ? `อนุมัติโดย ${qt.approvedBy || DASH} เมื่อ ${qt.approvedAt || DASH} — ดาวน์โหลดส่งลูกค้าได้`
+          : acts.length
+            ? `สถานะ ${qt.status} — ${qt.approvalStatus || "ยังไม่ได้ส่งขออนุมัติ"}`
+            : idleNote(qt.status)
+      }
+      acts={acts}
+      /* Downloading is not a decision, so it sits apart from them — and it is
+         offered only once the sheet has been signed. A PDF of an unapproved
+         quotation is a price nobody agreed to, in the customer's inbox. */
+      before={
+        qt.approvalStatus === "Approved" && (
+          <DocPrintButton entity="quotation" record={qt} label="ดาวน์โหลด PDF" />
+        )
+      }
+    />
   );
 }

@@ -20,10 +20,26 @@ import {
 } from "@/lib/workflows";
 import { DASH, fmt, money0 } from "@/lib/format";
 import { useActionCtx } from "@/components/engine/useActionCtx";
-import { DocHeader, DocLabel, SignatureRow } from "@/components/document/parts";
+import { DocHeader, SignatureRow } from "@/components/document/parts";
 import { CommentThread } from "@/components/document/CommentThread";
-import { Badge, Button } from "@/components/ui";
-import { Icon } from "@/lib/icons";
+import {
+  DecisionBar,
+  DocPage,
+  DocPanel,
+  DocPanelRow,
+  DocPanelText,
+  DocPaper,
+  DocSection,
+  HistoryStrip,
+  PaperTable,
+  docActs,
+  idleNote,
+  lineNoColumn,
+  productCell,
+  type HistoryRow,
+  type PaperColumn,
+} from "@/components/document/DocumentView";
+import { Badge } from "@/components/ui";
 import type { BadgeTone } from "@/lib/types";
 import { PR_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
 
@@ -44,18 +60,16 @@ import { PR_TONE, PRIORITY_TONE, tone } from "@/lib/badges";
      3. the conversation, where a question about line 2 can be
         asked of the person who typed line 2
 
+   The paper, the panels, the table and the strips underneath are
+   the ones every document read this way uses — see
+   components/document/DocumentView. What this file decides is
+   only what a purchase request says.
+
    MOCK: the comment thread is component state. It is here to be
    looked at and argued with before anything is built behind it —
    a reload empties it, deliberately, so nobody mistakes it for
    something that is already storing what they wrote.
    ============================================================ */
-
-const STOCK_COLS = [
-  { key: "onHand", label: "On Hand", th: "คงเหลือ" },
-  { key: "onOrder", label: "On Order", th: "กำลังเข้า" },
-  { key: "backOrder", label: "Back Order", th: "ค้างส่ง" },
-  { key: "available", label: "Available", th: "พร้อมขาย" },
-] as const;
 
 const PR_SIGNATURES = [
   { en: "Requested By", th: "ผู้ขอซื้อ" },
@@ -64,11 +78,97 @@ const PR_SIGNATURES = [
   { en: "Approved By", th: "ผู้อนุมัติ" },
 ];
 
+/** A line with the four stock figures the approval turns on. */
+interface StockLine {
+  code: string;
+  name: string;
+  unit: string;
+  qty: number;
+  price: number;
+  total: number;
+  onHand: number | null;
+  onOrder: number | null;
+  backOrder: number | null;
+  available: number | null;
+  stockStatus: string | null;
+  stockTone: BadgeTone;
+}
+
+/** Nothing, or a figure — an unknown product is not "zero in stock". */
+const stockCell = (v: number | null, className = "") =>
+  v === null ? DASH : <span className={className}>{fmt(v)}</span>;
+
+const ITEM_COLUMNS: PaperColumn<StockLine>[] = [
+  lineNoColumn(),
+  { key: "product", label: "Product", cell: (l) => productCell(l.code, l.name) },
+  {
+    key: "qty",
+    label: "Qty",
+    align: "right",
+    width: "w-[70px]",
+    cell: (l) => <span className="font-medium">{fmt(l.qty)}</span>,
+  },
+  { key: "unit", label: "Unit", width: "w-[60px]", cell: (l) => <span className="text-ink-2">{l.unit}</span> },
+  { key: "price", label: "Unit Price", align: "right", width: "w-[90px]", cell: (l) => money0(l.price) },
+  {
+    key: "total",
+    label: "Line Total",
+    align: "right",
+    width: "w-[100px]",
+    cell: (l) => <span className="font-medium">{money0(l.total)}</span>,
+  },
+  /* The four figures that answer "do we actually need this?" — asked while
+     the approval is being decided, which is the only time the answer
+     changes anything. */
+  {
+    key: "onHand",
+    label: "On Hand",
+    th: "คงเหลือ",
+    align: "right",
+    width: "w-[84px]",
+    cell: (l) => stockCell(l.onHand, "text-ink-2"),
+  },
+  {
+    key: "onOrder",
+    label: "On Order",
+    th: "กำลังเข้า",
+    align: "right",
+    width: "w-[84px]",
+    cell: (l) => stockCell(l.onOrder, l.onOrder ? "font-semibold text-info-text" : ""),
+  },
+  {
+    key: "backOrder",
+    label: "Back Order",
+    th: "ค้างส่ง",
+    align: "right",
+    width: "w-[84px]",
+    cell: (l) => stockCell(l.backOrder, l.backOrder ? "font-semibold text-warning-text" : ""),
+  },
+  {
+    key: "available",
+    label: "Available",
+    th: "พร้อมขาย",
+    align: "right",
+    width: "w-[84px]",
+    cell: (l) => stockCell(l.available, "font-medium"),
+  },
+  {
+    key: "stock",
+    label: "Stock",
+    width: "w-[92px]",
+    cell: (l) =>
+      l.stockStatus ? (
+        <Badge tone={l.stockTone}>{l.stockStatus}</Badge>
+      ) : (
+        <span className="text-ink-3">{DASH}</span>
+      ),
+  },
+];
+
 export function PurchaseRequestDocument({ record }: { record: PurchaseRequest }) {
-  const ctx = useActionCtx();
   const pr = record as PrRow;
 
-  const lines = useMemo(
+  const lines = useMemo<StockLine[]>(
     () =>
       (pr.items ?? []).map((it) => {
         const st = productStock(it.code);
@@ -89,21 +189,8 @@ export function PurchaseRequestDocument({ record }: { record: PurchaseRequest })
   const subtotal = lines.reduce((s, l) => s + l.total, 0);
 
   return (
-    <div data-doc-family="inbound" className="px-6 py-5">
-      <button
-        type="button"
-        onClick={() => ctx.goto("/m/purchase-request")}
-        className="mb-4 inline-flex items-center gap-1.5 text-body text-ink-2 hover:text-ink-1"
-      >
-        <Icon name="arrowLeft" size={16} />
-        Back to Purchase Request List
-      </button>
-
-      {/* ---------- The paper ---------- */}
-      <article
-        data-testid="purchase-request-document"
-        className="mx-auto max-w-[1100px] rounded-card border border-line bg-card p-8 shadow-sm"
-      >
+    <DocPage family="inbound" backTo="/m/purchase-request" backLabel="Back to Purchase Request List">
+      <DocPaper testId="purchase-request-document">
         <DocHeader
           title="PURCHASE REQUEST"
           titleTh="ใบขอซื้อ"
@@ -113,166 +200,98 @@ export function PurchaseRequestDocument({ record }: { record: PurchaseRequest })
         />
 
         <div className="mt-5 grid grid-cols-3 gap-4 max-[1000px]:grid-cols-1">
-          <Panel title="Requested By" titleTh="ผู้ขอซื้อ">
-            <Row label="แผนก" value={pr.dept} />
-            <Row label="ผู้ขอซื้อ" value={pr.requester} />
-            <Row label="ความเร่งด่วน" value={pr.priority} />
-            <Row label="วันที่ขอ" value={pr.date} />
-          </Panel>
-          <Panel title="Deliver To" titleTh="ส่งของที่">
-            <Row label="คลังปลายทาง" value={pr.warehouse} />
-            <Row label="ผู้ขาย" value={pr.supplier} />
-            <Row label="ต้องการรับภายใน" value={pr.needBy} />
-          </Panel>
-          <Panel title="Document" titleTh="เอกสาร">
-            <Row label="เลขที่" value={pr.code} />
-            <Row
+          <DocPanel title="Requested By" titleTh="ผู้ขอซื้อ">
+            <DocPanelRow label="แผนก" value={pr.dept} />
+            <DocPanelRow label="ผู้ขอซื้อ" value={pr.requester} />
+            <DocPanelRow label="ความเร่งด่วน" value={pr.priority} />
+            <DocPanelRow label="วันที่ขอ" value={pr.date} />
+          </DocPanel>
+          <DocPanel title="Deliver To" titleTh="ส่งของที่">
+            <DocPanelRow label="คลังปลายทาง" value={pr.warehouse} />
+            <DocPanelRow label="ผู้ขาย" value={pr.supplier} />
+            <DocPanelRow label="ต้องการรับภายใน" value={pr.needBy} />
+          </DocPanel>
+          <DocPanel title="Document" titleTh="เอกสาร">
+            <DocPanelRow label="เลขที่" value={pr.code} />
+            <DocPanelRow
               label="สถานะ"
               value={<Badge tone={tone(PR_TONE, pr.status)}>{pr.status}</Badge>}
             />
-            <Row
+            <DocPanelRow
               label="ความเร่งด่วน"
               value={<Badge tone={tone(PRIORITY_TONE, pr.priority)}>{pr.priority}</Badge>}
             />
-            <Row label="มูลค่ารวม" value={`${money0(pr.amount)} THB`} />
-          </Panel>
+            <DocPanelRow label="มูลค่ารวม" value={`${money0(pr.amount)} THB`} />
+          </DocPanel>
         </div>
 
-        {/* ---------- Lines, with what the warehouse already has ---------- */}
-        <section className="mt-6">
-          <h2 className="mb-2 text-[13px] font-bold uppercase tracking-[0.06em]">Items</h2>
-          <div className="overflow-x-auto rounded-card border border-line">
-            <table className="w-full min-w-[980px] border-collapse text-[13px]">
-              <thead>
-                <tr className="border-b border-line bg-surface text-cap text-ink-2">
-                  <th className="w-[40px] px-2 py-2 text-right">#</th>
-                  <th className="px-2 py-2 text-left">Product</th>
-                  <th className="w-[70px] px-2 py-2 text-right">Qty</th>
-                  <th className="w-[60px] px-2 py-2 text-left">Unit</th>
-                  <th className="w-[90px] px-2 py-2 text-right">Unit Price</th>
-                  <th className="w-[100px] px-2 py-2 text-right">Line Total</th>
-                  {/* The four figures that answer "do we actually need this?"
-                      — asked while the approval is being decided, which is
-                      the only time the answer changes anything. */}
-                  {STOCK_COLS.map((c) => (
-                    <th key={c.key} className="w-[84px] px-2 py-2 text-right">
-                      {c.label}
-                      <span className="block font-normal text-ink-3">{c.th}</span>
-                    </th>
-                  ))}
-                  <th className="w-[92px] px-2 py-2">Stock</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((l, i) => (
-                  <tr key={`${l.code}-${i}`} className="border-b border-line last:border-b-0">
-                    <td className="tnum px-2 py-2 text-right text-ink-3">{i + 1}</td>
-                    <td className="px-2 py-2">
-                      <span className="block font-medium">{l.code}</span>
-                      <span className="block text-cap text-ink-3">{l.name}</span>
-                    </td>
-                    <td className="tnum px-2 py-2 text-right font-medium">{fmt(l.qty)}</td>
-                    <td className="px-2 py-2 text-ink-2">{l.unit}</td>
-                    <td className="tnum px-2 py-2 text-right">{money0(l.price)}</td>
-                    <td className="tnum px-2 py-2 text-right font-medium">{money0(l.total)}</td>
-                    <td className="tnum px-2 py-2 text-right text-ink-2">
-                      {l.onHand === null ? DASH : fmt(l.onHand)}
-                    </td>
-                    <td className="tnum px-2 py-2 text-right">
-                      {l.onOrder === null ? (
-                        DASH
-                      ) : l.onOrder > 0 ? (
-                        <span className="font-semibold text-info-text">{fmt(l.onOrder)}</span>
-                      ) : (
-                        fmt(0)
-                      )}
-                    </td>
-                    <td className="tnum px-2 py-2 text-right">
-                      {l.backOrder === null ? (
-                        DASH
-                      ) : l.backOrder > 0 ? (
-                        <span className="font-semibold text-warning-text">{fmt(l.backOrder)}</span>
-                      ) : (
-                        fmt(0)
-                      )}
-                    </td>
-                    <td className="tnum px-2 py-2 text-right font-medium">
-                      {l.available === null ? DASH : fmt(l.available)}
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      {l.stockStatus ? (
-                        <Badge tone={l.stockTone}>{l.stockStatus}</Badge>
-                      ) : (
-                        <span className="text-ink-3">{DASH}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <DocSection title="Items">
+          <PaperTable cols={ITEM_COLUMNS} rows={lines} minWidth={980} />
+        </DocSection>
 
         <div className="mt-5 grid grid-cols-[1fr_minmax(280px,360px)] gap-5 max-[1000px]:grid-cols-1">
-          <Panel title="Reason" titleTh="เหตุผลที่ขอซื้อ">
-            <p className="whitespace-pre-wrap text-[13px]">{pr.note || DASH}</p>
-          </Panel>
-          <Panel title="Summary" titleTh="สรุป">
-            <Row label="จำนวนรายการ" value={`${fmt(pr.itemCount)} รายการ`} />
-            <Row label="รวมเป็นเงิน" value={`${money0(subtotal)} THB`} />
-            <Row label="มูลค่าเอกสาร" value={`${money0(pr.amount)} THB`} />
-          </Panel>
+          <DocPanel title="Reason" titleTh="เหตุผลที่ขอซื้อ">
+            <DocPanelText value={pr.note} />
+          </DocPanel>
+          <DocPanel title="Summary" titleTh="สรุป">
+            <DocPanelRow label="จำนวนรายการ" value={`${fmt(pr.itemCount)} รายการ`} />
+            <DocPanelRow label="รวมเป็นเงิน" value={`${money0(subtotal)} THB`} />
+            <DocPanelRow label="มูลค่าเอกสาร" value={`${money0(pr.amount)} THB`} />
+          </DocPanel>
         </div>
 
         <div className="mt-6">
           <SignatureRow blocks={PR_SIGNATURES} />
         </div>
-      </article>
+      </DocPaper>
 
-      {/* ---------- The decision ---------- */}
-      <DecisionBar pr={pr} />
+      <PrDecisionBar pr={pr} />
 
-      {/* ---------- What has happened ---------- */}
-      <HistoryStrip pr={pr} />
+      <HistoryStrip rows={approvalRows(pr)} />
 
-      {/* ---------- The conversation ---------- */}
       <CommentThread
         docCode={pr.code}
         people={[pr.createdBy, pr.requester, pr.updatedBy, ...(pr.approvals ?? []).map((a) => a.by)]}
         /* The desks a purchase request crosses on its way to an order. */
         departments={["Management", "Purchasing"]}
       />
-    </div>
+    </DocPage>
   );
 }
 
-/* ---------- Paper furniture ---------- */
+/* ---------- History ---------- */
 
-function Panel({
-  title,
-  titleTh,
-  children,
-}: {
-  title: string;
-  titleTh: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-card border border-line p-4">
-      <DocLabel en={title} th={titleTh} />
-      <div className="mt-2 flex flex-col gap-1.5">{children}</div>
-    </div>
-  );
+/**
+ * A purchase request's history is its approval trail, not an activity log —
+ * every other outbound document keeps `{ t, d, u, when, kind }` and this one
+ * keeps signatures, so it maps its own rows rather than sharing `historyRows`.
+ */
+function approvalRows(pr: PrRow): HistoryRow[] {
+  const state: Record<string, HistoryRow["tone"]> = {
+    done: "success",
+    rejected: "danger",
+    revision: "warning",
+  };
+
+  return [
+    ...(pr.approvals ?? []).map((a) => ({
+      title: a.step.startsWith("APPROVAL-") ? `ขั้นอนุมัติที่ ${a.step.split("-")[1]}` : a.step,
+      detail: [a.role, a.note].filter(Boolean).join(" · "),
+      by: a.by,
+      when: a.when,
+      tone: state[a.status] ?? ("muted" as const),
+    })),
+    {
+      title: "สร้างเอกสาร",
+      detail: "เปิดใบขอซื้อเข้าระบบ",
+      by: pr.createdBy,
+      when: pr.created,
+      tone: "success" as const,
+    },
+  ];
 }
 
-const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
-  <div className="flex items-center justify-between gap-3 text-[13px]">
-    <span className="text-ink-2">{label}</span>
-    <span className="text-right font-medium">{value || DASH}</span>
-  </div>
-);
-
-/* ---------- The decision bar ---------- */
+/* ---------- The decision ---------- */
 
 /**
  * The acts this person may make on this document, and nothing else.
@@ -281,12 +300,12 @@ const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
  * the paper and the button on the row can never disagree about whether a
  * document is waiting for you.
  */
-function DecisionBar({ pr }: { pr: PrRow }) {
+function PrDecisionBar({ pr }: { pr: PrRow }) {
   const ctx = useActionCtx();
   const plan = prProgress(pr);
   const waiting = plan.find((s) => !s.signed);
 
-  const acts = [
+  const acts = docActs([
     prCanSubmit(pr) && {
       key: "submit",
       label: "ส่งขออนุมัติ",
@@ -312,7 +331,6 @@ function DecisionBar({ pr }: { pr: PrRow }) {
       key: "revise",
       label: "Revise",
       icon: "refresh" as const,
-      variant: "default" as const,
       run: () => prRevise(pr, ctx),
     },
     (prCanApprove(pr) || prCanOpen(pr)) && {
@@ -329,44 +347,20 @@ function DecisionBar({ pr }: { pr: PrRow }) {
       variant: "primary" as const,
       run: () => prConvert(pr, ctx),
     },
-  ].filter(Boolean) as {
-    key: string;
-    label: string;
-    icon: "send" | "check" | "checkCircle" | "close" | "refresh" | "purchaseOrder";
-    variant: "primary" | "danger" | "default";
-    run: () => void;
-  }[];
+  ]);
 
   return (
-    <section
-      data-testid="pr-decision-bar"
-      className="mx-auto mt-4 max-w-[1100px] rounded-card border border-line bg-card p-4"
+    <DecisionBar
+      testId="pr-decision-bar"
+      note={
+        acts.length
+          ? waiting
+            ? `รอ${waiting.roleName}ลงนาม — ขั้นที่ ${waiting.seq} จาก ${plan.length}`
+            : "เอกสารนี้พร้อมให้ดำเนินการต่อ"
+          : idleNote(pr.status)
+      }
+      acts={acts}
     >
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <DocLabel en="Decision" th="การตัดสินใจ" />
-          <p className="mt-1 text-cap text-ink-2">
-            {acts.length
-              ? waiting
-                ? `รอ${waiting.roleName}ลงนาม — ขั้นที่ ${waiting.seq} จาก ${plan.length}`
-                : "เอกสารนี้พร้อมให้ดำเนินการต่อ"
-              : `ไม่มีสิ่งที่คุณต้องทำกับเอกสารนี้ตอนนี้ — สถานะ ${pr.status}`}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {acts.map((a) => (
-            <Button
-              key={a.key}
-              variant={a.variant === "default" ? undefined : a.variant}
-              onClick={a.run}
-            >
-              <Icon name={a.icon} size={16} strokeWidth={2.2} />
-              {a.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-
       {/* The plan itself, so "why can't I sign this" has an answer on screen. */}
       {plan.length > 1 && (
         <ol className="mt-3 flex flex-wrap gap-2">
@@ -374,9 +368,7 @@ function DecisionBar({ pr }: { pr: PrRow }) {
             <li
               key={s.seq}
               className={`rounded-pill border px-3 py-1 text-cap ${
-                s.signed
-                  ? "border-success bg-success-soft text-success-text"
-                  : "border-line text-ink-2"
+                s.signed ? "border-success bg-success-soft text-success-text" : "border-line text-ink-2"
               }`}
             >
               {s.seq}. {s.roleName}
@@ -386,59 +378,6 @@ function DecisionBar({ pr }: { pr: PrRow }) {
           ))}
         </ol>
       )}
-    </section>
-  );
-}
-
-/* ---------- History ---------- */
-
-function HistoryStrip({ pr }: { pr: PrRow }) {
-  const rows = [
-    ...(pr.approvals ?? []).map((a) => ({
-      title: a.step.startsWith("APPROVAL-")
-        ? `ขั้นอนุมัติที่ ${a.step.split("-")[1]}`
-        : a.step,
-      detail: [a.role, a.note].filter(Boolean).join(" · "),
-      by: a.by,
-      when: a.when,
-      state: a.status,
-    })),
-    {
-      title: "สร้างเอกสาร",
-      detail: "เปิดใบขอซื้อเข้าระบบ",
-      by: pr.createdBy,
-      when: pr.created,
-      state: "done",
-    },
-  ];
-
-  return (
-    <section className="mx-auto mt-4 max-w-[1100px] rounded-card border border-line bg-card p-4">
-      <DocLabel en="History" th="ประวัติเอกสาร" />
-      <ol className="mt-3 flex flex-col gap-2">
-        {rows.map((r, i) => (
-          <li key={i} className="flex items-start gap-3 text-[13px]">
-            <span
-              className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${
-                r.state === "done"
-                  ? "bg-success"
-                  : r.state === "rejected"
-                    ? "bg-danger"
-                    : r.state === "revision"
-                      ? "bg-warning"
-                      : "bg-line-strong"
-              }`}
-            />
-            <span className="min-w-0 flex-1">
-              <span className="font-medium">{r.title}</span>
-              {r.detail && <span className="text-ink-2"> — {r.detail}</span>}
-            </span>
-            <span className="whitespace-nowrap text-cap text-ink-3">
-              {r.by || DASH} · {r.when || "รอดำเนินการ"}
-            </span>
-          </li>
-        ))}
-      </ol>
-    </section>
+    </DecisionBar>
   );
 }

@@ -33,6 +33,7 @@ import {
 } from "@/lib/workflows-invoice";
 import type { DetailSchema, EntitySchemas, ListSchema, RowAction } from "@/lib/types";
 import { Badge, CellMedia, CellSub, Thumb, UtilBar } from "@/components/ui";
+import { SalesInvoiceDocument } from "@/components/sales-invoice/SalesInvoiceDocument";
 import { INV_FORM } from "./forms/sales-invoice";
 
 /* ============================================================
@@ -1074,4 +1075,5 @@ export const invSchemas: EntitySchemas<InvRow> = {
   list: INV_LIST,
   detail: INV_DETAIL,
   form: INV_FORM,
+  document: ({ record }) => <SalesInvoiceDocument record={record} />,
 };
