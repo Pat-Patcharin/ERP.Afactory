@@ -346,9 +346,11 @@ function NewCustomerDialog({
   onClose: () => void;
   onCreated: (label: string) => void;
 }) {
-  const [form, setForm] = useState<DraftCustomerInput>({ nameTh: "" });
+  /* Same address by default — see the note on `shipSameAsBill`. */
+  const [form, setForm] = useState<DraftCustomerInput>({ nameTh: "", shipSameAsBill: true });
   const [errors, setErrors] = useState<string[]>([]);
   const set = (patch: Partial<DraftCustomerInput>) => setForm((f) => ({ ...f, ...patch }));
+  const sameAsBill = form.shipSameAsBill !== false;
 
   const submit = () => {
     const issues = validateDraftCustomer(form);
@@ -408,13 +410,56 @@ function NewCustomerDialog({
           {field("ผู้ติดต่อ", "contactName", "ชื่อผู้ติดต่อ")}
           {field("เบอร์โทร", "phone", "02-xxx-xxxx")}
           {field("อีเมล", "email", "name@company.co.th")}
+        </div>
+
+        <p className="mt-4 border-t border-line pt-3">
+          <DocLabel en="Bill To" th="ที่อยู่ออกบิล" />
+        </p>
+        <div className="mt-2 grid grid-cols-2 gap-3 max-[520px]:grid-cols-1">
           <div className="col-span-2 max-[520px]:col-span-1">
-            {field("ที่อยู่ออกบิล", "addressLine", "เลขที่ ถนน แขวง")}
+            {field("ที่อยู่", "addressLine", "เลขที่ ถนน แขวง")}
           </div>
           {field("เขต/อำเภอ", "district")}
           {field("จังหวัด", "province")}
           {field("รหัสไปรษณีย์", "postcode", "10110")}
         </div>
+
+        {/* ------------------------------------------------------------
+            AND WHERE THE GOODS GO
+
+            Asked here, while the customer is still on the phone. It
+            used to be left out entirely, so the first document that
+            had to ship anything found no delivery address on the
+            partner and somebody went back to ask days later.
+
+            Ticked by default because the two are usually the same,
+            and the block only appears when it is not.
+            ------------------------------------------------------------ */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+          <DocLabel en="Ship To" th="ที่อยู่จัดส่ง" />
+          <label className="flex items-center gap-2 text-cap text-ink-2">
+            <Checkbox
+              checked={sameAsBill}
+              aria-label="ที่อยู่จัดส่งเหมือนที่อยู่ออกบิล"
+              onChange={(e) => set({ shipSameAsBill: e.target.checked })}
+            />
+            Same as Bill To
+          </label>
+        </div>
+        {sameAsBill ? (
+          <p className="mt-2 text-cap text-ink-3">ส่งของตามที่อยู่ออกบิลด้านบน</p>
+        ) : (
+          <div className="mt-2 grid grid-cols-2 gap-3 max-[520px]:grid-cols-1">
+            <div className="col-span-2 max-[520px]:col-span-1">
+              {field("ที่อยู่จัดส่ง", "shipAddressLine", "เลขที่ ถนน แขวง")}
+            </div>
+            {field("เขต/อำเภอ", "shipDistrict")}
+            {field("จังหวัด", "shipProvince")}
+            {field("รหัสไปรษณีย์", "shipPostcode", "10110")}
+            {field("ผู้รับของ", "shipContactName", "ชื่อผู้รับหน้างาน")}
+            {field("เบอร์โทรผู้รับ", "shipPhone", "08x-xxx-xxxx")}
+          </div>
+        )}
 
         <div className="mt-5 flex justify-end gap-2">
           <Button onClick={onClose}>ยกเลิก</Button>

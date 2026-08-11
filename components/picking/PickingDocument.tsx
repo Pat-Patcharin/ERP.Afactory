@@ -315,6 +315,26 @@ function PickDecisionBar({ task }: { task: PickRow }) {
       variant: "primary" as const,
       run: () => pickStart(task, ctx),
     },
+    /* ------------------------------------------------------------
+       THE WAY BACK IN AFTER WALKING THE FLOOR
+
+       The sheet is printed, the picker walks the warehouse, and
+       then they come back to say what they actually found. That
+       last step had no button on this page at all — it was an
+       Edit buried in the row menu on the list, which is not where
+       somebody holding a marked-up printout is standing.
+
+       It is the primary act for a task in progress, because it is
+       the only one that records real quantities. Completing comes
+       after, and the two are deliberately separate: keying in what
+       was picked is not the same as declaring the job done. */
+    ["Assigned", "In Progress"].includes(task.status) && {
+      key: "enter",
+      label: "คีย์จำนวนที่หยิบได้",
+      icon: "edit" as const,
+      variant: "primary" as const,
+      run: () => ctx.goto(`/m/picking/${encodeURIComponent(task.code)}/edit`),
+    },
     /* Fill the lines the shelf can actually cover, so the picker types the
        exceptions rather than the whole sheet. */
     ["Waiting", "Assigned", "In Progress"].includes(task.status) &&
@@ -324,6 +344,9 @@ function PickDecisionBar({ task }: { task: PickRow }) {
         icon: "picking" as const,
         run: () => pickFillAvailable(task, ctx),
       },
+    /* Declaring the job done. Short is an ordinary outcome — the order goes
+       Partially Delivered and the rest follows on a later round — so this is
+       not gated on having picked everything. */
     ["Assigned", "In Progress"].includes(task.status) && {
       key: "complete",
       label: "จัดเสร็จแล้ว",

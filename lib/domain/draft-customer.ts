@@ -41,6 +41,31 @@ export interface DraftCustomerInput {
   province?: string;
   postcode?: string;
   contactName?: string;
+
+  /* ------------------------------------------------------------
+     WHERE THE GOODS GO, ASKED WHILE THE CUSTOMER IS STILL THERE
+
+     A new customer used to be raised with a billing address and
+     nothing else, so the first document that had to ship anything
+     found no delivery address on the partner and the salesperson
+     went back to ask — usually days later, usually by phone.
+
+     The two are the same address often enough that asking twice
+     would be its own annoyance, so `shipSameAsBill` is the
+     default and the second block only appears when it is
+     unticked. Ticked, the billing address is written as the
+     shipping one too, which is what the partner master already
+     expected: one address flagged both `billingPrimary` and
+     `deliveryPrimary`.
+     ------------------------------------------------------------ */
+  /** Default. Untick to give the goods somewhere else to go. */
+  shipSameAsBill?: boolean;
+  shipAddressLine?: string;
+  shipDistrict?: string;
+  shipProvince?: string;
+  shipPostcode?: string;
+  shipContactName?: string;
+  shipPhone?: string;
 }
 
 export interface DraftCustomerResult {
@@ -57,6 +82,10 @@ export function validateDraftCustomer(input: DraftCustomerInput): string[] {
   const tax = str(input.taxId);
   if (tax && !/^\d{13}$/.test(tax.replace(/\D/g, "")))
     out.push("เลขผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก");
+  /* Unticking "same as bill to" is a statement that the goods go somewhere
+     else. Leaving it blank afterwards means neither address is right. */
+  if (input.shipSameAsBill === false && !str(input.shipAddressLine))
+    out.push("ระบุที่อยู่จัดส่ง หรือติ๊ก Same as Bill To");
   return out;
 }
 
@@ -74,6 +103,11 @@ export function createDraftCustomer(
   const now = stamp();
   const code = nextBPCode();
   const name = str(input.nameTh);
+  /* One address when the two are the same, two when they are not — see the
+     note on `shipSameAsBill`. The billing one is always primary; it only
+     stops being the shipping one when a separate delivery address exists. */
+  const shipApart = input.shipSameAsBill === false && Boolean(str(input.shipAddressLine));
+
   const address = {
     name: "ที่อยู่ออกบิล",
     type: "Billing",
@@ -87,9 +121,34 @@ export function createDraftCustomer(
     phone: str(input.phone),
     contact: str(input.contactName),
     maps: "",
+    /* Live from the moment it is typed. It was missing, and `shipToOptions`
+       filters on it — so a customer the rep had just raised offered nothing
+       in the Ship To picker on the very next document. */
+    active: true,
     primary: true,
     billingPrimary: true,
-    shippingPrimary: true,
+    deliveryPrimary: !shipApart,
+  };
+
+  const shipAddress = {
+    name: "ที่อยู่จัดส่ง",
+    type: "Shipping",
+    l1: str(input.shipAddressLine),
+    l2: "",
+    sub: "",
+    dist: str(input.shipDistrict),
+    prov: str(input.shipProvince),
+    zip: str(input.shipPostcode),
+    country: "ประเทศไทย",
+    /* Falls back to the billing contact: a delivery address with nobody to
+       ring is a driver standing outside a locked gate. */
+    phone: str(input.shipPhone) || str(input.phone),
+    contact: str(input.shipContactName) || str(input.contactName),
+    maps: "",
+    active: true,
+    primary: false,
+    billingPrimary: false,
+    deliveryPrimary: true,
   };
 
   const fresh = {
@@ -141,7 +200,7 @@ export function createDraftCustomer(
           },
         ]
       : [],
-    addresses: [address],
+    addresses: shipApart ? [address, shipAddress] : [address],
     sales: {},
     purchasing: null,
     banks: [],

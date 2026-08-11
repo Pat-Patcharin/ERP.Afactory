@@ -14,7 +14,13 @@ import {
   decorateOutbound,
   outboundCustomers,
 } from "@/lib/domain/outbound";
-import { billableLinesFrom, headerFromSource } from "@/lib/domain/invoice";
+import {
+  SALES_INVOICES,
+  billableLinesFrom,
+  decorateInvoices,
+  headerFromSource,
+  invoicesForSource,
+} from "@/lib/domain/invoice";
 import { priceMasterRows } from "@/lib/domain/price-master";
 import { displayName } from "@/lib/domain/lines";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
@@ -81,6 +87,9 @@ const SNAP = {
   pack: JSON.stringify(PACKING_TASKS),
   do: JSON.stringify(DELIVERY_ORDERS),
   bp: JSON.stringify(BUSINESS_PARTNERS),
+  /* The delivery note raises the invoice now, so the invoice store is part
+     of the mutable world a journey writes to. */
+  inv: JSON.stringify(SALES_INVOICES),
 };
 
 const restore = (store: unknown[], json: string) => {
@@ -96,8 +105,10 @@ beforeEach(() => {
   restore(PACKING_TASKS, SNAP.pack);
   restore(DELIVERY_ORDERS, SNAP.do);
   restore(BUSINESS_PARTNERS, SNAP.bp);
+  restore(SALES_INVOICES, SNAP.inv);
   decorateBPs();
   decorateOutbound();
+  decorateInvoices();
   resetCurrentUser();
 });
 
@@ -307,13 +318,19 @@ describe("Journey A — quotation through a sales request and out the door", () 
 
     for (const l of dobj.items) l.delivered = l.qty;
 
-    /* ---- Invoice ---- */
+    /* ---- Invoice ----
+       Raised by the delivery note, not by somebody remembering to open the
+       create screen afterwards. The note went out in full, so there was
+       nothing to ask about and the bill exists already. */
     const header = headerFromSource("Delivery Order", dobj.code)!;
     expect(header.customerCode).toBe(qt.customerCode);
     expect(header.soRef).toBe(so.code);
 
-    const invLines = billableLinesFrom("Delivery Order", dobj.code);
-    const billed = invLines.find((l) => l.code === qt.items[0].code)!;
+    const inv = invoicesForSource(dobj.code)[0];
+    expect(inv, "the delivery note billed itself").toBeTruthy();
+    expect(inv.status, "as a draft — issuing stays a deliberate press").toBe("Draft");
+
+    const billed = inv.items.find((l) => l.code === qt.items[0].code)!;
     expect(billed, "the line reaches the bill").toBeTruthy();
     expect(billed.unitPrice, "at the price the quotation agreed").toBe(qt.items[0].price);
     expect(billed.invoiceQty).toBe(qt.items[0].qty);

@@ -2,6 +2,7 @@
 
 import type { DeliveryOrder } from "@/data/delivery-orders";
 import { getSO, type DoRow } from "@/lib/domain/outbound";
+import { invoicesForSource } from "@/lib/domain/invoice";
 import { displayName } from "@/lib/domain/lines";
 import {
   doCancel,
@@ -30,7 +31,7 @@ import {
   PaperTable,
   RelatedStrip,
   docActs,
-  docForm,
+  docFormOf,
   docSignatures,
   historyRows,
   historySignature,
@@ -122,7 +123,22 @@ const ITEM_COLUMNS: PaperColumn<Line>[] = [
 export function DeliveryOrderDocument({ record }: { record: DeliveryOrder }) {
   const d = record as DoRow;
   const so = getSO(d.soRef);
-  const form = docForm("delivery-order");
+  /* ------------------------------------------------------------
+     ONE SHEET WHEN THERE IS A BILL BEHIND IT
+
+     Raising the note raises the invoice, so by the time anybody
+     opens this page the two normally exist as a pair — and the
+     paper that travels with the goods is then the combined
+     "ใบส่งสินค้า / ใบกำกับภาษี", not a delivery note the customer
+     has to match against something that arrives separately.
+
+     Read off whether an invoice actually exists rather than
+     assumed: a note raised by somebody without billing rights has
+     no invoice yet, and printing it as a tax invoice would be a
+     tax document for a bill nobody raised.
+     ------------------------------------------------------------ */
+  const bills = invoicesForSource(d.code);
+  const form = docFormOf(bills.length ? "delivery-tax-invoice" : "delivery-order");
 
   const notices: (DocNotice | false)[] = [
     d.status === "Failed" && {
@@ -275,12 +291,18 @@ export function DeliveryOrderDocument({ record }: { record: DeliveryOrder }) {
         </div>
       </DocPaper>
 
-      <DoDecisionBar d={d} />
+      <DoDecisionBar d={d} billed={bills.length > 0} />
 
       <RelatedStrip
         items={[
           { label: "ใบสั่งขาย", code: d.soRef, entity: "sales-order" },
           Boolean(d.packRef) && { label: "ใบบรรจุ", code: d.packRef, entity: "packing" },
+          ...bills.map((b) => ({
+            label: "ใบแจ้งหนี้",
+            code: b.code,
+            entity: "sales-invoice",
+            sub: b.status,
+          })),
         ]}
       />
 
@@ -297,7 +319,7 @@ export function DeliveryOrderDocument({ record }: { record: DeliveryOrder }) {
 
 /* ---------- The decision ---------- */
 
-function DoDecisionBar({ d }: { d: DoRow }) {
+function DoDecisionBar({ d, billed }: { d: DoRow; billed: boolean }) {
   const ctx = useActionCtx();
 
   const acts = docActs([
@@ -329,14 +351,17 @@ function DoDecisionBar({ d }: { d: DoRow }) {
       variant: "danger" as const,
       run: () => doFail(d, ctx),
     },
-    /* Bills what this note carried — a short delivery bills short, and the
-       back order bills on its own note later. */
-    ["Shipped", "Delivered"].includes(d.status) && {
-      key: "invoice",
-      label: "ออกใบแจ้งหนี้",
-      icon: "invoice" as const,
-      run: () => doCreateInvoice(d, ctx),
-    },
+    /* Raising the note raises the bill, so this is the way back for a note
+       that somehow has none — raised by a role without billing rights, or
+       one whose invoice was cancelled. Offering it beside an invoice that
+       already exists is an invitation to bill the same goods twice. */
+    !billed &&
+      ["Shipped", "Delivered"].includes(d.status) && {
+        key: "invoice",
+        label: "ออกใบแจ้งหนี้",
+        icon: "invoice" as const,
+        run: () => doCreateInvoice(d, ctx),
+      },
     !["Cancelled", "Delivered"].includes(d.status) && {
       key: "cancel",
       label: "ยกเลิกใบส่งสินค้า",
@@ -359,7 +384,15 @@ function DoDecisionBar({ d }: { d: DoRow }) {
       testId="do-decision-bar"
       note={note}
       acts={acts}
-      before={<DocPrintButton entity="delivery-order" record={d} label="พิมพ์ใบส่งสินค้า" />}
+      /* One sheet, and it says which one it is — see the note above. */
+      before={
+        <DocPrintButton
+          entity="delivery-order"
+          record={d}
+          docType={billed ? "delivery-tax-invoice" : "delivery-order"}
+          label={billed ? "พิมพ์ใบส่งของ / ใบกำกับภาษี" : "พิมพ์ใบส่งสินค้า"}
+        />
+      }
     />
   );
 }

@@ -52,6 +52,16 @@ export const getSalesRep = (label: string) => {
 
 export const warehouseOptions = () => WAREHOUSES.map((w) => `${w.code} ${w.name}`);
 
+/**
+ * The one a document assumes when nobody has chosen.
+ *
+ * First in the master, which is the main warehouse. A document that names no
+ * warehouse hands picking a task with no shelf to walk to, so the default is
+ * a real answer rather than an empty string — and the warehouse decision
+ * proper is taken when picking is raised.
+ */
+export const defaultWarehouse = () => warehouseOptions()[0] ?? "";
+
 /** Ship-to choices come from the customer's own address book. */
 export function shipToOptions(customerLabel: string): string[] {
   const bp = getCustomer(customerLabel);

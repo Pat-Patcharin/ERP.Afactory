@@ -394,6 +394,19 @@ export function docForm(
   billType?: string,
 ): { config: PrintConfig; docType: PrintDocType } | null {
   const [docType] = printTypesFor(entity, { billType });
+  return docFormOf(docType);
+}
+
+/**
+ * A named form, when a document knows which of its own it is.
+ *
+ * A delivery note with an invoice behind it prints as the combined delivery
+ * note / tax invoice, which is a different entry in the same config rather
+ * than a different document.
+ */
+export function docFormOf(
+  docType: PrintDocType | undefined,
+): { config: PrintConfig; docType: PrintDocType } | null {
   const config = docType ? getPrintConfig(docType) : null;
   return config && docType ? { config, docType } : null;
 }
@@ -443,14 +456,17 @@ export function DocRemarks({ config }: { config: PrintConfig | null }) {
 export function DocPrintButton({
   entity,
   record,
+  docType,
   label = "พิมพ์ / PDF",
 }: {
   entity: string;
   record: { code: string; billType?: string };
+  /** Override, for a document that knows which of its forms it is. */
+  docType?: PrintDocType;
   label?: string;
 }) {
   const ctx = useActionCtx();
-  const form = docForm(entity, record.billType);
+  const form = docType ? docFormOf(docType) : docForm(entity, record.billType);
   if (!form || !canPrintDocument(form.config)) return null;
 
   return (

@@ -140,14 +140,31 @@ describe("Sales Request editor — document layout", () => {
   });
 
   it("asks for what a request needs, not what an offer needs", () => {
-    /* A request has no price-validity window; it has a date the customer
-       needs the goods and a warehouse expected to serve it. */
+    /* A request has no price-validity window. What it does have is the
+       quotation it came from, when there is one. */
     expect(screen.getByLabelText("Request Date")).toBeInTheDocument();
-    expect(screen.getByLabelText("Required Date")).toBeInTheDocument();
-    expect(screen.getByLabelText("Priority")).toBeInTheDocument();
-    expect(screen.getByLabelText("Preferred Warehouse")).toBeInTheDocument();
     expect(screen.getByLabelText("Source Quotation")).toBeInTheDocument();
+    expect(screen.getByLabelText("Sales Representative")).toBeInTheDocument();
     expect(screen.queryByLabelText("Valid Until")).not.toBeInTheDocument();
+  });
+
+  it("ไม่ถามซ้ำในสิ่งที่ตอบไปแล้ว หรือสิ่งที่มีค่าตั้งต้นอยู่แล้ว", () => {
+    /* Six rows came off the panel — see the note on the editor's meta rows.
+       Bill Type is the clearest: it is asked above the sheet, where it
+       belongs, and asking twice on one page is how two answers end up
+       disagreeing. */
+    for (const gone of [
+      "Required Date",
+      "Priority",
+      "Customer Reference",
+      "Preferred Warehouse",
+      "Currency",
+      "Bill Type",
+    ]) {
+      expect(screen.queryByLabelText(gone), gone).not.toBeInTheDocument();
+    }
+    /* Still asked once, above the paper. */
+    expect(screen.getByLabelText("Bill Type (header)")).toBeInTheDocument();
   });
 
   it("closes with the approver, never the customer", () => {
@@ -302,21 +319,32 @@ describe("Sales Request editor — validation", () => {
 
   it("blocks what an approver cannot act without", () => {
     const fields = blockingIssues(validateSrDraft(blankSrDraft())).map((i) => i.field);
-    for (const f of ["customer", "salesRep", "warehouse", "items"]) {
+    for (const f of ["customer", "salesRep", "items"]) {
       expect(fields, f).toContain(f);
+    }
+    /* And nothing is blocked on a field the form no longer shows. Refusing a
+       save over something nobody can see is the worst kind of validation. */
+    for (const gone of ["warehouse", "requiredDate", "priority", "currency"]) {
+      expect(fields, gone).not.toContain(gone);
     }
   });
 
-  it("blocks a required date that falls before the request date", () => {
-    const d = readyDraft({ requestDate: "2026-08-10", requiredDate: "2026-08-04" });
-    expect(
-      blockingIssues(validateSrDraft(d)).some((i) => i.field === "requiredDate"),
-    ).toBe(true);
+  it("สิ่งที่ไม่ได้ถาม ยังอยู่บนเอกสารพร้อมค่าตั้งต้น", () => {
+    /* This is about what a person types, not about what the document
+       carries — a request naming no warehouse would hand picking a task with
+       no shelf to walk to. */
+    const d = blankSrDraft();
+    expect(d.warehouse, "the main warehouse").toBeTruthy();
+    expect(d.requiredDate, "request date plus the usual lead").toBeTruthy();
+    expect(d.priority).toBe("Normal");
+    expect(d.currency).toBe("THB");
   });
 
-  it("accepts a same-day request — unlike a quotation's validity date", () => {
-    /* "Needed today" is a real answer; "the price stands until today" is not. */
-    const d = readyDraft({ requestDate: "2026-08-04", requiredDate: "2026-08-04" });
+  it("ไม่บล็อกวันที่ลูกค้าต้องการ เพราะไม่ได้ให้พิมพ์แล้ว", () => {
+    /* It carries a default and is off the form, so there is nothing for a
+       person to get wrong — and a rule that can only fire on data nobody can
+       reach is a rule that only ever blocks. */
+    const d = readyDraft({ requestDate: "2026-08-10", requiredDate: "2026-08-04" });
     expect(blockingIssues(validateSrDraft(d))).toEqual([]);
   });
 
@@ -352,7 +380,7 @@ describe("Sales Request editor — validation", () => {
 
     const summary = screen.getByTestId("issue-summary");
     expect(within(summary).getByText(/ต้องแก้ไข/)).toBeInTheDocument();
-    expect(within(summary).getByText("ยังไม่ได้เลือกคลังที่จะจ่ายของ")).toBeInTheDocument();
+    expect(within(summary).getByText("ยังไม่ได้เลือกลูกค้า")).toBeInTheDocument();
     expect(SALES_REQUESTS.length).toBe(before);
   });
 
@@ -361,9 +389,9 @@ describe("Sales Request editor — validation", () => {
     render(<SalesRequestEditor />);
     await user.click(within(screen.getByTestId("sr-toolbar")).getByText("Submit Request"));
     await user.click(
-      within(screen.getByTestId("issue-summary")).getByText("ยังไม่ได้เลือกคลังที่จะจ่ายของ"),
+      within(screen.getByTestId("issue-summary")).getByText("ยังไม่ได้เลือกพนักงานขาย"),
     );
-    expect(document.activeElement).toBe(screen.getByLabelText("Preferred Warehouse"));
+    expect(document.activeElement).toBe(screen.getByLabelText("Sales Representative"));
   });
 });
 
@@ -694,7 +722,9 @@ describe("Sales Request editor — editing a saved request", () => {
 
     expect(screen.getAllByText(EXISTING).length).toBeGreaterThan(0);
     expect((screen.getByLabelText("Item Code 1") as HTMLInputElement).value).toBe(r.items[0].code);
-    expect((screen.getByLabelText("Priority") as HTMLSelectElement).value).toBe(r.priority);
+    expect((screen.getByLabelText("Sales Representative") as HTMLSelectElement).value).toBe(
+      r.salesRep,
+    );
   });
 
   it("saves an edit back onto the same record", () => {

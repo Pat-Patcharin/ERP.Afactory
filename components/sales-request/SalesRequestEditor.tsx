@@ -51,7 +51,7 @@ import {
 } from "@/components/document/DocumentEditorShell";
 import { useDocumentEditor } from "@/components/document/useDocumentEditor";
 import { Select } from "@/components/ui";
-import { SR_CHANNELS, SR_PRICE_LISTS, SR_PRIORITY } from "@/data/sales-requests";
+import { SR_CHANNELS, SR_PRICE_LISTS } from "@/data/sales-requests";
 import { BILL_TYPES, PAY_TERMS } from "@/data/partners";
 import {
   BillTypeNotice,
@@ -59,8 +59,7 @@ import {
   billTypeDialogTitle,
 } from "@/components/document/BillTypeNotice";
 import { PriceApprovalNotice } from "@/components/document/PriceApprovalNotice";
-import { PO_CURRENCIES } from "@/data/purchase-orders";
-import { getSR, warehouseOptions, salesRepOptions } from "@/lib/domain/outbound";
+import { getSR, salesRepOptions } from "@/lib/domain/outbound";
 import { srSubmit } from "@/lib/workflows-outbound";
 
 /* ============================================================
@@ -70,10 +69,13 @@ import { srSubmit } from "@/lib/workflows-outbound";
    document that actually starts the outbound process.
 
    A request is internal: it goes to an approver, not to the
-   customer. So the header carries a required date, a priority
-   and the warehouse expected to serve it, the closing signature
-   is the approver rather than the customer, and the primary
-   action submits for approval rather than issuing a price.
+   customer. So the item grid carries the stock figure, the
+   closing signature is the approver rather than the customer,
+   and the primary action submits for approval rather than
+   issuing a price.
+
+   It asks for six fields. It used to ask for twelve — see the
+   note on the meta rows for what came off and why.
 
    Everything else — the draft, its lines, autosave, recovery,
    the toolbar and the paper — is the shared editor in
@@ -289,10 +291,43 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
   const metaRows: MetaRow[] = useMemo(() => {
     const { txt, sel } = metaControls(draft, set);
 
+    /* ------------------------------------------------------------
+       SIX QUESTIONS THAT WERE NOT WORTH ASKING
+
+       The panel had twelve rows, five of them starred, and a
+       salesperson raising a request had to answer all five before
+       the document would save. What came off, and why:
+
+         Bill Type          asked already, above the sheet, where
+                            it belongs — it decides what the sheet
+                            IS. Asking twice on one page is how the
+                            two answers end up disagreeing.
+         Currency           everything is sold in baht. A question
+                            with one option is not a question — the
+                            quotation dropped it for this reason.
+         Required Date      already filled in at request date plus
+                            the usual lead. Typing it again on every
+                            request to arrive at the same answer is
+                            work, not information; the date the
+                            company actually commits to is settled
+                            on the order, against stock.
+         Priority           Normal on all but a handful. Left at
+                            Normal and changed on the order when it
+                            genuinely is not.
+         Preferred Warehouse  the warehouse that will serve it is a
+                            warehouse decision, made when picking is
+                            raised. Defaulted to the main one.
+         Customer Reference the customer's own PO number often does
+                            not exist yet at request time. It is on
+                            the order and on the invoice, which are
+                            the documents that quote it back.
+
+       All six still live on the record with those defaults — this
+       is about what a person is asked to type, not about what the
+       document carries.
+       ------------------------------------------------------------ */
     return [
       { field: "requestDate", label: "Request Date", required: true, control: txt("requestDate", "Request Date", "date"), read: isoToDmy(draft.requestDate) },
-      { field: "requiredDate", label: "Required Date", required: true, control: txt("requiredDate", "Required Date", "date"), read: isoToDmy(draft.requiredDate) },
-      { field: "priority", label: "Priority", required: true, control: sel("priority", "Priority", SR_PRIORITY), read: draft.priority },
       {
         field: "quotationRef",
         label: "Source Quotation",
@@ -307,29 +342,12 @@ export function SalesRequestEditor({ record }: { record?: SalesRequest }) {
         ),
         read: draft.quotationRef,
       },
-      { field: "customerRef", label: "Customer Reference", control: txt("customerRef", "Customer Reference"), read: draft.customerRef },
       { field: "salesRep", label: "Sales Representative", required: true, control: sel("salesRep", "Sales Representative", salesRepOptions(), "— เลือกพนักงานขาย —"), read: draft.salesRep },
-      { field: "warehouse", label: "Preferred Warehouse", required: true, control: sel("warehouse", "Preferred Warehouse", warehouseOptions(), "— เลือกคลัง —"), read: draft.warehouse },
       { field: "priceList", label: "Price List", required: true, control: sel("priceList", "Price List", SR_PRICE_LISTS), read: draft.priceList },
-      { field: "currency", label: "Currency", required: true, control: sel("currency", "Currency", PO_CURRENCIES), read: draft.currency },
       { field: "payTerm", label: "Payment Term", control: sel("payTerm", "Payment Term", PAY_TERMS), read: draft.payTerm },
       { field: "channel", label: "Sales Channel", control: sel("channel", "Sales Channel", SR_CHANNELS), read: draft.channel },
-      {
-        field: "billType",
-        label: "Bill Type",
-        /* Not `sel()`: this one asks before it writes. See askBillType. */
-        control: (
-          <MetaSelect
-            label="Bill Type"
-            value={draft.billType}
-            options={BILL_TYPES}
-            onChange={askBillType}
-          />
-        ),
-        read: draft.billType,
-      },
     ];
-  }, [askBillType, draft, set]);
+  }, [draft, set]);
 
   return (
     <DocumentEditorShell

@@ -165,9 +165,6 @@ describe("Submit Request — คำขอขาย", () => {
 
     render(<SalesRequestEditor />);
     await fillOneLine(user);
-    /* A request says which warehouse will serve it; a quotation does not. */
-    const wh = screen.getByLabelText("Preferred Warehouse") as HTMLSelectElement;
-    await user.selectOptions(wh, within(wh).getAllByRole("option")[1]);
     await user.click(within(screen.getByTestId("sr-toolbar")).getByText("Submit Request"));
 
     /* The toast used to read "สร้างคำขอขายแล้ว — รออนุมัติ" over a Draft. */

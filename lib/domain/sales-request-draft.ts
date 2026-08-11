@@ -10,6 +10,7 @@ import {
   QUOTATIONS,
   SALES_REQUESTS,
   decorateSalesRequests,
+  defaultWarehouse,
   getQT,
   nextSalesRequestCode,
   type SrRow,
@@ -146,7 +147,11 @@ export function blankSrDraft(): SalesRequestDraft {
     requestDate: dmyToIso(today()),
     requiredDate: defaultRequiredDate(),
     priority: "Normal",
-    warehouse: "",
+    /* The main warehouse. Which one actually serves the order is a warehouse
+       decision, taken when picking is raised — the request only has to name
+       somewhere, and leaving it blank would hand picking a task with no
+       shelf to walk to. */
+    warehouse: defaultWarehouse(),
     quotationRef: "",
     customerRef: "",
     salesRep: "",
@@ -355,16 +360,14 @@ export function validateSrDraft(draft: SalesRequestDraft): DraftIssue[] {
   const block = (field: string, message: string) => out.push({ field, message, blocking: true });
   const warn = (field: string, message: string) => out.push({ field, message, blocking: false });
 
+  /* Only what a person is actually asked for. Required date, priority,
+     warehouse and currency all carry defaults and are no longer on the form
+     — see the note on the editor's meta rows — so blocking a save on them
+     would refuse a document over a field nobody can see, which is the worst
+     kind of validation. */
   if (!draft.salesRep) block("salesRep", "ยังไม่ได้เลือกพนักงานขาย");
   if (!draft.requestDate) block("requestDate", "ยังไม่ได้ระบุวันที่ขอ");
-  if (!draft.requiredDate) block("requiredDate", "ยังไม่ได้ระบุวันที่ลูกค้าต้องการ");
-  if (draft.requestDate && draft.requiredDate && draft.requiredDate < draft.requestDate) {
-    block("requiredDate", "วันที่ลูกค้าต้องการต้องไม่อยู่ก่อนวันที่ขอ");
-  }
-  if (!draft.priority) block("priority", "ยังไม่ได้ระบุความเร่งด่วน");
-  if (!draft.warehouse) block("warehouse", "ยังไม่ได้เลือกคลังที่จะจ่ายของ");
   if (!draft.priceList) block("priceList", "ยังไม่ได้เลือกรายการราคา");
-  if (!draft.currency) block("currency", "ยังไม่ได้เลือกสกุลเงิน");
 
   /* A quotation belongs to one customer; pointing at someone else's is a
      mistake worth stopping, not a note worth making. */
@@ -377,7 +380,10 @@ export function validateSrDraft(draft: SalesRequestDraft): DraftIssue[] {
     }
   }
 
-  if (!draft.customerRef) warn("customerRef", "ยังไม่ได้ระบุเลขที่อ้างอิงของลูกค้า");
+  /* No warning about a missing customer reference: at request time the
+     customer's own PO number often does not exist yet, and a notice on every
+     document for a thing that is normally absent is a notice people learn to
+     scroll past. It is asked on the order and on the invoice. */
 
   const insight = srInsight(draft);
   if (insight.found && !insight.withinLimit) {

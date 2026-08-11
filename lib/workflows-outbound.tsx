@@ -8,6 +8,7 @@ import {
   rolesSigningAt,
 } from "./domain/doc-draft";
 import { notify, rolesWhoMay } from "./domain/notify";
+import { createInvoiceFrom, invoicesForSource } from "./domain/invoice";
 import {
   applyQuotation,
   blankSrDraft,
@@ -34,6 +35,8 @@ import {
   creditCheck,
   decorateOutbound,
   decoratePacks,
+  doTotalQty,
+  getDO,
   getPack,
   getPick,
   getSO,
@@ -43,6 +46,7 @@ import {
   nextSOCode,
   packIsConfirmed,
   pickLineAvailability,
+  soOrderedQty,
   soCloseBlocked,
   soLinkedDocs,
   type ConfirmLine,
@@ -2438,9 +2442,197 @@ export function packCreateDelivery(task: PackRow, ctx: ActionCtx) {
       }
 
       commit(ctx, "ออกใบส่งของแล้ว", `${task.code} → ${code}`);
-      ctx.goto(`/m/delivery-order/${encodeURIComponent(code)}`);
+
+      /* The bill follows the note out of the door — see doBillFor. It asks
+         first when the two could legitimately differ, and navigates when it
+         is done, so the goto below only runs when there is nothing to ask. */
+      if (!doBillFor(getDO(code), ctx)) {
+        ctx.goto(`/m/delivery-order/${encodeURIComponent(code)}`);
+      }
     },
   });
+}
+
+/* ============================================================
+   THE DELIVERY NOTE AND THE BILL ARE ONE STEP
+
+   They were two. Somebody raised the note, the lorry left, and
+   the invoice waited for whoever remembered to open the create
+   screen — which is how goods reach a customer with nothing
+   asking them to pay for it.
+
+   Raising the note now raises the invoice, as a DRAFT. Issuing
+   it stays a separate, deliberate press: an invoice that issued
+   itself is a tax document nobody read.
+
+   WHEN THE LORRY GOES SHORT, IT ASKS.
+
+   Two honest answers and the software must not pick one:
+
+     bill what shipped   the customer pays for what arrived, and
+                         the rest bills on its own note later
+     bill the whole order the shortfall follows on this invoice,
+                         which is what a customer on a standing
+                         order usually expects
+
+   The second is not a variant of the first — it charges for
+   goods that are not there yet — so it changes the SOURCE of the
+   invoice as well as its quantities: billing the order means the
+   invoice is raised against the sales order, because that is the
+   document it is actually billing.
+   ============================================================ */
+
+/**
+ * Raise the invoice for a delivery note. Returns true when it took the
+ * navigation over — the caller must not then navigate somewhere else.
+ */
+function doBillFor(d: DoRow | null, ctx: ActionCtx): boolean {
+  if (!d) return false;
+  /* Whoever raised the note may not be allowed to bill. The note still
+     stands; the invoice waits for the desk that may. */
+  if (!can("sales-invoice", "create")) return false;
+
+  const so = getSO(d.soRef);
+  const shipped = doTotalQty(d);
+  const ordered = so ? soOrderedQty(so) : shipped;
+  const alreadyBilled = so ? invoicesForSource(so.code).length : 0;
+
+  /* Nothing to ask when the note carries the whole order — or when part of
+     the order has already been billed on its own invoice, in which case
+     billing "the whole order" again would bill it twice. */
+  if (shipped >= ordered || !so || alreadyBilled > 0) {
+    raiseInvoice("Delivery Order", d.code, d.code, ctx);
+    return false;
+  }
+
+  /* Reset when the question is asked, never while the form renders: the
+     radio re-renders on every click, and re-running the assignment there
+     put the answer back to the default the moment somebody changed it. */
+  basis = "delivery";
+  ctx.formModal({
+    title: "ออกใบแจ้งหนี้เท่าไร",
+    body: () => (
+      <BillBasisForm
+        doCode={d.code}
+        soCode={so.code}
+        shipped={shipped}
+        ordered={ordered}
+        onChange={(v) => (basis = v)}
+      />
+    ),
+    confirmText: "ออกใบแจ้งหนี้",
+    onConfirm: () => {
+      if (basis === "order") raiseInvoice("Sales Order", so.code, d.code, ctx);
+      else raiseInvoice("Delivery Order", d.code, d.code, ctx);
+    },
+  });
+  return true;
+}
+
+/** Which document the invoice is raised against. Reset per ask. */
+let basis: "delivery" | "order" = "delivery";
+
+function BillBasisForm({
+  doCode,
+  soCode,
+  shipped,
+  ordered,
+  onChange,
+}: {
+  doCode: string;
+  soCode: string;
+  shipped: number;
+  ordered: number;
+  onChange: (v: "delivery" | "order") => void;
+}) {
+  const [pick, setPick] = useState<"delivery" | "order">("delivery");
+
+  const choose = (v: "delivery" | "order") => {
+    setPick(v);
+    onChange(v);
+  };
+
+  const option = (
+    v: "delivery" | "order",
+    title: string,
+    qty: number,
+    note: string,
+  ) => (
+    <label
+      className={`flex cursor-pointer gap-3 rounded-card border p-3 ${
+        pick === v ? "border-primary bg-primary-soft" : "border-line"
+      }`}
+    >
+      <input
+        type="radio"
+        name="bill-basis"
+        aria-label={title}
+        checked={pick === v}
+        onChange={() => choose(v)}
+        className="mt-1"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-semibold">
+          {title} — {fmt(qty)} หน่วย
+        </span>
+        <span className="block text-cap text-ink-2">{note}</span>
+      </span>
+    </label>
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-[13px] text-ink-2">
+        {doCode} ส่งได้ {fmt(shipped)} จาก {fmt(ordered)} หน่วยที่สั่งไว้ใน {soCode}
+      </p>
+      {option(
+        "delivery",
+        "บิลเท่าที่ส่งจริง",
+        shipped,
+        `ตั้งจาก ${doCode} — ส่วนที่ค้างจะออกบิลรอบหน้าพร้อมใบส่งของรอบถัดไป`,
+      )}
+      {option(
+        "order",
+        "บิลเต็มตามใบสั่งขาย",
+        ordered,
+        `ตั้งจาก ${soCode} — ลูกค้าจ่ายค่าของที่ยังไม่ได้รับ ${fmt(ordered - shipped)} หน่วย ต้องแน่ใจว่าตกลงกันไว้แล้ว`,
+      )}
+    </div>
+  );
+}
+
+/** Write it, say so, and land on it. */
+function raiseInvoice(
+  sourceType: string,
+  sourceDoc: string,
+  deliveryCode: string,
+  ctx: ActionCtx,
+) {
+  const res = createInvoiceFrom(sourceType, sourceDoc, {
+    user: USER(),
+    note: `ออกพร้อมใบส่งสินค้า ${deliveryCode}`,
+  });
+  if (!res) {
+    ctx.toast(
+      "ยังไม่ได้ออกใบแจ้งหนี้",
+      `${sourceDoc} — ไม่มีรายการที่ยังไม่ได้วางบิล ออกใบแจ้งหนี้เองได้จากเมนู`,
+      "warning",
+    );
+    ctx.goto(`/m/delivery-order/${encodeURIComponent(deliveryCode)}`);
+    return;
+  }
+
+  notify({
+    kind: "converted",
+    docType: "sales-invoice",
+    docCode: res.code,
+    title: `${res.code} รอตรวจสอบก่อนออกบิล`,
+    body: `ออกพร้อมใบส่งสินค้า ${deliveryCode} — ตั้งจาก${sourceType} ${sourceDoc}`,
+    toRoles: rolesWhoMay("sales-invoice", "approve"),
+  });
+
+  commit(ctx, "ออกใบแจ้งหนี้ให้แล้ว", `${deliveryCode} → ${res.code} (ฉบับร่าง)`);
+  ctx.goto(`/m/sales-invoice/${encodeURIComponent(res.code)}`);
 }
 
 export function packCancel(task: PackRow, ctx: ActionCtx) {

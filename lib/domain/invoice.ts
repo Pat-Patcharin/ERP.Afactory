@@ -13,7 +13,7 @@ import {
 } from "./outbound";
 import { BUSINESS_PARTNERS } from "./partner";
 import { chargeTaxOn, chargeTaxRate, lineBase } from "./lines";
-import { DASH, daysUntil, isoToDmy, dmyToIso } from "@/lib/format";
+import { DASH, daysUntil, isoToDmy, dmyToIso, stamp } from "@/lib/format";
 
 /* ============================================================
    SALES INVOICE — billing only.
@@ -572,6 +572,148 @@ export function headerFromSource(sourceType: string, sourceDoc: string) {
 /** Every invoice raised against one source document. */
 export const invoicesForSource = (sourceDoc: string) =>
   SALES_INVOICES.filter((i) => i.sourceDoc === sourceDoc);
+
+/* ============================================================
+   RAISING ONE FROM A SOURCE DOCUMENT, WITHOUT A FORM
+
+   The delivery order now bills itself — see `packCreateDelivery`
+   — so there has to be a way to write an invoice that does not
+   go through the create screen and wait for somebody to press
+   Save.
+
+   It builds from the same two functions the form prefills from,
+   `headerFromSource` and `billableLinesFrom`, so a document
+   raised this way and the same document typed by hand cannot
+   come out carrying different figures. What it does NOT share is
+   the form's field-by-field handling of what a person typed,
+   because there is no person and nothing was typed.
+
+   Always Draft. Submitting and issuing stay separate, deliberate
+   steps whoever raised it — an invoice that issued itself is a
+   tax document nobody read.
+   ============================================================ */
+
+export interface RaisedInvoice {
+  code: string;
+  /** Lines that came out billable. Zero means nothing was left to bill. */
+  lineCount: number;
+}
+
+export function createInvoiceFrom(
+  sourceType: string,
+  sourceDoc: string,
+  { user = "System", note = "" }: { user?: string; note?: string } = {},
+): RaisedInvoice | null {
+  const header = headerFromSource(sourceType, sourceDoc);
+  if (!header) return null;
+
+  const items = billableLinesFrom(sourceType, sourceDoc)
+    .filter((l) => num(l.invoiceQty) > 0)
+    .map((l, i) => ({ ...l, line: i + 1, sourceLine: i + 1 }));
+  if (!items.length) return null;
+
+  const profile = getBillingProfile(header.customerCode);
+  const now = stamp();
+  const code = nextInvoiceCode();
+  const creditDays = profile?.creditDays ?? creditDaysFor(header.payTerm);
+  const invoiceDateIso = dmyToIso(now.split(" ")[0]);
+
+  const fresh: SalesInvoice = {
+    code,
+    customer: header.customer,
+    customerCode: header.customerCode,
+    customerType: profile?.type ?? "",
+    taxId: profile?.taxId ?? "",
+    billingAddress: profile?.address ?? "",
+    billingName: profile?.name ?? header.customer,
+    contactPerson: profile?.contact ?? "",
+    phone: profile?.phone ?? "",
+    email: profile?.email ?? "",
+
+    invoiceDate: now.split(" ")[0],
+    /* Both dates are stored dd/mm/yyyy on the record; `dueDateFrom` works in
+       the form-input form, so it is converted back the way the form does. */
+    dueDate: isoToDmy(dueDateFrom(invoiceDateIso, creditDays)),
+    status: "Draft",
+    paymentStatus: "Unpaid",
+    approvalStatus: "Not Required",
+
+    sourceType,
+    sourceDoc,
+    customerPo: header.customerPo,
+    referenceNo: header.soRef,
+
+    branch: "สำนักงานใหญ่",
+    channel: header.channel,
+    salesRep: header.salesRep,
+    currency: header.currency,
+    fx: 1,
+
+    priceList: profile?.priceList ?? "Standard Price List",
+    payTerm: header.payTerm,
+    creditDays,
+    creditStatus: profile?.creditStatus ?? "Normal",
+    customerGroup: profile?.group ?? "",
+    customerTier: profile?.tier ?? "",
+
+    /* Read off the lines, never stored — see `effectiveBillType`. A source
+       that bills Non VAT produced lines at 0%, and that is the whole answer. */
+    taxInvoiceType: items.some((l) => num(l.taxRate) > 0)
+      ? "Full Tax Invoice"
+      : "Non-Tax Invoice",
+    branchNo: "00000",
+    taxMode: "Tax Exclusive",
+    vatRate: items.find((l) => num(l.taxRate) > 0)?.taxRate ?? 0,
+    headerDisc: num(header.headerDisc),
+    freight: num(header.freight),
+    otherCharges: num(header.otherCharges),
+    rounding: 0,
+    withholdingTax: 0,
+
+    paidAmount: 0,
+    lastPaymentDate: "",
+    paymentRef: "",
+    paymentMethod: "",
+    nextFollowUp: "",
+    collectionNote: "",
+
+    cancelReason: "",
+    voidReason: "",
+    voidBy: "",
+    creditNoteRef: "",
+
+    note,
+    items,
+    history: [
+      {
+        t: `Created from ${sourceDoc}`,
+        d: `สร้างอัตโนมัติจาก${sourceType} ${sourceDoc}`,
+        u: user,
+        when: now,
+        kind: "primary",
+      },
+    ],
+    audit: [
+      {
+        event: "Invoice created",
+        user,
+        when: now,
+        field: "—",
+        from: "—",
+        to: "Draft",
+        kind: "",
+      },
+    ],
+    created: now,
+    createdBy: user,
+    updated: now,
+    updatedBy: user,
+  };
+
+  SALES_INVOICES.unshift(fresh as InvRow);
+  decorateInvoices();
+  return { code, lineCount: items.length };
+}
 
 /* ---------- Customer billing profile ---------- */
 

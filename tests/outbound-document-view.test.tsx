@@ -323,6 +323,29 @@ describe("ใบจัดสินค้า", () => {
     ).toBeInTheDocument();
   });
 
+  it("คนหยิบกลับมาคีย์จำนวนที่หยิบได้จริงจากหน้านี้ได้เลย", () => {
+    setCurrentUser(ADMIN);
+    render(<PickingDocument record={pick("In Progress")} />);
+
+    /* The sheet is printed, the picker walks the floor, and then they come
+       back to say what they found. That step had no button on this page. */
+    expect(
+      within(screen.getByTestId("pick-decision-bar")).getByRole("button", {
+        name: "คีย์จำนวนที่หยิบได้",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("งานที่ยังไม่ได้มอบหมาย ยังไม่มีใครคีย์", () => {
+    setCurrentUser(ADMIN);
+    render(<PickingDocument record={pick("Waiting")} />);
+    expect(
+      within(screen.getByTestId("pick-decision-bar")).queryByRole("button", {
+        name: "คีย์จำนวนที่หยิบได้",
+      }),
+    ).toBeNull();
+  });
+
   it("ไม่มีราคาบนใบจัดสินค้า", () => {
     /* The one document in the chain with no money on it: the floor packs
        goods and has no business with the selling price. */
