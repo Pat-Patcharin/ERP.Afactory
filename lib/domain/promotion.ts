@@ -1,3 +1,4 @@
+import { COMPANY } from "@/data/admin";
 import { PROMOTIONS as RAW } from "@/data/promotions";
 import type { IconName } from "@/lib/icons";
 import type { RecordBase } from "@/lib/types";
@@ -146,15 +147,16 @@ export const PROMOTION_REASONS = [
 /**
  * §6b กลุ่ม 4 — ฐานคิดค่าคอมมิชชัน
  *
+ * สองตัว ตามที่ตกลงกันไว้ และคำที่ใช้คือคำที่ตกลงกัน ไม่ใช่คำที่โค้ดคิดขึ้น
  * สเปคบังคับให้เลือก และบอกว่าต้องเป็นกล่องเตือนไม่ใช่ dropdown ธรรมดา
- * แต่ **ไม่ได้ระบุว่ามีตัวเลือกอะไรบ้าง** สามตัวข้างล่างเขียนขึ้นจากสิ่งที่
- * เป็นไปได้จริงทางบัญชี และเป็นข้อสมมติที่รอการยืนยัน — ถ้าจริง ๆ มีมากกว่า
- * หรือน้อยกว่านี้ ให้แก้ที่นี่ที่เดียว
+ *
+ * เคยมีตัวที่สาม "ไม่จ่ายค่าคอมสำหรับใบที่ใช้โปรนี้" — ตัดออกแล้ว มันคือ
+ * การเดานโยบายค่าตอบแทน ไม่ใช่ข้อเท็จจริงที่ใครบอกมา และเป็นเรื่องที่กระทบ
+ * รายได้พนักงาน ระบบจะไม่เสนอตัวเลือกที่ไม่มีใครตัดสินใจไว้
  */
 export const COMMISSION_BASES = [
-  "ยอดขายก่อนหักมูลค่าของแถม",
-  "ยอดขายหลังหักมูลค่าของแถม",
-  "ไม่จ่ายค่าคอมสำหรับใบที่ใช้โปรนี้",
+  "ยอดที่ลูกค้าจ่ายจริง",
+  "มูลค่าบรรทัดหลังเฉลี่ยของแถม",
 ] as const;
 
 /** §6e — งบคิดจากอะไร ไม่มีค่าเริ่มต้น ต้องเลือกเอง */
@@ -381,20 +383,20 @@ export function promotionFloorBreaches(p: PromotionRow): FloorBreach[] {
    ============================================================ */
 
 /**
- * เพดานงบที่ต้องให้ผู้จัดการอนุมัติ
+ * เพดานงบที่ต้องให้ผู้จัดการอนุมัติ — อ่านจากค่าตั้งระบบ
  *
- * ฮาร์ดโค้ดไว้ก่อนโดยตั้งใจ — ยังไม่มี UI ตั้งค่า และตัวเลขจริงยังไม่ได้ตัดสิน
- * (§7 ข้อ 4) ย้ายไปเป็นค่าตั้งระบบเมื่อมีคนบอกตัวเลข อย่าเดาตัวเลขใหม่
- * กระจายไว้หลายที่
+ * ตัวเลขอยู่ที่ COMPANY ใน data/admin.ts รวมกับอัตราภาษีและรอบปีบัญชี
+ * ไม่ได้อยู่ในโมดูลนี้ เพราะใครตั้งภาษีก็ตั้งเพดานนี้ อ่านผ่านฟังก์ชัน
+ * ไม่ใช่ค่าคงที่ตอน import เพื่อให้แก้ค่าตั้งระบบแล้วมีผลทันที
  */
-export const MANAGER_BUDGET_CEILING = 200_000;
+export const managerBudgetCeiling = () => COMPANY.promotionManagerBudgetCeiling;
 
 export type PromotionApprovalLevel = "admin" | "manager";
 
 /** §6h — โปรแบบไหนต้องขึ้นถึงผู้จัดการ */
 export function promotionApprovalLevel(p: PromotionRow): PromotionApprovalLevel {
   if (promotionFloorBreaches(p).length > 0) return "manager";
-  if ((p.budget ?? 0) > MANAGER_BUDGET_CEILING) return "manager";
+  if ((p.budget ?? 0) > managerBudgetCeiling()) return "manager";
   return "admin";
 }
 

@@ -49,7 +49,7 @@ export const PROMOTIONS: PromotionRow[] = [
     stackWithCustomerDiscount: false,
     recordUsage: true,
     needsApproval: true,
-    commissionBase: "ยอดขายหลังหักมูลค่าของแถม",
+    commissionBase: "มูลค่าบรรทัดหลังเฉลี่ยของแถม",
 
     budget: 80_000,
     budgetBasis: "cost",
@@ -109,7 +109,7 @@ export const PROMOTIONS: PromotionRow[] = [
     stackWithCustomerDiscount: false,
     recordUsage: true,
     needsApproval: true,
-    commissionBase: "ไม่จ่ายค่าคอมสำหรับใบที่ใช้โปรนี้",
+    commissionBase: "มูลค่าบรรทัดหลังเฉลี่ยของแถม",
 
     budget: 250_000,
     budgetBasis: "price",
@@ -219,7 +219,7 @@ export const PROMOTIONS: PromotionRow[] = [
     stackWithCustomerDiscount: false,
     recordUsage: true,
     needsApproval: true,
-    commissionBase: "ยอดขายหลังหักมูลค่าของแถม",
+    commissionBase: "มูลค่าบรรทัดหลังเฉลี่ยของแถม",
 
     budget: 60_000,
     budgetBasis: "cost",
@@ -275,7 +275,7 @@ export const PROMOTIONS: PromotionRow[] = [
     stackWithCustomerDiscount: false,
     recordUsage: true,
     needsApproval: true,
-    commissionBase: "ยอดขายหลังหักมูลค่าของแถม",
+    commissionBase: "มูลค่าบรรทัดหลังเฉลี่ยของแถม",
 
     budget: 150_000,
     budgetBasis: "cost",
@@ -333,7 +333,7 @@ export const PROMOTIONS: PromotionRow[] = [
     stackWithCustomerDiscount: false,
     recordUsage: true,
     needsApproval: true,
-    commissionBase: "ยอดขายหลังหักมูลค่าของแถม",
+    commissionBase: "ยอดที่ลูกค้าจ่ายจริง",
 
     budget: 50_000,
     budgetBasis: "cost",

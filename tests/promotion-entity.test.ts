@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { COMPANY } from "@/data/admin";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 import {
   PROMOTIONS,
   PROMOTION_KINDS,
   PROMOTION_STATUSES,
+  COMMISSION_BASES,
   applyPromotionPatch,
   approvePromotion,
   averageUnitPrice,
@@ -12,6 +14,7 @@ import {
   mayApprovePromotion,
   mayCreatePromotion,
   mayEditPromotion,
+  managerBudgetCeiling,
   pausePromotion,
   promotionApprovalLevel,
   promotionFloorBreaches,
@@ -161,8 +164,40 @@ describe("ราคาเฉลี่ยและราคาขั้นต่�
   it("งบเกินเพดานก็ขึ้นเป็นระดับผู้จัดการ แม้ราคาเฉลี่ยจะไม่หลุด", () => {
     const p = copy("PM-0006");
     expect(promotionApprovalLevel(p)).toBe("admin");
-    p.budget = 500_000;
+    p.budget = managerBudgetCeiling() + 1;
     expect(promotionApprovalLevel(p)).toBe("manager");
+  });
+
+  it("เพดานอ่านจากค่าตั้งระบบ ไม่ใช่ค่าคงที่ในโมดูล", () => {
+    /* ย้ายมาอยู่กับอัตราภาษีและรอบปีบัญชี เพราะคนที่ตั้งภาษีคือคนที่ตั้ง
+       เพดานนี้ — แก้ค่าตั้งระบบแล้วต้องมีผลทันที ไม่ใช่มีผลตอน import */
+    expect(managerBudgetCeiling()).toBe(COMPANY.promotionManagerBudgetCeiling);
+
+    const was = COMPANY.promotionManagerBudgetCeiling;
+    const p = copy("PM-0006");
+    p.budget = 60_000;
+    expect(promotionApprovalLevel(p), `งบ 60,000 ใต้เพดาน ${was}`).toBe("admin");
+
+    COMPANY.promotionManagerBudgetCeiling = 50_000;
+    expect(promotionApprovalLevel(p), "ลดเพดานแล้วงบเดิมเกิน").toBe("manager");
+    COMPANY.promotionManagerBudgetCeiling = was;
+    expect(promotionApprovalLevel(p)).toBe("admin");
+  });
+
+  it("ฐานคิดค่าคอมมีสองตัว ตามที่ตกลงกันไว้ และใช้คำที่ตกลงกัน", () => {
+    /* เคยมีตัวที่สาม "ไม่จ่ายค่าคอม..." — ตัดออกเพราะเป็นการเดานโยบาย
+       ค่าตอบแทน ไม่ใช่ข้อเท็จจริงที่ใครบอกมา ระบบจะไม่เสนอตัวเลือกที่
+       ไม่มีใครตัดสินใจไว้ เทสต์นี้ปักไว้เพื่อไม่ให้มันกลับมาเงียบ ๆ */
+    expect([...COMMISSION_BASES]).toEqual([
+      "ยอดที่ลูกค้าจ่ายจริง",
+      "มูลค่าบรรทัดหลังเฉลี่ยของแถม",
+    ]);
+
+    /* และข้อมูลตัวอย่างต้องใช้คำเดียวกับที่ระบบเสนอ ไม่ใช่คำที่ตกค้าง */
+    for (const p of PROMOTIONS) {
+      if (!p.commissionBase) continue;
+      expect([...COMMISSION_BASES], p.code).toContain(p.commissionBase);
+    }
   });
 });
 
