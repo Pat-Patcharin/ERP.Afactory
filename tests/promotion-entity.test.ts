@@ -10,11 +10,13 @@ import {
   approvePromotion,
   averageUnitPrice,
   blankPromotion,
+  createPromotion,
   getPromotion,
   mayApprovePromotion,
   mayCreatePromotion,
   mayEditPromotion,
   managerBudgetCeiling,
+  nextPromotionCode,
   pausePromotion,
   promotionApprovalLevel,
   promotionFloorBreaches,
@@ -50,7 +52,12 @@ const copy = (code: string): PromotionRow => {
   return JSON.parse(JSON.stringify(row)) as PromotionRow;
 };
 
+/** ทะเบียนจริงถูกเขียนโดย createPromotion — คืนสภาพทุกข้อ */
+const PROMO_SNAP = JSON.stringify(PROMOTIONS);
+
 beforeEach(() => {
+  PROMOTIONS.length = 0;
+  PROMOTIONS.push(...(JSON.parse(PROMO_SNAP) as PromotionRow[]));
   resetCurrentUser();
 });
 
@@ -62,8 +69,32 @@ describe("ลงทะเบียนเป็น entity", () => {
     expect(s!.detail.key).toBe("promotion");
   });
 
-  it("ยังไม่มีฟอร์ม — ทางสร้าง/แก้ตกไปที่ placeholder ที่บอกชื่อโมดูล", () => {
-    expect(getSchemas("promotion")!.form).toBeUndefined();
+  it("มีฟอร์มแล้ว — ห้ากลุ่มตาม §6b กลุ่มงบเป็นแท็บของตัวเอง", () => {
+    /* ข้อนี้เคยปักว่า "ยังไม่มีฟอร์ม" ซึ่งเป็นสภาพชั่วคราวที่เราตั้งใจเปลี่ยนเอง
+       จึงยกระดับให้ปักโครงของฟอร์มแทน — ครอบคลุมกว่าที่ปักว่าไม่มี */
+    const form = getSchemas("promotion")!.form;
+    expect(form).toBeDefined();
+    expect(form!.key).toBe("promotion");
+
+    const keys = form!.steps.map((st) => st.key);
+    expect(keys.slice(0, 5)).toEqual(["identity", "what", "who", "limits", "budget"]);
+    /* งบกับคลังอยู่แท็บของตัวเอง ไม่ต่อท้ายกลุ่มสี่ */
+    expect(keys.indexOf("budget")).toBeGreaterThan(keys.indexOf("limits"));
+  });
+
+  it("ช่องบังคับไม่เกินเก้าช่อง", () => {
+    /* เกณฑ์ที่ตกลงกันไว้ — ฟอร์มที่บังคับสิบห้าช่องคือฟอร์มที่คนกรอกมั่วให้ผ่าน */
+    const req = getSchemas("promotion")!.form!.required ?? [];
+    expect(req.length, req.map((r) => r.path).join(" ")).toBeLessThanOrEqual(9);
+  });
+
+  it("สามช่องที่ห้ามเดาให้ ต้องว่างจริงในฟอร์มเปล่า", () => {
+    const blank = getSchemas("promotion")!.form!.blank!();
+    /* เหตุผลที่สร้าง · ฐานคิดค่าคอม · คลังที่หักของแถม — และงบคิดจากอะไร
+       ทั้งสี่ตัวถ้าเดาให้ ทุกโปรจะได้ค่าที่ไม่มีใครเลือก */
+    for (const k of ["reason", "commissionBase", "freeGoodsWarehouse", "budgetBasis"]) {
+      expect(String(blank[k] ?? ""), k).toBe("");
+    }
   });
 
   it("เมนูชี้ไปหน้ารายการ ส่วนหน้าเลือกประเภทเป็นปุ่มสร้างของรายการนั้น", () => {
@@ -382,5 +413,150 @@ describe("§6g — หยุดชั่วคราวและเปิดก�
     expect(p.dirtySinceApproval).toBe(false);
     expect(resumePromotion(p).ok).toBe(true);
     expect(p.status).toBe("Active");
+  });
+});
+
+/* ============================================================
+   §6h — สร้างโปรใหม่
+   ============================================================ */
+
+describe("createPromotion", () => {
+  /** ค่าครบทุกกลุ่ม ใช้พิสูจน์ว่าไม่มีกลุ่มไหนหายตอนเขียน */
+  const FULL: Partial<PromotionRow> = {
+    name: "ซื้อ 5 แถม 1 — ทดสอบ",
+    printName: "โปรพิเศษเดือนนี้",
+    from: "01/09/2026",
+    to: "30/09/2026",
+    priority: 3,
+    reason: "ล้างสต๊อกใกล้หมดอายุ",
+    reasonNote: "ล็อตหมดอายุ ธ.ค.",
+    owner: "ณิชา พงษ์เจริญ",
+
+    scope: "set",
+    items: ["AA-TH003-WL", "AA-TH003-GR"],
+    priceLists: ["PL-STD-2026 Standard"],
+    minOrder: 5000,
+    minOrderBasis: "ยอดก่อนภาษี",
+    nearExpiryOnly: true,
+    nearExpiryDays: 60,
+
+    customerGroups: ["คลินิก"],
+    customers: ["BP000122"],
+    areas: ["กรุงเทพ"],
+    channels: ["Direct"],
+    allowDraftPartner: true,
+
+    usePerCustomer: 2,
+    useTotal: 50,
+    stackWithPromo: true,
+    stackWithCustomerDiscount: false,
+    recordUsage: true,
+    needsApproval: true,
+    commissionBase: "ยอดที่ลูกค้าจ่ายจริง",
+
+    budget: 80_000,
+    budgetBasis: "cost",
+    budgetOver: "stop",
+    budgetWarnAt: 70,
+    freeGoodsWarehouse: "WH-BKK Bangkok Main Warehouse",
+
+    tiers: [{ buy: 5, free: 1 }],
+  };
+
+  it("SALES_REP ถูกปฏิเสธ พร้อมเหตุผล และไม่มีแถวเพิ่มในทะเบียน", () => {
+    setCurrentUser(SALES_REP);
+    const before = PROMOTIONS.length;
+
+    const res = createPromotion({ name: "โปรที่ไม่ควรเกิด" });
+
+    /* ตรวจสองอย่าง ไม่ใช่แค่ค่าที่คืน — ค่าที่คืนบอกว่าไม่ผ่าน แต่ทะเบียน
+       คือที่ที่ความเสียหายจะอยู่ถ้าด่านเป็นแค่การซ่อนปุ่ม */
+    expect(res.ok).toBe(false);
+    expect(res.row).toBeNull();
+    expect(res.reason).toContain("สร้างโปรโมชั่นไม่ได้");
+    expect(PROMOTIONS).toHaveLength(before);
+    expect(PROMOTIONS.some((p) => p.name === "โปรที่ไม่ควรเกิด")).toBe(false);
+  });
+
+  it("สร้างสองครั้งติดกันได้รหัสไม่ซ้ำ", () => {
+    setCurrentUser(SALES_ADMIN);
+    const a = createPromotion({ name: "โปรหนึ่ง" });
+    const b = createPromotion({ name: "โปรสอง" });
+
+    expect(a.row!.code).not.toBe(b.row!.code);
+    expect(new Set(PROMOTIONS.map((p) => p.code)).size).toBe(PROMOTIONS.length);
+    /* และรหัสถัดไปต้องไม่ทับของที่เพิ่งออกไป */
+    expect(nextPromotionCode()).not.toBe(b.row!.code);
+  });
+
+  it("ค่าที่กรอกครบทุกกลุ่ม อยู่ครบหลังสร้าง — และเปิดกลับมาแล้วยังอยู่", () => {
+    setCurrentUser(SALES_ADMIN);
+    const res = createPromotion(FULL);
+    expect(res.ok, res.reason).toBe(true);
+
+    /* รอบแรก: อ่านจากค่าที่คืนมา */
+    for (const [k, v] of Object.entries(FULL)) {
+      expect(res.row![k as keyof PromotionRow], k).toEqual(v);
+    }
+
+    /* รอบสอง: อ่านจากทะเบียนด้วยรหัส เหมือนเปิดหน้าแก้ไขใหม่
+       — บทเรียน A2a/A2b คือเซฟแล้วมีค่าไม่ได้พิสูจน์ว่าเปิดกลับมาแล้วยังอยู่ */
+    const reopened = getPromotion(res.row!.code);
+    expect(reopened).not.toBeNull();
+    for (const [k, v] of Object.entries(FULL)) {
+      expect(reopened![k as keyof PromotionRow], `เปิดกลับ: ${k}`).toEqual(v);
+    }
+
+    /* และร่องรอยที่ระบบออกให้ ไม่ใช่ค่าที่ฟอร์มส่งมา */
+    expect(reopened!.status).toBe("Draft");
+    expect(reopened!.createdBy).toBe("ณิชา พงษ์เจริญ");
+    expect(reopened!.code).toMatch(/^PM-\d{4}$/);
+  });
+
+  it("ทริปไวร์: ค่าเดินผ่าน applyPromotionPatch จริง ไม่ใช่ Object.assign", () => {
+    /* ความต่างที่สังเกตได้ระหว่างสองเส้นทาง — ไม่มีบทบาทไหนที่ create ได้แต่
+       edit ไม่ได้ (ตรวจแล้วในตารางสิทธิ์) ฉะนั้น `applyPromotionPatch` จะไม่
+       ปฏิเสธตอนสร้าง สิ่งที่มันทำและ `Object.assign` ไม่ทำ คือ **ตั้งธง
+       dirtySinceApproval เมื่อ patch แตะเงื่อนไขบนโปรที่มีวันอนุมัติแล้ว**
+
+       ยิง approvedAt เข้าไปพร้อม patch จึงเป็นวิธีเดียวที่แยกสองเส้นทางออก
+       จากกันได้ในเทสต์ ฟอร์มจริงไม่ส่งค่านี้ — นี่คือทริปไวร์ ไม่ใช่เคสใช้งาน
+       ถ้าใครเปลี่ยน createPromotion ไปเขียนค่าตรง ข้อนี้จะแดง */
+    setCurrentUser(SALES_ADMIN);
+    const res = createPromotion({ ...FULL, approvedAt: "01/09/2026", minOrder: 7000 });
+
+    expect(res.ok, res.reason).toBe(true);
+    expect(res.row!.minOrder, "ค่าถูกเขียนลงแถว").toBe(7000);
+    expect(
+      res.row!.dirtySinceApproval,
+      "ธงนี้มีแต่ applyPromotionPatch ที่ตั้ง — ถ้าเป็น false แปลว่ามีเส้นทางลัด",
+    ).toBe(true);
+  });
+
+  it("ค่าจากฟอร์มเดินผ่าน applyPromotionPatch — ธงเงื่อนไขทำงานต่อได้", () => {
+    setCurrentUser(SALES_ADMIN);
+    const res = createPromotion(FULL);
+    const row = res.row!;
+
+    /* โปรใหม่ยังไม่อนุมัติ ธงจึงยังไม่ตั้ง — ตรงกับ applyPromotionPatch
+       ที่ตั้งธงเฉพาะเมื่อ approvedAt มีค่าแล้ว */
+    expect(row.dirtySinceApproval).toBe(false);
+    expect(row.approvedAt).toBe("");
+
+    /* อนุมัติแล้วแตะเงื่อนไข ธงต้องขึ้น — พิสูจน์ว่าแถวที่สร้างมาเดินเข้า
+       เส้นทางเดียวกับแถวที่มาจากข้อมูลตัวอย่าง ไม่ใช่แถวพิเศษ */
+    row.approvedAt = "01/09/2026";
+    row.approvedBy = "สมชาย ใจดี";
+    row.status = "Paused";
+    expect(applyPromotionPatch(row, { minOrder: 9000 }).ok).toBe(true);
+    expect(row.dirtySinceApproval).toBe(true);
+  });
+
+  it("รหัสโปรลอกตรรกะจาก nextPRCode — อ่านเฉพาะส่วนหลังขีด", () => {
+    /* ถ้าอ่านตัวเลขทั้งรหัสแบบ nextBPCode รหัสที่มีปีอยู่ใน prefix จะทำให้
+       เลขถัดไปกระโดดไปหลายล้าน */
+    setCurrentUser(SALES_ADMIN);
+    PROMOTIONS.unshift({ ...blankPromotion(), code: "PM2506-0009", name: "รหัสมีปี" });
+    expect(nextPromotionCode()).toBe("PM-0010");
   });
 });

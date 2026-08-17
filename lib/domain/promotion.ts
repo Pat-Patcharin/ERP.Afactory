@@ -1,5 +1,6 @@
 import { COMPANY } from "@/data/admin";
 import { PROMOTIONS as RAW } from "@/data/promotions";
+import { stamp } from "@/lib/format";
 import type { IconName } from "@/lib/icons";
 import type { RecordBase } from "@/lib/types";
 import { can, currentUser } from "./admin";
@@ -583,3 +584,71 @@ export const PROMOTIONS = RAW as PromotionRow[];
 
 export const getPromotion = (code: string): PromotionRow | null =>
   PROMOTIONS.find((p) => p.code === code) ?? null;
+
+/* ============================================================
+   สร้างโปรใหม่ — §6h
+
+   `applyPromotionPatch` แก้แถวที่มีอยู่ได้ แต่แก้แถวที่ยังไม่มีไม่ได้
+   ตัวนี้คือขั้นที่ขาด และมันไม่ได้เพิ่มกฎใหม่เลย — ต่อของเดิมสี่ขั้น:
+
+     1. `mayCreatePromotion()`  ด่านที่เขียนไว้แล้วแต่ยังไม่มีใครเรียก
+     2. ออกรหัสถัดไป            ลอก `nextPRCode` — ดูคอมเมนต์ที่ตัวมันเอง
+     3. `blankPromotion()`      ค่าเริ่มต้นอยู่ที่เดียว ไม่กระจาย
+     4. `applyPromotionPatch()` ค่าจากฟอร์มเดินทางเดียวกับตอนแก้
+
+   ขั้นที่ 4 สำคัญที่สุด ถ้าเขียนค่าตรงลงแถวที่นี่ จะมีสองเส้นทางเขียน
+   แล้ววันหนึ่งเส้นทางหนึ่งจะได้กฎที่อีกเส้นทางไม่ได้
+   ============================================================ */
+
+/**
+ * รหัสโปรถัดไป
+ *
+ * ลอกจาก `nextPRCode` ไม่ใช่ `nextBPCode` — ทั้งสองตัวในโปรเจกต์นี้ต่างกัน:
+ * PR อ่านเฉพาะส่วนหลังขีด (`split("-")[1]`) BP อ่านตัวเลขทั้งหมดในรหัส
+ * (`replace(/\D/g, "")`) วันนี้ให้ผลเท่ากันเพราะรหัสโปรเป็น `PM-0001`
+ * แต่ถ้าวันหน้าเติมปีเป็น `PM2506-0001` แบบ BP จะอ่านได้ 25060001
+ */
+export function nextPromotionCode(): string {
+  const n = PROMOTIONS.reduce((m, p) => {
+    const num = parseInt(String(p.code).split("-")[1], 10) || 0;
+    return Math.max(m, num);
+  }, 0);
+  return `PM-${String(n + 1).padStart(4, "0")}`;
+}
+
+/**
+ * ผลของการสร้าง — คืนเหตุผลเสมอเมื่อถูกปฏิเสธ
+ *
+ * `row` เป็น null เมื่อไม่ผ่าน และ `reason` บอกว่าทำไม เพื่อให้หน้าจอแสดง
+ * เหตุผลได้ ไม่ใช่แค่เงียบไปเฉย ๆ — รูปแบบเดียวกับ `PromotionGuard` ตัวอื่น
+ */
+export interface PromotionCreateResult extends PromotionGuard {
+  row: PromotionRow | null;
+}
+
+export function createPromotion(
+  patch: Partial<PromotionRow>,
+): PromotionCreateResult {
+  const guard = mayCreatePromotion();
+  if (!guard.ok) return { ...guard, row: null };
+
+  const row: PromotionRow = {
+    ...blankPromotion(),
+    code: nextPromotionCode(),
+    created: stamp(),
+    createdBy: currentUser().name,
+  };
+  PROMOTIONS.unshift(row);
+
+  /* ค่าทุกช่องเดินผ่านทางเขียนเดียวกับตอนแก้ ไม่มีเส้นทางลัด */
+  const written = applyPromotionPatch(row, patch);
+  if (!written.ok) {
+    /* เขียนไม่ผ่านแล้วปล่อยแถวเปล่าค้างไว้ในทะเบียน คือการสร้างขยะที่
+       หน้ารายการจะแสดงเป็นโปรไม่มีชื่อ ถอนออกให้เหมือนไม่เคยเกิด */
+    const i = PROMOTIONS.indexOf(row);
+    if (i > -1) PROMOTIONS.splice(i, 1);
+    return { ...written, row: null };
+  }
+
+  return { ok: true, reason: "", row };
+}

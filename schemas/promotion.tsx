@@ -17,6 +17,7 @@ import {
 } from "@/lib/domain/promotion";
 import { PROMOTION_KINDS } from "@/lib/domain/promotion";
 import { bestLadder } from "@/lib/domain/promotion-ladder";
+import { PROMO_FORM } from "./forms/promotion";
 import { PROMO_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money, money0 } from "@/lib/format";
 import type { ActionCtx, Block, DetailSchema, EntitySchemas, ListSchema } from "@/lib/types";
@@ -551,4 +552,5 @@ export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
 export const promotionSchemas: EntitySchemas<PromotionRow> = {
   list: PROMO_LIST,
   detail: PROMO_DETAIL,
+  form: PROMO_FORM,
 };
