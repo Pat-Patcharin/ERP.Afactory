@@ -125,11 +125,11 @@ export const NAV: NavGroup[] = [
       { label: "Shipment", href: "/m/shipment", icon: "truck" },
       { label: "Sales Return", href: "/m/sales-return", icon: "return" },
       { label: "Credit Note", href: "/m/credit-note", icon: "creditNote" },
-      /* Points at the type chooser rather than a list, because there is no
-         list yet — the entity is registered in the step after this one, and
-         a menu entry to a screen that does not exist is worse than one that
-         opens the only thing that does. It becomes /m/promotion then. */
-      { label: "Promotion", href: "/promotion/new", icon: "promotion" },
+      /* The list, now that there is one. The type chooser sits at
+         /promotion/new and the list's Create button is what opens it —
+         picking a kind is the first step of creating one, not a
+         destination somebody navigates to on its own. */
+      { label: "Promotion", href: "/m/promotion", icon: "promotion" },
     ],
   },
   {

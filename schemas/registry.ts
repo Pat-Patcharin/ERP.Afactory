@@ -19,6 +19,7 @@ import { invSchemas } from "./sales-invoice";
 import { shpSchemas } from "./shipment";
 import { rtnSchemas } from "./sales-return";
 import { cnSchemas } from "./credit-note";
+import { promotionSchemas } from "./promotion";
 import { stockInquirySchemas } from "./stock-inquiry";
 import { stockCardSchemas } from "./stock-card";
 import { productStockCardSchemas } from "./product-stock-card";
@@ -75,6 +76,9 @@ export const REGISTRY: Record<string, EntitySchemas<any>> = {
   shipment: shpSchemas,
   "sales-return": rtnSchemas,
   "credit-note": cnSchemas,
+  /* Campaigns somebody sets up. No `form` yet — create and edit fall through
+     to the named placeholder until the five-group form lands. */
+  promotion: promotionSchemas,
 
   /* Inventory */
   "stock-inquiry": stockInquirySchemas,

@@ -82,6 +82,7 @@ export const MODULES: ModuleDef[] = [
   { key: "shipment", label: "Shipment", group: "Outbound", href: "/m/shipment" },
   { key: "sales-return", label: "Sales Return", group: "Outbound", href: "/m/sales-return" },
   { key: "credit-note", label: "Credit Note", group: "Outbound", href: "/m/credit-note" },
+  { key: "promotion", label: "Promotion", group: "Outbound", href: "/m/promotion" },
 
   { key: "finance", label: "Finance", group: "Finance", actions: ["view", "approve", "export", "print"] },
   { key: "reports", label: "Reports", group: "Reports", actions: RO },
@@ -554,6 +555,11 @@ export const ROLES: RoleDef[] = [
       "sales-order": OPERATE,
       shipment: VIEW_ONLY,
       "sales-invoice": VIEW_ONLY,
+      /* เห็นโปรได้ ตั้งโปรไม่ได้ — โปรกระทบราคาทั้งบริษัท ไม่ใช่ดีลรายใบ
+         (§6h) ให้ view ไว้ ไม่ใช่ตัดทิ้งทั้งโมดูล เพราะเซลล์ต้องรู้ว่ามีโปร
+         อะไรใช้ได้บ้างตอนเปิดใบ และเพราะด่าน "สร้างไม่ได้" ต้องกัดที่สิทธิ์
+         create จริง ๆ ไม่ใช่ผ่านเพราะมองไม่เห็นโมดูลตั้งแต่แรก */
+      promotion: VIEW_ONLY,
       "business-partner": OPERATE,
       /* Availability yes, valuation no — see the fields list. */
       "stock-inquiry": ["view"],

@@ -347,6 +347,17 @@ export const DO_TONE: Record<string, BadgeTone> = {
   Cancelled: "neutral",
 };
 
+/** สถานะโปรโมชั่นทั้งห้าตามสเปค §6g */
+export const PROMO_TONE: Record<string, BadgeTone> = {
+  Draft: "neutral",
+  "Pending Approval": "warning",
+  Active: "success",
+  /* เหลืองเหมือนรออนุมัติโดยตั้งใจ — ทั้งคู่คือ "ยังใช้ไม่ได้ และมีคนต้องทำอะไรสักอย่าง"
+     ต่างจาก Ended ที่ไม่มีใครต้องทำอะไรอีกแล้ว */
+  Paused: "warning",
+  Ended: "neutral",
+};
+
 export const PL_TONE: Record<string, BadgeTone> = {
   Draft: "neutral",
   Active: "success",

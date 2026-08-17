@@ -93,13 +93,20 @@ describe("หน้าเลือกประเภทโปรโมชั่�
 });
 
 describe("เมนู Promotion", () => {
-  it("ชี้มาที่หน้าเลือกประเภท ไม่ใช่ placeholder อีกแล้ว", () => {
+  /* ปลายทางที่แน่นอนของเมนูย้ายไปอยู่ในเทสต์ของ entity แล้ว — ตอนที่หน้านี้
+     เกิดขึ้น เมนูชี้มาที่หน้าเลือกประเภทเพราะยังไม่มีหน้ารายการให้ชี้ พอมี
+     หน้ารายการ เมนูก็ชี้ไปที่นั่นเหมือนโมดูลอื่นทั้งแอป และหน้าเลือกประเภท
+     กลายเป็นปุ่มสร้างของหน้ารายการ
+
+     สิ่งที่ไฟล์นี้ยังต้องคุมคือข้อที่ไม่ขึ้นกับว่า entity มาแล้วหรือยัง:
+     Promotion ไม่ใช่ placeholder อีกต่อไป */
+  it("ไม่ใช่ placeholder อีกแล้ว", () => {
     const item = NAV_INDEX.find((i) => i.label === "Promotion");
     expect(item).toBeDefined();
-    expect(item!.href).toBe("/promotion/new");
     expect(item!.soon).toBeUndefined();
-    /* The workspace resolver has to agree, or a deep link from a dashboard
-       tile would still land on the placeholder. */
-    expect(pageHref("Promotion")).toBe("/promotion/new");
+    expect(item!.href.startsWith("/soon")).toBe(false);
+    /* ตัวแปลงปลายทางของ workspace ต้องเห็นตรงกัน ไม่งั้นลิงก์จากแดชบอร์ด
+       จะยังตกไปที่ placeholder */
+    expect(pageHref("Promotion")).toBe(item!.href);
   });
 });
