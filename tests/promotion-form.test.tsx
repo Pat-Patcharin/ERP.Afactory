@@ -9,6 +9,7 @@ import {
   type PromotionRow,
 } from "@/lib/domain/promotion";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
+import { bestLadder, type LadderTier } from "@/lib/domain/promotion-ladder";
 import type { ActionCtx, FormBlock, FormField, FormState, GridRow } from "@/lib/types";
 
 /* ============================================================
@@ -663,6 +664,10 @@ const freeGoodsState = (): FormState => ({
   freeGoodsWarehouse: "WH-BKK Bangkok Main Warehouse",
 });
 
+/** ขั้นในรูปที่ bestLadder รับ — ใช้เทียบผลบนหน้าจอกับตัวคำนวณจริง */
+const ladderTiers = (st: FormState): LadderTier[] =>
+  ((st.tiers ?? []) as GridRow[]).map((r) => ({ buy: Number(r.buy) || 0, free: Number(r.free) || 0 }));
+
 const gridCols = (st: FormState, path: string) =>
   (allFields(st).find((f) => f.path === path)?.cols ?? []).map((c) => c.key);
 
@@ -896,5 +901,120 @@ describe("ขั้นบันไดอยู่ครบตลอดทาง"
     expect(PROMOTIONS.find((p) => p.name === "โปรที่มีแถวขั้นว่างค้าง")!.tiers).toEqual([
       { buy: 3, free: 1 },
     ]);
+  });
+});
+
+/* ============================================================
+   PR3c บนฟอร์ม — ผลที่คนตั้งโปรเห็นจริง
+
+   อ่านจากบล็อกที่ฟอร์มสร้าง ไม่ได้อ่านจากโดเมนตรง ๆ เพื่อให้การฉีดของผิด
+   "ให้ UI คำนวณเอง" จับได้ที่นี่
+   ============================================================ */
+
+describe("PR3c ตัวลองคำนวณบนฟอร์ม", () => {
+  const withTry = (qty: unknown): FormState => ({ ...freeGoodsState(), _tryQty: qty });
+
+  it("การ์ดลองคำนวณโผล่เมื่อมีขั้นแล้ว และไม่โผล่ในโปรส่วนลด", () => {
+    expect(paths({ ...freeGoodsState(), tiers: [] })).not.toContain("_tryQty");
+    expect(paths(freeGoodsState())).toContain("_tryQty");
+    expect(paths({ ...PROMO_FORM.blank(), kind: "price-discount" })).not.toContain("_tryQty");
+  });
+
+  it("จ่าย 13 → แถม 5 · รวม 18 · ใช้ขั้น 10 + ขั้น 3 · ราคาเฉลี่ย", () => {
+    /* เกณฑ์รับงาน และเป็นเคสที่วิธีไล่จากขั้นใหญ่ลงมาตอบ 4 ไม่ใช่ 5 */
+    const notes = noteTexts(withTry(13)).join(" ");
+    expect(notes).toContain("แถม 5");
+    expect(notes).toContain("รวมที่ได้รับ 18");
+    expect(notes).toContain("10 แถม 4 × 1 + 3 แถม 1 × 1");
+    /* 650 × 13 ÷ 18 = 469.44 */
+    expect(notes).toContain("469.44");
+  });
+
+  it("ตัวเลขบนหน้าจอตรงกับ bestLadder ทุกจำนวนที่ลอง", () => {
+    /* ปักว่าหน้าจอไม่มีสูตรของตัวเอง — ฉีดของผิดให้ UI คำนวณเองแล้วข้อนี้แดง */
+    for (const qty of [1, 2, 3, 6, 9, 11, 13, 20, 29, 30, 45]) {
+      const truth = bestLadder(ladderTiers(freeGoodsState()), qty);
+      const notes = noteTexts(withTry(qty)).join(" ");
+      expect(notes, `จ่าย ${qty}`).toContain(`แถม ${truth.free}`);
+      expect(notes, `จ่าย ${qty} รวม`).toContain(`รวมที่ได้รับ ${qty + truth.free}`);
+    }
+  });
+
+  it("ชุดขั้นที่วิธีไล่จากขั้นใหญ่ตอบผิด — หน้าจอต้องตอบเหมือนตัวคำนวณจริง", () => {
+    /* 3 แถม 1 · 5 แถม 1 จ่าย 6 — ไล่จากขั้นใหญ่ได้ขั้น 5 แล้วเหลือ 1 จับคู่
+       ไม่ได้ = แถม 1 ที่ถูกคือใช้ขั้น 3 สองรอบ = แถม 2
+       ชุด 3/10/30 ของสเปคแยกสองวิธีนี้ไม่ออก เพราะเศษ 3 ยังจับคู่ได้พอดี
+       ข้อนี้จึงเป็นตัวที่จับได้ว่าหน้าจอเลิกเรียก bestLadder */
+    const st: FormState = {
+      ...freeGoodsState(),
+      tiers: [
+        { buy: 3, free: 1 },
+        { buy: 5, free: 1 },
+      ],
+      _tryQty: 6,
+    };
+    expect(bestLadder(ladderTiers(st), 6).free, "ตัวคำนวณจริงตอบ 2").toBe(2);
+
+    const notes = noteTexts(st).join(" ");
+    expect(notes).toContain("แถม 2");
+    expect(notes).toContain("3 แถม 1 × 2");
+    expect(notes).not.toContain("เศษที่จับคู่ไม่ได้");
+  });
+
+  it("ยังไม่พิมพ์จำนวน — มีแต่ช่องกรอก ไม่มีผลลัพธ์ปลอม", () => {
+    const notes = noteTexts(withTry("")).join(" ");
+    expect(notes).not.toContain("รวมที่ได้รับ");
+    expect(paths(withTry(""))).toContain("_tryQty");
+  });
+
+  it("เศษที่จับคู่ไม่ได้บอกไว้ และบอกว่าทิ้ง ไม่ปัดขึ้น", () => {
+    const notes = noteTexts(withTry(5)).join(" ");
+    expect(notes).toContain("เศษที่จับคู่ไม่ได้ 2");
+    expect(notes).toContain("ไม่ปัดขึ้น");
+  });
+
+  it("เสนอเพิ่มจำนวนเมื่อระยะน้อยกว่าครึ่งของขั้น และเงียบเมื่อไม่ใช่", () => {
+    expect(noteTexts(withTry(20)).join(" ")).toContain("เพิ่มอีก 10 ชิ้น");
+    expect(noteTexts(withTry(3)).join(" ")).not.toContain("เพิ่มอีก");
+  });
+
+  it("จำนวนมหาศาลถูกจำกัดที่เพดาน และบอกว่าจำกัดไว้เท่าไหร่", () => {
+    const notes = noteTexts(withTry(9_999_999_999)).join(" ");
+    expect(notes).toContain("จำนวนถูกจำกัดไว้ที่");
+    expect(notes).toContain("100,000");
+  });
+
+  it("ช่องลองจำนวนไม่ถูกบันทึกลงระเบียน", () => {
+    /* เป็นช่องบนหน้าจอ ไม่ใช่ฟิลด์ของโปร ถ้ามันเข้าไปในระเบียน วันหนึ่ง
+       จะมีคนอ่านมันเป็นเงื่อนไขของโปร */
+    setCurrentUser(SALES_ADMIN);
+    const { ctx } = stubCtx();
+    PROMO_FORM.save({ ...withTry(13), name: "โปรที่เคยลองคำนวณ" }, ctx);
+    const row = PROMOTIONS.find((p) => p.name === "โปรที่เคยลองคำนวณ")! as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(row._tryQty).toBeUndefined();
+    expect(PROMO_FORM.toState!(row as unknown as PromotionRow)._tryQty).toBeUndefined();
+  });
+
+  it("ราคาเฉลี่ยที่จำนวนนั้นหลุดขั้นต่ำ — เตือนที่ตัวลองด้วย", () => {
+    /* ขั้น 3 แถม 5 ทำให้เฉลี่ย 243.75 ต่ำกว่าขั้นต่ำ 280 */
+    const notes = noteTexts({
+      ...freeGoodsState(),
+      tiers: [{ buy: 3, free: 5 }],
+      _tryQty: 3,
+    }).join(" ");
+    expect(notes).toContain("ต่ำกว่าราคาขั้นต่ำ");
+  });
+
+  it("hint ของตัวลองอ้างสินค้าตัวแทนเดียวกับตารางขั้น", () => {
+    /* สองที่ที่ใช้คนละตัวแทนคือสองคำตอบสำหรับคำถามเดียว */
+    const st = freeGoodsState();
+    const grid = allFields(st).find((f) => f.path === "tiers")!;
+    const tryField = allFields(st).find((f) => f.path === "_tryQty")!;
+    expect(String(grid.hint)).toContain("D-AD001-01");
+    expect(String(tryField.hint)).toContain("D-AD001-01");
+    expect(String(tryField.hint)).toContain("ตัวแทนเดียวกับตารางขั้น");
   });
 });

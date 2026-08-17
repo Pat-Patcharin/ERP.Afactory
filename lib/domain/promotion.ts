@@ -8,7 +8,7 @@ import { maySignAt } from "./doc-draft";
 import { priceMasterByProduct } from "./price-master";
 import { catalogPrice } from "./pricing";
 import { PRODUCTS } from "./product";
-import type { LadderTier } from "./promotion-ladder";
+import { bestLadder, type LadderResult, type LadderTier } from "./promotion-ladder";
 import {
   discountFloorBreaches,
   discountIneffectiveTiers,
@@ -385,6 +385,131 @@ export const averageUnitPrice = (
 /** ราคาเฉลี่ยของขั้นหนึ่ง เมื่อใช้ขั้นนั้นหนึ่งรอบพอดี */
 export const tierAveragePrice = (unitPrice: number, tier: LadderTier): number =>
   averageUnitPrice(unitPrice, tier.buy, tier.free);
+
+/* ============================================================
+   ตัวลองคำนวณ — §3.4
+
+   ตรงนี้ไม่คำนวณของแถมเอง มันเรียก `bestLadder` ตัวเดียวกับที่หน้า
+   รายละเอียดใช้ และเอาคำตอบมาเรียบเรียงให้อ่านออก สองสูตรที่ต่างกัน
+   หนึ่งบรรทัดจะทำให้ตัวลองบอกเลขหนึ่ง แล้วเอกสารจริงออกอีกเลข
+
+   ราคาเฉลี่ยก็ไม่คำนวณเอง — `averageUnitPrice` เป็นสูตรเดียวของทั้งระบบ
+   ตาม §8 ที่ห้ามมีสำเนาที่สอง
+
+   **เพดานจำนวนอยู่ที่นี่ ไม่ได้อยู่ใน `bestLadder`** เพราะเพดานคำสั่งซื้อ
+   เป็นกติกาธุรกิจ ไม่ใช่รายละเอียดของตัวคำนวณ — ตัวคำนวณใช้หน่วยความจำ
+   O(จำนวน) จึงต้องมีคนคุมว่าจำนวนที่ส่งเข้าไปสมเหตุสมผล และคนนั้นคือ
+   จุดที่รับค่าจากหน้าจอ ไม่ใช่ตัวคำนวณเอง
+   ============================================================ */
+
+/**
+ * เพดานจำนวนที่ตัวลองคำนวณรับ
+ *
+ * หนึ่งแสนชิ้นสูงกว่าคำสั่งซื้อจริงทุกใบในระบบนี้หลายเท่า แต่ยังเป็นตัวเลข
+ * ที่ DP เดินจบในเวลาที่คนไม่รู้สึก ใครพิมพ์ 999999999 ใส่ช่องทดลองไม่ได้
+ * ตั้งใจสั่งของ — เขาแค่กดเลขเล่น และหน้าจอต้องไม่ค้าง
+ */
+export const TRY_QTY_MAX = 100_000;
+
+/**
+ * จำนวนที่รับจากหน้าจอ — จุดเดียวที่เพดานถูกบังคับ
+ *
+ * ค่าที่ไม่ใช่จำนวนบวกกลายเป็น 0 ซึ่ง `bestLadder` ตอบว่าไม่ได้อะไร
+ * ไม่ใช่ค่าที่ทำให้มันวน
+ */
+export function clampTryQty(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(Math.floor(n), TRY_QTY_MAX);
+}
+
+/** ข้อเสนอให้เพิ่มจำนวน — null เมื่อการเสนอไม่ช่วยอะไร */
+export interface LadderSuggestion {
+  /** เพิ่มอีกกี่ชิ้นถึงจะถึงขั้นถัดไป */
+  addQty: number;
+  /** ขั้นที่จะได้ */
+  tier: LadderTier;
+  /** ของแถมที่เพิ่มขึ้นจริงเมื่อไปถึงขั้นนั้น */
+  extraFree: number;
+}
+
+/**
+ * §3.4 — เสนอให้เพิ่มจำนวนเฉพาะเมื่อระยะที่เหลือ **น้อยกว่าครึ่งหนึ่ง**
+ * ของขั้นนั้น
+ *
+ * สั่ง 3 แล้วบอกให้เพิ่มอีก 27 เพื่อถึงขั้น 30 ไม่ได้ช่วยใครตัดสินใจ มันแค่
+ * ทำให้ข้อเสนอกลายเป็นเสียงรบกวนที่เซลล์เรียนรู้ที่จะไม่อ่าน
+ *
+ * ของแถมที่เพิ่มขึ้นอ่านจาก `bestLadder` ทั้งสองจุด ไม่ได้เอา `tier.free`
+ * มาบอกตรง ๆ เพราะจำนวนที่มีอยู่อาจจับคู่ขั้นอื่นได้อยู่แล้ว — ส่วนต่างจริง
+ * คือสิ่งที่ลูกค้าได้เพิ่ม
+ */
+export function ladderSuggestion(
+  tiers: readonly LadderTier[],
+  qty: number,
+): LadderSuggestion | null {
+  const paid = clampTryQty(qty);
+  if (paid <= 0) return null;
+
+  /* ขั้นที่เล็กที่สุดซึ่งยังไม่ถึง — ขั้นที่ไกลกว่านั้นยิ่งเสนอไม่ได้ */
+  const next = tiers
+    .filter((t) => Number.isInteger(t.buy) && t.buy > paid)
+    .sort((a, b) => a.buy - b.buy)[0];
+  if (!next) return null;
+
+  const addQty = next.buy - paid;
+  /* ครึ่งหนึ่งของขั้นนั้น ไม่ใช่ครึ่งหนึ่งของระยะทั้งหมด */
+  if (addQty >= next.buy / 2) return null;
+
+  const extraFree = bestLadder(tiers, next.buy).free - bestLadder(tiers, paid).free;
+  if (extraFree <= 0) return null;
+
+  return { addQty, tier: next, extraFree };
+}
+
+export interface LadderTry {
+  /** จำนวนที่ลองจริงหลังคุมเพดานแล้ว */
+  qty: number;
+  free: number;
+  /** รวมที่ลูกค้าได้รับ = จ่ายจริง + แถม */
+  total: number;
+  /** ราคาเฉลี่ยต่อชิ้น · null เมื่อยังไม่รู้ราคาสินค้า */
+  average: number | null;
+  uses: LadderResult["uses"];
+  unmatched: number;
+  suggestion: LadderSuggestion | null;
+}
+
+/**
+ * ลองจำนวนหนึ่งกับขั้นชุดหนึ่ง
+ *
+ * `unitPrice` เป็น 0 ได้ หมายถึงยังไม่รู้ราคา ซึ่งต่างจากราคาศูนย์บาท —
+ * `average` จึงเป็น null ไม่ใช่ 0 เพราะ 0 อ่านว่าแถมแล้วฟรีทั้งบรรทัด
+ */
+export function tryLadder(
+  tiers: readonly LadderTier[],
+  qty: number,
+  unitPrice: number,
+): LadderTry {
+  const paid = clampTryQty(qty);
+  const r = bestLadder(tiers, paid);
+
+  return {
+    qty: paid,
+    free: r.free,
+    total: paid + r.free,
+    average: unitPrice > 0 ? averageUnitPrice(unitPrice, paid, r.free) : null,
+    uses: r.uses,
+    unmatched: r.unmatched,
+    suggestion: ladderSuggestion(tiers, paid),
+  };
+}
+
+/** ชุดขั้นที่ใช้ ย่อเป็นบรรทัดเดียว — "10 แถม 4 × 1 + 3 แถม 1 × 1" */
+export const ladderUsesText = (uses: LadderResult["uses"]): string =>
+  uses.length
+    ? uses.map((u) => `${u.tier.buy} แถม ${u.tier.free} × ${u.times}`).join(" + ")
+    : "";
 
 /** ราคาขั้นต่ำของสินค้าตัวหนึ่ง — null เมื่อไม่มีแถวในราคากลาง */
 export function productFloor(code: string): number | null {

@@ -6,11 +6,15 @@ import {
   PROMOTION_SCOPE_TH,
   PROMOTIONS,
   PROMOTION_KINDS,
+  TRY_QTY_MAX,
   applyPromotionPatch,
   averageUnitPrice,
+  clampTryQty,
+  ladderUsesText,
   productFloor,
   createPromotion,
   getPromotion,
+  tryLadder,
   type PromotionRow,
 } from "@/lib/domain/promotion";
 import {
@@ -576,6 +580,83 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
                 ` — ต่ำกว่าราคาขั้นต่ำ ${money(base.floor)} ของ ${base.code} โปรนี้ต้องให้ผู้จัดการฝ่ายขายอนุมัติ`,
             } as FormBlock,
           ];
+        })(),
+        /* ---------- ตัวลองคำนวณ — §3.4 ---------- */
+        ...(() => {
+          if (!isFreeGoods(s)) return [];
+          const tiers = ladderTiersOf(s);
+          if (!tiers.length) return [];
+
+          const base = unitPriceOf(s);
+          const card: FormBlock = {
+            type: "card",
+            title: "ลองคำนวณ",
+            cols: "2",
+            fields: [
+              {
+                type: "number",
+                /* ขึ้นต้นด้วย _ เพราะไม่ใช่ฟิลด์ของโปร เป็นช่องทดลองบนหน้าจอ
+                   `toPatch` ไม่ได้อ่านมัน จึงไม่มีทางถูกบันทึกลงระเบียน */
+                path: "_tryQty",
+                label: "ลองจำนวนที่ลูกค้าจ่ายจริง",
+                min: 1,
+                max: TRY_QTY_MAX,
+                span: true,
+                hint: base
+                  ? `คิดจาก ${base.code} ราคา ${money(base.price)} — ตัวแทนเดียวกับตารางขั้นข้างบน`
+                  : "เลือกสินค้าที่เข้าโปรก่อน แล้วราคาเฉลี่ยจะคำนวณให้",
+              },
+            ],
+          };
+
+          const typed = String(s._tryQty ?? "").trim();
+          if (!typed) return [card];
+
+          /* จำนวนถูกคุมเพดานที่ `clampTryQty` ตรงจุดรับค่านี้ ไม่ได้คุมข้างใน
+             `bestLadder` — ใครพิมพ์เก้าหลักจึงได้คำตอบของหนึ่งแสน ไม่ใช่จอค้าง */
+          const r = tryLadder(tiers, s._tryQty, base?.price ?? 0);
+          const capped = clampTryQty(s._tryQty) !== Number(s._tryQty);
+
+          const lines = [
+            `จ่ายจริง ${fmt(r.qty)} → แถม ${fmt(r.free)} · รวมที่ได้รับ ${fmt(r.total)}`,
+            r.average !== null ? `ราคาเฉลี่ยต่อชิ้น ${money(r.average)}` : "",
+            r.uses.length ? `ใช้ขั้น ${ladderUsesText(r.uses)}` : "ยังไม่ถึงขั้นไหนเลย",
+            r.unmatched ? `เศษที่จับคู่ไม่ได้ ${fmt(r.unmatched)} — ทิ้งตามกติกา ไม่ปัดขึ้น` : "",
+            capped ? `จำนวนถูกจำกัดไว้ที่ ${fmt(TRY_QTY_MAX)} ซึ่งเป็นเพดานของช่องทดลอง` : "",
+          ].filter(Boolean);
+
+          const result: FormBlock = {
+            type: "note",
+            label: `ผลที่จ่ายจริง ${fmt(r.qty)} ชิ้น`,
+            text: lines.join(" · "),
+          };
+
+          const blocks: FormBlock[] = [card, result];
+
+          /* ข้อเสนอเพิ่มจำนวนขึ้นเฉพาะเมื่อระยะที่เหลือน้อยกว่าครึ่งของขั้นนั้น
+             — ตรรกะอยู่ที่ `ladderSuggestion` ในโดเมน ไม่ได้ตัดสินที่นี่ */
+          if (r.suggestion) {
+            const { addQty, tier, extraFree } = r.suggestion;
+            blocks.push({
+              type: "note",
+              label: `เพิ่มอีก ${fmt(addQty)} ชิ้น ได้ของแถมเพิ่ม ${fmt(extraFree)}`,
+              text: `จ่ายจริง ${fmt(tier.buy)} เข้าขั้น ${fmt(tier.buy)} แถม ${fmt(
+                tier.free,
+              )} — บอกลูกค้าได้ว่าเติมอีกเท่านี้แล้วคุ้มกว่า`,
+            });
+          }
+
+          if (base && base.floor !== null && r.average !== null && r.average < base.floor) {
+            blocks.push({
+              type: "note",
+              label: "⚠ ราคาเฉลี่ยที่จำนวนนี้ต่ำกว่าราคาขั้นต่ำ",
+              text: `เฉลี่ย ${money(r.average)} ต่ำกว่าราคาขั้นต่ำ ${money(base.floor)} ของ ${
+                base.code
+              } — ใบที่ใช้โปรนี้จะถูกส่งขออนุมัติราคา`,
+            });
+          }
+
+          return blocks;
         })(),
         {
           type: "grid",

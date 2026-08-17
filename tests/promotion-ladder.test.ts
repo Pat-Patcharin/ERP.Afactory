@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { bestLadder, type LadderTier } from "@/lib/domain/promotion-ladder";
+import {
+  TRY_QTY_MAX,
+  averageUnitPrice,
+  clampTryQty,
+  ladderSuggestion,
+  ladderUsesText,
+  tryLadder,
+} from "@/lib/domain/promotion";
 
 /* ============================================================
    ขั้นบันไดของแถม
@@ -251,5 +259,153 @@ describe("ขอบของอินพุต — ต้องไม่พั�
     const r = bestLadder(tiers, 10);
     expect(r.free).toBe(4);
     expect(r.uses).toEqual([{ tier: { buy: 10, free: 4 }, times: 1 }]);
+  });
+});
+
+/* ============================================================
+   PR3c — ตัวลองคำนวณ
+
+   ทุกคำตอบมาจาก `bestLadder` ตัวเดียวกับที่หน้ารายละเอียดใช้ ไฟล์นี้จึงไม่ได้
+   ทดสอบว่าคำนวณถูกซ้ำอีกรอบ (`promotion-ladder.test.ts` ทำไปแล้ว 23 ข้อ)
+   มันทดสอบว่า **ตัวลองไม่ได้คำนวณเอง** และเพดานจำนวนอยู่ที่จุดรับค่า
+   ============================================================ */
+
+describe("PR3c ตัวลองคำนวณ — เรียก bestLadder ไม่คำนวณเอง", () => {
+  /** ขั้นตามสเปค §3.2 */
+  const SPEC: LadderTier[] = [
+    { buy: 3, free: 1 },
+    { buy: 10, free: 4 },
+    { buy: 30, free: 15 },
+  ];
+
+  it("จ่าย 13 ได้แถม 5 และบอกว่าใช้ขั้น 10 + ขั้น 3", () => {
+    /* เกณฑ์รับงานข้อนี้เขียนไว้ตรง ๆ ในคำสั่ง — และเป็นเคสที่วิธีไล่จาก
+       ขั้นใหญ่ลงมาตอบผิด (จะได้ 4) */
+    const r = tryLadder(SPEC, 13, 650);
+    expect(r.free).toBe(5);
+    expect(r.total).toBe(18);
+    expect(r.uses.map((u) => `${u.tier.buy}/${u.tier.free}×${u.times}`)).toEqual([
+      "10/4×1",
+      "3/1×1",
+    ]);
+    expect(ladderUsesText(r.uses)).toBe("10 แถม 4 × 1 + 3 แถม 1 × 1");
+    expect(r.unmatched).toBe(0);
+  });
+
+  it("ผลตรงกับ bestLadder ทุกจำนวน — ไม่มีสูตรที่สอง", () => {
+    /* ถ้าตัวลองคำนวณเองแม้บรรทัดเดียว ข้อนี้จะแดงที่จำนวนใดจำนวนหนึ่ง */
+    for (let qty = 0; qty <= 60; qty++) {
+      const mine = tryLadder(SPEC, qty, 650);
+      const truth = bestLadder(SPEC, clampTryQty(qty));
+      expect(mine.free, `จ่าย ${qty}`).toBe(truth.free);
+      expect(mine.unmatched, `จ่าย ${qty}`).toBe(truth.unmatched);
+    }
+  });
+
+  it("ราคาเฉลี่ยใช้สูตรเดียวของระบบ", () => {
+    const r = tryLadder(SPEC, 10, 650);
+    expect(r.average).toBe(averageUnitPrice(650, 10, r.free));
+  });
+
+  it("ยังไม่รู้ราคาสินค้า — ราคาเฉลี่ยเป็น null ไม่ใช่ 0", () => {
+    /* 0 อ่านว่าแถมแล้วฟรีทั้งบรรทัด ซึ่งไม่จริง */
+    expect(tryLadder(SPEC, 13, 0).average).toBeNull();
+  });
+
+  it("จำนวนที่ไม่ถึงขั้นไหนเลย ตอบว่าไม่ได้อะไร และไม่พัง", () => {
+    const r = tryLadder(SPEC, 2, 650);
+    expect(r.free).toBe(0);
+    expect(r.uses).toEqual([]);
+    expect(r.unmatched).toBe(2);
+    expect(tryLadder([], 13, 650).free).toBe(0);
+    expect(tryLadder(SPEC, 0, 650).qty).toBe(0);
+  });
+});
+
+describe("PR3c เพดานจำนวน — อยู่ที่จุดรับค่า ไม่ได้อยู่ใน bestLadder", () => {
+  const SPEC: LadderTier[] = [
+    { buy: 3, free: 1 },
+    { buy: 10, free: 4 },
+  ];
+
+  it("clampTryQty คุมเพดาน ปัดลง และปฏิเสธค่าที่ไม่ใช่จำนวนบวก", () => {
+    expect(clampTryQty(13)).toBe(13);
+    expect(clampTryQty(12.9)).toBe(12);
+    expect(clampTryQty(TRY_QTY_MAX + 1)).toBe(TRY_QTY_MAX);
+    expect(clampTryQty(9_999_999_999)).toBe(TRY_QTY_MAX);
+    expect(clampTryQty(-5)).toBe(0);
+    expect(clampTryQty("")).toBe(0);
+    expect(clampTryQty("ห้าสิบ")).toBe(0);
+    expect(clampTryQty(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it("bestLadder ยังไม่มีเพดานของตัวเอง — เพดานเป็นกติกาธุรกิจ", () => {
+    /* ปักไว้ว่าเพดานไม่ได้ย้ายเข้าไปข้างใน: ตัวคำนวณต้องตอบจำนวนที่เกินเพดาน
+       ของหน้าจอได้ตามปกติ ถ้าวันหนึ่งมีคนใส่ clamp ไว้ข้างใน ข้อนี้จะแดง */
+    expect(bestLadder(SPEC, TRY_QTY_MAX + 10).free).toBeGreaterThan(
+      bestLadder(SPEC, TRY_QTY_MAX).free,
+    );
+  });
+
+  it("ใส่จำนวนมหาศาลแล้วไม่ค้าง", () => {
+    const started = Date.now();
+    const r = tryLadder(SPEC, 9_999_999_999, 650);
+    expect(r.qty).toBe(TRY_QTY_MAX);
+    expect(r.free).toBeGreaterThan(0);
+    /* เกณฑ์คือ "ไม่ค้าง" ไม่ใช่ "เร็วกว่า x มิลลิวินาที" — สองวินาทีคือเส้นที่
+       ห่างจากเวลาจริงหลายเท่า แต่ยังจับกรณีที่เพดานถูกถอดออกได้ */
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+});
+
+describe("PR3c ข้อเสนอเพิ่มจำนวน — เฉพาะเมื่อระยะน้อยกว่าครึ่งของขั้นนั้น", () => {
+  const SPEC: LadderTier[] = [
+    { buy: 3, free: 1 },
+    { buy: 10, free: 4 },
+    { buy: 30, free: 15 },
+  ];
+
+  it("สั่ง 20 เหลือ 10 ถึงขั้น 30 — น้อยกว่าครึ่ง เสนอ", () => {
+    const s = ladderSuggestion(SPEC, 20)!;
+    expect(s.addQty).toBe(10);
+    expect(s.tier.buy).toBe(30);
+    /* ของแถมที่เพิ่มขึ้นจริง ไม่ใช่ tier.free ตรง ๆ — จ่าย 20 ได้ 8 อยู่แล้ว
+       (ขั้น 10 สองรอบ) ไปถึง 30 ได้ 15 ⇒ เพิ่มขึ้น 7 */
+    expect(s.extraFree).toBe(bestLadder(SPEC, 30).free - bestLadder(SPEC, 20).free);
+    expect(s.extraFree).toBe(7);
+  });
+
+  it("สั่ง 3 เหลือ 7 ถึงขั้น 10 — เกินครึ่งของขั้น ไม่เสนอ", () => {
+    /* 7 ≥ 10/2 ⇒ เงียบ การบอกให้เพิ่มอีก 7 เพื่อขั้น 10 คือเสียงรบกวน */
+    expect(ladderSuggestion(SPEC, 3)).toBeNull();
+  });
+
+  it("สั่ง 1 แล้วบอกให้เพิ่มอีก 29 ไม่ช่วยอะไร — ไม่เสนอ", () => {
+    expect(ladderSuggestion(SPEC, 1)).toBeNull();
+  });
+
+  it("สั่งถึงขั้นสูงสุดแล้ว ไม่มีอะไรให้เสนอ", () => {
+    expect(ladderSuggestion(SPEC, 30)).toBeNull();
+    expect(ladderSuggestion(SPEC, 45)).toBeNull();
+  });
+
+  it("เสนอขั้นที่ใกล้ที่สุดที่ยังไม่ถึง ไม่ใช่ขั้นใหญ่สุด", () => {
+    const s = ladderSuggestion(SPEC, 8)!;
+    expect(s.tier.buy).toBe(10);
+    expect(s.addQty).toBe(2);
+  });
+
+  it("เสนอเฉพาะเมื่อของแถมเพิ่มขึ้นจริง", () => {
+    /* ขั้นที่ใหญ่กว่าแต่ให้ของแถมไม่มากกว่าที่จับคู่ได้อยู่แล้ว ไม่ใช่ข้อเสนอ
+       ขั้น 3 แถม 1 · ขั้น 4 แถม 1 — จ่าย 3 ได้ 1 อยู่แล้ว เติมเป็น 4 ก็ยังได้ 1 */
+    const flat: LadderTier[] = [
+      { buy: 3, free: 1 },
+      { buy: 4, free: 1 },
+    ];
+    expect(ladderSuggestion(flat, 3)).toBeNull();
+  });
+
+  it("จำนวนมหาศาลก็ยังตอบเร็ว เพราะเพดานถูกคุมก่อน", () => {
+    expect(ladderSuggestion(SPEC, 9_999_999_999)).toBeNull();
   });
 });
