@@ -9,6 +9,13 @@ import { priceMasterByProduct } from "./price-master";
 import { catalogPrice } from "./pricing";
 import { PRODUCTS } from "./product";
 import type { LadderTier } from "./promotion-ladder";
+import {
+  discountFloorBreaches,
+  discountIneffectiveTiers,
+  type DiscountBreach,
+  type DiscountMode,
+  type DiscountTier,
+} from "./promotion-discount";
 
 /* ============================================================
    THE FOUR SHAPES OF PROMOTION
@@ -29,7 +36,7 @@ import type { LadderTier } from "./promotion-ladder";
    a gift is not a price, and putting it in the price ladder would
    make `winningLine()` answer a question nobody asked it.
 
-   Only แถมสินค้า is open. The other three are listed rather than
+   แถมสินค้า and ส่วนลดราคา are open. The other two are listed rather than
    hidden because a chooser that offers one choice is not a
    chooser — somebody setting up a campaign needs to see that the
    system knows the other three exist and has not lost them.
@@ -80,7 +87,7 @@ export const PROMOTION_KINDS: readonly PromotionKind[] = [
     desc: "ตั้งราคาพิเศษให้ต่ำกว่าราคาตามชั้นลูกค้า ตลอดช่วงเวลาที่กำหนด",
     example: "ลด 15% จากราคาเอกชน ตลอดเดือนนี้",
     icon: "pricing",
-    href: null,
+    href: "/m/promotion/new?kind=price-discount",
   },
   {
     key: "package",
@@ -220,8 +227,25 @@ export interface PromotionRow extends RecordBase {
   budgetWarnAt: number;
   freeGoodsWarehouse: string;
 
-  /* ---------- ขั้นบันได ---------- */
+  /* ---------- ขั้นบันได ----------
+
+     สามชนิดมีขั้นคนละความหมาย จึงอยู่คนละฟิลด์ ไม่ใช่ฟิลด์เดียวหลายรูป
+     ถ้ายัดรวมกัน `bestLadder` จะรับขั้นส่วนลดไปคิดเป็นของแถมโดยไม่มีอะไร
+     เตือน และผลที่ออกมาก็ยังดูสมเหตุสมผล — ดูคอมเมนต์หัวไฟล์
+     promotion-discount.ts */
+
+  /** โปรแถมสินค้า — `{buy, free}` ขั้นผสมกันได้ */
   tiers: LadderTier[];
+
+  /** โปรส่วนลดราคา — `{minQty, price|discPct}` ขั้นไม่ผสมกัน */
+  discountTiers: DiscountTier[];
+  /**
+   * ราคาตายตัว หรือ ลดเป็นเปอร์เซ็นต์ — เลือกที่ระดับโปร ไม่ใช่ระดับขั้น
+   *
+   * ถ้าปล่อยให้แต่ละขั้นเป็นคนละแบบ ตารางขั้นจะมีสองคอลัมน์ที่สลับกันว่าง
+   * และคนอ่านต้องไล่ทีละแถวว่าแถวนี้หมายถึงอะไร
+   */
+  discountMode: DiscountMode;
 
   /* ---------- ร่องรอย ---------- */
   created: string;
@@ -291,6 +315,10 @@ export const blankPromotion = (): PromotionRow => ({
   freeGoodsWarehouse: "",
 
   tiers: [],
+  discountTiers: [],
+  /* ราคาตายตัวเป็นค่าเริ่มต้นเพราะเป็นแบบที่อธิบายตัวเองได้ทันที — "ชิ้นละ 850"
+     ไม่ต้องรู้ราคามาตรฐานก่อนจึงจะรู้ว่าลูกค้าจ่ายเท่าไหร่ */
+  discountMode: "price",
 
   created: "",
   createdBy: "",
@@ -356,6 +384,14 @@ export interface FloorBreach {
  * ใบไหนจะขายเท่าไหร่
  */
 export function promotionFloorBreaches(p: PromotionRow): FloorBreach[] {
+  /* ⚠️ ชนิดอื่นไม่มีของแถมมาเฉลี่ย จึงคิดสูตรนี้กับมันไม่ได้
+     ก่อนจะมีชนิดที่สอง ตัวนี้วน `p.tiers` โดยสมมติว่าเป็น `{buy, free}` เสมอ
+     โปรส่วนลดที่ `tiers` ว่างจะได้ผลลัพธ์ว่าง "โดยบังเอิญ" ซึ่งดูเหมือนถูก
+     — จนวันที่ใครใส่ขั้นของแถมค้างไว้ในโปรส่วนลด แล้วราคาเฉลี่ยของขั้นที่
+     ไม่มีอยู่จริงไปตัดสินว่าใครต้องอนุมัติ ตรงนี้จึงตัดที่ชนิด ไม่ใช่หวังว่า
+     ฟิลด์จะว่าง — ราคาหลังลดของโปรส่วนลดใช้ `promotionDiscountBreaches` */
+  if (p.kind !== "free-goods") return [];
+
   const out: FloorBreach[] = [];
   for (const code of p.items) {
     const floor = productFloor(code);
@@ -370,6 +406,27 @@ export function promotionFloorBreaches(p: PromotionRow): FloorBreach[] {
     }
   }
   return out;
+}
+
+/* ============================================================
+   โปรส่วนลดราคา — ตัวห่อบาง ๆ ของ promotion-discount.ts
+
+   สูตรทั้งหมดอยู่ในไฟล์นั้น ไม่ได้ทำซ้ำที่นี่ ตรงนี้แค่แปลง `PromotionRow`
+   เป็นพารามิเตอร์ที่ตัวคำนวณรับ — เพราะตัวคำนวณต้องไม่รู้จัก `PromotionRow`
+   ถ้ามันรู้จัก มันจะอ่านฟิลด์เอง แล้วการทดสอบก็ต้องประกอบระเบียนทั้งใบ
+   ทุกครั้งที่อยากถามคำถามเรื่องราคาสองค่า
+   ============================================================ */
+
+/** §1.4 — ขั้นไหนของโปรส่วนลดทำให้ราคาต่ำกว่าราคาขั้นต่ำ */
+export function promotionDiscountBreaches(p: PromotionRow): DiscountBreach[] {
+  if (p.kind !== "price-discount") return [];
+  return discountFloorBreaches(p.items, p.discountTiers, p.discountMode);
+}
+
+/** §1.5 ข้อ 2 — ชั้นลูกค้าที่โปรนี้ไม่มีผลเลย เพราะได้ถูกกว่าอยู่แล้ว */
+export function promotionIneffectiveTiers(p: PromotionRow) {
+  if (p.kind !== "price-discount") return [];
+  return discountIneffectiveTiers(p.items, p.discountTiers, p.discountMode);
 }
 
 /* ============================================================
@@ -397,6 +454,10 @@ export type PromotionApprovalLevel = "admin" | "manager";
 /** §6h — โปรแบบไหนต้องขึ้นถึงผู้จัดการ */
 export function promotionApprovalLevel(p: PromotionRow): PromotionApprovalLevel {
   if (promotionFloorBreaches(p).length > 0) return "manager";
+  /* โปรส่วนลดหลุดราคาขั้นต่ำก็ต้องขึ้นผู้จัดการเหมือนกัน — คนละสูตร
+     แต่เป็นเหตุผลเดียวกัน และถ้าไม่เรียกตัวนี้ โปรชนิดที่สองจะผ่านแอดมิน
+     ได้ทุกใบไม่ว่าลดลึกแค่ไหน */
+  if (promotionDiscountBreaches(p).length > 0) return "manager";
   if ((p.budget ?? 0) > managerBudgetCeiling()) return "manager";
   return "admin";
 }
@@ -457,7 +518,8 @@ export function mayApprovePromotion(p: PromotionRow): PromotionGuard {
  * เพราะไม่ได้เปลี่ยนว่าใครได้อะไรเท่าไหร่
  */
 export const PROMOTION_CONDITION_FIELDS: readonly (keyof PromotionRow)[] = [
-  "kind", "scope", "items", "tiers", "priceLists", "minOrder", "minOrderBasis",
+  "kind", "scope", "items", "tiers", "discountTiers", "discountMode",
+  "priceLists", "minOrder", "minOrderBasis",
   "nearExpiryOnly", "nearExpiryDays", "customerGroups", "customers", "areas",
   "channels", "allowDraftPartner", "usePerCustomer", "useTotal", "stackWithPromo",
   "stackWithCustomerDiscount", "commissionBase", "budget", "budgetBasis",

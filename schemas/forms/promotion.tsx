@@ -10,6 +10,15 @@ import {
   getPromotion,
   type PromotionRow,
 } from "@/lib/domain/promotion";
+import {
+  DISCOUNT_MODE_TH,
+  discountFloorBreaches,
+  discountIneffectiveTiers,
+  type DiscountMode,
+  type DiscountTier,
+} from "@/lib/domain/promotion-discount";
+import { TIER_TH } from "@/lib/domain/price-tier";
+import { money } from "@/lib/format";
 import { QT_PRICE_LISTS } from "@/data/quotations";
 import { SR_CHANNELS } from "@/data/sales-requests";
 import { SALES_AREAS } from "@/data/sales-areas";
@@ -17,7 +26,7 @@ import { SR_CUST_GROUPS } from "@/data/sales-reps";
 import { PRODUCTS } from "@/lib/domain/product";
 import { WAREHOUSES } from "@/lib/domain/warehouse";
 import { DASH, isoToDmy, dmyToIso } from "@/lib/format";
-import type { FormSchema, FormState, GridRow } from "@/lib/types";
+import type { FormBlock, FormSchema, FormState, GridRow } from "@/lib/types";
 import { opts, saved } from "./common";
 
 /* ============================================================
@@ -38,6 +47,27 @@ import { opts, saved } from "./common";
    ============================================================ */
 
 const num = (v: unknown) => Number(v) || 0;
+
+/** ชนิดที่หักของแถมออกจากคลังจริง — ส่วนลดราคาไม่หักสต๊อก */
+const givesGoods = (st: FormState) => String(st.kind ?? "free-goods") === "free-goods";
+
+const isDiscount = (st: FormState) => String(st.kind ?? "") === "price-discount";
+
+const discountMode = (st: FormState): DiscountMode =>
+  String(st.discountMode ?? "price") === "percent" ? "percent" : "price";
+
+/** ขั้นส่วนลดจากกริด — แถวที่ยังไม่กรอกจำนวนถูกทิ้ง ไม่ใช่นับเป็นขั้น 0 */
+const discountTiersOf = (st: FormState): DiscountTier[] =>
+  ((st.discountTiers ?? []) as GridRow[])
+    .filter((r) => num(r.minQty) > 0)
+    .map((r) => ({
+      minQty: num(r.minQty),
+      price: String(r.price ?? "").trim() === "" ? null : num(r.price),
+      discPct: String(r.discPct ?? "").trim() === "" ? null : num(r.discPct),
+    }));
+
+const itemCodes = (st: FormState): string[] =>
+  ((st.items ?? []) as GridRow[]).map((r) => String(r.code ?? "").trim()).filter(Boolean);
 const nullNum = (v: unknown) => (String(v ?? "").trim() === "" ? null : Number(v) || 0);
 
 /** สินค้าที่ติดตามล็อตและมีวันหมดอายุ — เงื่อนไขล็อตใกล้หมดอายุใช้ได้เฉพาะพวกนี้ */
@@ -83,6 +113,8 @@ function toPatch(s: FormState): Partial<PromotionRow> {
     owner: String(s.owner ?? ""),
 
     scope: (String(s.scope ?? "item") as PromotionRow["scope"]),
+    discountTiers: discountTiersOf(s),
+    discountMode: discountMode(s),
     items: list("items"),
     priceLists: list("priceLists"),
     minOrder: nullNum(s.minOrder),
@@ -148,6 +180,8 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     scope: "item",
     items: [],
     priceLists: [],
+    discountTiers: [],
+    discountMode: "price",
     minOrder: "",
     minOrderBasis: "ยอดก่อนภาษี",
     nearExpiryOnly: false,
@@ -192,6 +226,12 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
 
     scope: p.scope,
     items: p.items.map((code) => ({ code })),
+    discountTiers: p.discountTiers.map((t) => ({
+      minQty: t.minQty,
+      price: t.price ?? "",
+      discPct: t.discPct ?? "",
+    })),
+    discountMode: p.discountMode,
     priceLists: p.priceLists.map((code) => ({ code })),
     minOrder: p.minOrder ?? "",
     minOrderBasis: p.minOrderBasis,
@@ -385,6 +425,84 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
             },
           ],
         },
+        /* ---------- ขั้นส่วนลด — เฉพาะโปรชนิดส่วนลดราคา ---------- */
+        isDiscount(s) && {
+          type: "card",
+          title: "ราคาที่โปรนี้ให้",
+          cols: "2",
+          fields: [
+            {
+              type: "select",
+              path: "discountMode",
+              label: "คิดแบบไหน",
+              required: true,
+              options: Object.entries(DISCOUNT_MODE_TH).map(([value, label]) => ({ value, label })),
+              span: true,
+              hint: "เปอร์เซ็นต์คิดจากราคามาตรฐาน (ราคาแคตตาล็อกเอกชน) ไม่ใช่จากราคาที่ลูกค้ารายนั้นได้อยู่",
+            },
+          ],
+        },
+        isDiscount(s) && {
+          type: "grid",
+          path: "discountTiers",
+          label: "ขั้นส่วนลดตามจำนวน",
+          addLabel: "เพิ่มขั้น",
+          empty: "ยังไม่ได้ตั้งขั้น — โปรจะยังไม่ให้ราคาอะไรกับใคร",
+          /* ขั้นส่วนลด **ไม่ผสมกัน** ต่างจากขั้นของแถม จำนวนที่ซื้อตกอยู่ในขั้นไหน
+             ก็ได้ราคาขั้นนั้นทั้งบรรทัด และขั้นสูงสุดครอบทุกจำนวนที่มากกว่า */
+          hint: "ซื้อถึงจำนวนไหนได้ราคาขั้นนั้นทั้งบรรทัด ขั้นสูงสุดครอบทุกจำนวนที่มากกว่า และไม่มีการผสมขั้น",
+          cols: [
+            { key: "minQty", label: "ซื้อตั้งแต่ (ชิ้น)", type: "number", required: true, align: "right" },
+            discountMode(s) === "price"
+              ? { key: "price", label: "ราคาต่อชิ้น", type: "number", required: true, align: "right" }
+              : { key: "discPct", label: "ส่วนลด (%)", type: "number", required: true, align: "right" },
+          ],
+        },
+        /* เตือนข้อ 1 — ราคาหลังลดต่ำกว่าราคาขั้นต่ำ คำนวณจาก state ที่กำลังพิมพ์ */
+        ...(() => {
+          if (!isDiscount(s)) return [];
+          const tiers = discountTiersOf(s);
+          const items = itemCodes(s);
+          /* ไม่ต้องเช็คว่ามีขั้นหรือมีสินค้าแล้วหรือยัง — ตัวคำนวณตอบว่าง
+             ให้เองเมื่อยังกรอกไม่เสร็จ (`discountIneffectiveTiers` มี guard
+             นั้นอยู่ และมีเทสต์ปักไว้) เช็คซ้ำที่นี่คือกฎสำเนาที่สองซึ่งวันหนึ่ง
+             จะไม่ตรงกับตัวจริง — พิสูจน์ด้วยการฉีดของผิดแล้วเทสต์ไม่แดง
+             เพราะด่านจริงอยู่ข้างล่างนั้น */
+
+          /* กล่อง note ของ form engine ไม่มีระดับความรุนแรง — สีเดียวเสมอ
+             (`NoteField` ใน FormFields.tsx) รอบนี้ห้ามแตะ engine จึงบอกระดับ
+             ด้วยข้อความ ไม่ใช่ด้วยสี */
+          const out: FormBlock[] = [];
+          const breaches = discountFloorBreaches(items, tiers, discountMode(s));
+          if (breaches.length) {
+            out.push({
+              type: "note",
+              label: `⚠ มี ${breaches.length} ขั้นที่ราคาหลังลดต่ำกว่าราคาขั้นต่ำ`,
+              text:
+                breaches
+                  .map(
+                    (b) =>
+                      `${b.code} ซื้อตั้งแต่ ${b.tier.minQty} → ${money(b.price)} ต่ำกว่าขั้นต่ำ ${money(b.floor)}`,
+                  )
+                  .join(" · ") +
+                " — โปรนี้ต้องให้ผู้จัดการฝ่ายขายอนุมัติ และทุกใบที่ใช้จะถูกส่งขออนุมัติราคา",
+            });
+          }
+
+          /* เตือนข้อ 2 — ชั้นที่โปรนี้ไม่มีผลเลย เพราะได้ถูกกว่าอยู่แล้ว
+             คำนวณจากราคากลางจริง ไม่ได้เดา */
+          const dead = discountIneffectiveTiers(items, tiers, discountMode(s));
+          if (dead.length) {
+            out.push({
+              type: "note",
+              label: `⚠ โปรนี้ไม่มีผลกับ${dead.map((t) => TIER_TH[t]).join(" · ")}`,
+              text:
+                `ราคาที่กลุ่มนั้นได้อยู่แล้วต่ำกว่าราคาที่โปรนี้ให้ ทุกใบของกลุ่มนั้นจะได้ราคาเดิม ` +
+                `แต่โปรยังนับเข้างบและออกสื่อไปแล้ว — ถ้าต้องการให้มีผล ต้องลดลึกกว่านี้ หรือตัดกลุ่มนั้นออกจากขอบเขต`,
+            });
+          }
+          return out;
+        })(),
         {
           type: "card",
           title: "ล็อตใกล้หมดอายุ",
@@ -624,7 +742,9 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
             },
           ],
         },
-        {
+        /* ส่วนลดราคาไม่หักของแถมจากคลังไหน จึงไม่ถามและไม่บังคับ
+           การบังคับช่องที่ไม่เกี่ยวกับชนิดนี้ คือการสอนให้คนกรอกอะไรก็ได้ให้ผ่าน */
+        givesGoods(s) && {
           type: "card",
           title: "ของแถมหักจากคลังไหน",
           cols: "2",
@@ -684,10 +804,43 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       test: (s) => ((s.items ?? []) as GridRow[]).some((r) => String(r.code ?? "").trim()),
     },
     { path: "commissionBase", label: "ฐานคิดค่าคอมมิชชัน", step: "limits" },
-    { path: "freeGoodsWarehouse", label: "คลังที่หักของแถม", step: "budget" },
+    {
+      path: "freeGoodsWarehouse",
+      label: "คลังที่หักของแถม",
+      step: "budget",
+      /* บังคับเฉพาะชนิดที่ให้ของ — ส่วนลดราคาไม่แตะสต๊อก */
+      test: (s) => !givesGoods(s) || Boolean(String(s.freeGoodsWarehouse ?? "").trim()),
+    },
+    {
+      path: "discountTiers",
+      label: "ขั้นส่วนลดตามจำนวน",
+      step: "what",
+      test: (s) => !isDiscount(s) || discountTiersOf(s).length > 0,
+    },
   ],
 
   rules: [
+    {
+      label: "ทุกขั้นส่วนลดต้องกรอกราคาหรือเปอร์เซ็นต์ให้ครบตามแบบที่เลือก",
+      step: "what",
+      test: (s) => {
+        if (!isDiscount(s)) return true;
+        const mode = discountMode(s);
+        return discountTiersOf(s).every((t) =>
+          mode === "price" ? t.price !== null && t.price >= 0 : t.discPct !== null && t.discPct > 0,
+        );
+      },
+    },
+    {
+      /* สองขั้นที่จำนวนเท่ากันคือสองราคาสำหรับจำนวนเดียว ตัวคำนวณจะเลือกตัวใด
+         ตัวหนึ่งอย่างเงียบ ๆ และคนกรอกจะไม่รู้ว่าอีกตัวไม่เคยถูกใช้ */
+      label: "ขั้นส่วนลดห้ามมีจำนวนซ้ำกัน",
+      step: "what",
+      test: (s) => {
+        const qtys = discountTiersOf(s).map((t) => t.minQty);
+        return new Set(qtys).size === qtys.length;
+      },
+    },
     {
       label: "มีงบแล้วต้องบอกว่าคิดจากต้นทุนหรือราคาขาย",
       step: "budget",

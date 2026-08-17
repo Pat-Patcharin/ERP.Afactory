@@ -63,6 +63,8 @@ export const PROMOTIONS: PromotionRow[] = [
       { buy: 10, free: 4 },
       { buy: 30, free: 15 },
     ],
+    discountTiers: [],
+    discountMode: "price",
 
     created: "24/06/2026",
     createdBy: "พิมพกา สุขใจ",
@@ -119,6 +121,8 @@ export const PROMOTIONS: PromotionRow[] = [
     freeGoodsWarehouse: "WH-MAIN",
 
     tiers: [{ buy: 2, free: 3 }],
+    discountTiers: [],
+    discountMode: "price",
 
     created: "12/08/2026",
     createdBy: "สมชาย ใจดี",
@@ -175,6 +179,8 @@ export const PROMOTIONS: PromotionRow[] = [
     freeGoodsWarehouse: "",
 
     tiers: [],
+    discountTiers: [],
+    discountMode: "price",
 
     created: "15/08/2026",
     createdBy: "พิมพกา สุขใจ",
@@ -229,6 +235,8 @@ export const PROMOTIONS: PromotionRow[] = [
     freeGoodsWarehouse: "WH-MAIN",
 
     tiers: [{ buy: 10, free: 2 }],
+    discountTiers: [],
+    discountMode: "price",
 
     created: "20/03/2026",
     createdBy: "สมชาย ใจดี",
@@ -285,6 +293,8 @@ export const PROMOTIONS: PromotionRow[] = [
     freeGoodsWarehouse: "WH-PROMO",
 
     tiers: [{ buy: 12, free: 5 }],
+    discountTiers: [],
+    discountMode: "price",
 
     created: "22/07/2026",
     createdBy: "สมชาย ใจดี",
@@ -343,9 +353,139 @@ export const PROMOTIONS: PromotionRow[] = [
     freeGoodsWarehouse: "WH-MAIN",
 
     tiers: [{ buy: 10, free: 2 }],
+    discountTiers: [],
+    discountMode: "price",
 
     created: "14/08/2026",
     createdBy: "สมชาย ใจดี",
+    approvedBy: "",
+    approvedAt: "",
+    pausedReason: "",
+    pausedBy: "",
+    pausedAt: "",
+    dirtySinceApproval: false,
+  },
+
+  {
+    /* ส่วนลดราคาแบบตั้งราคาตายตัว และเป็นตัวอย่างของ §1.5 ข้อ 2:
+       ขั้นที่ถูกที่สุดคือ 470 ซึ่งยังแพงกว่าราคาดีลเลอร์ 460
+       ⇒ โปรนี้ไม่มีผลกับดีลเลอร์เลย ทั้งที่นับเข้างบโปร
+       ตัวเลขทั้งหมดอ้างราคากลางจริงของ D-AD001-01 (720/650/460/280) */
+    code: "PM-0007",
+    name: "ปลายกรอเพชร ราคาพิเศษตามจำนวน",
+    printName: "ราคาพิเศษตามจำนวน",
+    kind: "price-discount",
+    status: "Active",
+    from: "01/07/2026",
+    to: "30/09/2026",
+    priority: 4,
+    reason: "แข่งกับคู่แข่ง",
+    reasonNote: "",
+    owner: "ณิชา พงษ์เจริญ",
+
+    scope: "item",
+    items: ["D-AD001-01"],
+    priceLists: [],
+    minOrder: null,
+    minOrderBasis: "ยอดก่อนภาษี",
+    nearExpiryOnly: false,
+    nearExpiryDays: null,
+
+    customerGroups: [],
+    customers: [],
+    areas: [],
+    channels: [],
+    allowDraftPartner: false,
+
+    usePerCustomer: null,
+    useTotal: null,
+    stackWithPromo: false,
+    stackWithCustomerDiscount: false,
+    recordUsage: true,
+    needsApproval: true,
+    commissionBase: "ยอดที่ลูกค้าจ่ายจริง",
+
+    budget: 90_000,
+    budgetBasis: "price",
+    budgetUsed: 12_400,
+    budgetOver: "warn",
+    budgetWarnAt: 80,
+    /* ส่วนลดราคาไม่หักของแถมจากคลังไหน — ช่องนี้ว่างโดยถูกต้อง */
+    freeGoodsWarehouse: "",
+
+    tiers: [],
+    discountTiers: [
+      { minQty: 5, price: 600, discPct: null },
+      { minQty: 10, price: 520, discPct: null },
+      { minQty: 30, price: 470, discPct: null },
+    ],
+    discountMode: "price",
+
+    created: "25/06/2026",
+    createdBy: "ณิชา พงษ์เจริญ",
+    approvedBy: "สมชาย ใจดี",
+    approvedAt: "28/06/2026",
+    pausedReason: "",
+    pausedBy: "",
+    pausedAt: "",
+    dirtySinceApproval: false,
+  },
+
+  {
+    /* ส่วนลดเป็นเปอร์เซ็นต์ และขั้นลึกสุดหลุดราคาขั้นต่ำ:
+       650 − 60% = 260 ต่ำกว่าขั้นต่ำ 280 ⇒ ต้องให้ผู้จัดการอนุมัติ
+       เป็นตัวคู่ขนานกับ PM-0002 ของโปรแถมสินค้า แต่คนละสูตร */
+    code: "PM-0008",
+    name: "ล้างสต๊อกปลายกรอ ลดเป็นเปอร์เซ็นต์",
+    printName: "ลดสูงสุด 60%",
+    kind: "price-discount",
+    status: "Pending Approval",
+    from: "01/08/2026",
+    to: "31/08/2026",
+    priority: 3,
+    reason: "ล้างสต๊อกใกล้หมดอายุ",
+    reasonNote: "",
+    owner: "ณิชา พงษ์เจริญ",
+
+    scope: "item",
+    items: ["D-AD001-01"],
+    priceLists: [],
+    minOrder: null,
+    minOrderBasis: "ยอดก่อนภาษี",
+    nearExpiryOnly: false,
+    nearExpiryDays: null,
+
+    customerGroups: [],
+    customers: [],
+    areas: [],
+    channels: [],
+    allowDraftPartner: false,
+
+    usePerCustomer: null,
+    useTotal: null,
+    stackWithPromo: false,
+    stackWithCustomerDiscount: false,
+    recordUsage: true,
+    needsApproval: true,
+    commissionBase: "ยอดที่ลูกค้าจ่ายจริง",
+
+    budget: 40_000,
+    budgetBasis: "price",
+    budgetUsed: 0,
+    budgetOver: "stop",
+    budgetWarnAt: 70,
+    freeGoodsWarehouse: "",
+
+    tiers: [],
+    discountTiers: [
+      { minQty: 3, price: null, discPct: 15 },
+      { minQty: 10, price: null, discPct: 25 },
+      { minQty: 50, price: null, discPct: 60 },
+    ],
+    discountMode: "percent",
+
+    created: "20/07/2026",
+    createdBy: "ณิชา พงษ์เจริญ",
     approvedBy: "",
     approvedAt: "",
     pausedReason: "",

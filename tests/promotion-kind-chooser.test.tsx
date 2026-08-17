@@ -10,10 +10,15 @@ import { routerPush } from "./setup";
 /* ============================================================
    CHOOSING A KIND OF PROMOTION
 
-   Four cards, one of them openable. The three that are not are
+   Four cards, two of them openable. The two that are not are
    the interesting half of this screen: they have to be visibly
    present and genuinely inert, because the failure this guards
    against is a card that looks ordinary and lands on nothing.
+
+   A kind opens when it has a calculator and a form of its own —
+   free goods (รอบที่ 1) and price discount (รอบที่ 2). Package is
+   waiting on an accounting decision about invoicing a part-shipped
+   set; redeem opens in the same round as its own calculator.
 
    "Inert" is asserted three ways — the control is disabled, the
    card holds no anchor at all, and clicking every one of them
@@ -41,26 +46,27 @@ describe("หน้าเลือกประเภทโปรโมชั่�
     }
   });
 
-  it("เปิดใช้ใบเดียวคือแถมสินค้า และเป็นใบเดียวที่เป็นลิงก์", () => {
-    /* Pinned in the data, not only on screen: the moment a second kind is
-       given an href this fails, which is the reminder that its form has to
-       exist first. */
-    expect(OPEN.map((k) => k.key)).toEqual(["free-goods"]);
+  it("เปิดสองใบ — แถมสินค้าและส่วนลดราคา ทั้งคู่มีตัวคำนวณและฟอร์มของตัวเอง", () => {
+    /* ปักที่ข้อมูล ไม่ใช่แค่บนหน้าจอ: ใบที่สามที่ถูกเปิดจะทำให้ข้อนี้แดง
+       ซึ่งเป็นเครื่องเตือนว่าฟอร์มกับตัวคำนวณของมันต้องมีอยู่ก่อน */
+    expect(OPEN.map((k) => k.key)).toEqual(["free-goods", "price-discount"]);
 
     render(<PromotionKindPage />);
 
-    expect(within(card("free-goods")).getByRole("link")).toHaveAttribute(
-      "href",
-      OPEN[0].href!,
-    );
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    /* ทุกใบที่เปิดต้องเป็นลิงก์ และปลายทางต้องเป็นของตัวเอง ไม่ใช่ของใบอื่น
+       — การ์ดที่ชี้ผิดชนิดจะเปิดฟอร์มที่ถามคำถามผิดชุด */
+    for (const k of OPEN) {
+      expect(within(card(k.key)).getByRole("link"), k.label).toHaveAttribute("href", k.href!);
+      expect(k.href).toContain(`kind=${k.key}`);
+    }
+    expect(screen.getAllByRole("link")).toHaveLength(OPEN.length);
   });
 
-  it("อีกสามใบกดไม่ได้จริง และไม่มีปลายทางให้ไปตั้งแต่แรก", () => {
+  it("อีกสองใบกดไม่ได้จริง และไม่มีปลายทางให้ไปตั้งแต่แรก", () => {
     /* Pinned because CLOSED is derived from the same data this checks. Open
-       a kind without this line and the loop below quietly examines two cards
-       instead of three, and still passes. */
-    expect(CLOSED).toHaveLength(3);
+       a kind without this line and the loop below quietly examines one card
+       instead of two, and still passes. */
+    expect(CLOSED.map((k) => k.key)).toEqual(["package", "redeem"]);
     render(<PromotionKindPage />);
 
     for (const k of CLOSED) {
@@ -70,8 +76,8 @@ describe("หน้าเลือกประเภทโปรโมชั่�
     }
   });
 
-  it("คลิกทั้งสามใบที่ปิดแล้วไม่พาไปไหน", async () => {
-    expect(CLOSED).toHaveLength(3);
+  it("คลิกทั้งสองใบที่ปิดแล้วไม่พาไปไหน", async () => {
+    expect(CLOSED).toHaveLength(2);
     const user = userEvent.setup();
     render(<PromotionKindPage />);
 

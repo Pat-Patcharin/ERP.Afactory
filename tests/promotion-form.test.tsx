@@ -428,3 +428,185 @@ describe("ฟอร์มเปิดได้จริง", () => {
     expect(name.value).toBe("โปรทดสอบ");
   });
 });
+
+/* ============================================================
+   โปรส่วนลดราคา บนฟอร์มเดียวกัน — §1.5
+
+   ฟอร์มเดียวรับสองชนิด ความต่างทั้งหมดอยู่ใน `when` ไม่ใช่ในฟอร์มคนละใบ
+   ที่ต้องมาไล่เทียบกันทีหลัง
+   ============================================================ */
+
+const discountState = (): FormState => ({
+  ...PROMO_FORM.blank(),
+  kind: "price-discount",
+  name: "ปลายกรอเพชร ราคาพิเศษ",
+  from: "2026-09-01",
+  reason: "แข่งกับคู่แข่ง",
+  scope: "item",
+  items: g(["D-AD001-01"]),
+  commissionBase: "ยอดที่ลูกค้าจ่ายจริง",
+  discountMode: "price",
+  discountTiers: [
+    { minQty: 5, price: 600, discPct: "" },
+    { minQty: 30, price: 470, discPct: "" },
+  ],
+  /* ส่วนลดราคาไม่หักของแถม ช่องคลังจึงว่างและต้องผ่านได้ */
+  freeGoodsWarehouse: "",
+});
+
+describe("ฟอร์มโปรส่วนลดราคา", () => {
+  it("ตารางขั้นส่วนลดโผล่มาเฉพาะชนิดส่วนลดราคา และของแถมไม่โผล่ปนกัน", () => {
+    expect(paths({ ...PROMO_FORM.blank(), kind: "free-goods" })).not.toContain("discountTiers");
+    const d = paths({ ...PROMO_FORM.blank(), kind: "price-discount" });
+    expect(d).toContain("discountTiers");
+    expect(d).toContain("discountMode");
+  });
+
+  it("คอลัมน์ในตารางขั้นเปลี่ยนตามแบบที่เลือก ไม่ได้โชว์ทั้งสองช่องให้เดา", () => {
+    const colsAt = (mode: string) => {
+      const st = { ...PROMO_FORM.blank(), kind: "price-discount", discountMode: mode };
+      const grid = allFields(st).find((f) => f.path === "discountTiers")!;
+      return (grid.cols ?? []).map((c) => c.key);
+    };
+    expect(colsAt("price")).toEqual(["minQty", "price"]);
+    expect(colsAt("percent")).toEqual(["minQty", "discPct"]);
+  });
+
+  it("คลังของแถมไม่ถูกถามและไม่บังคับ เมื่อโปรไม่ได้ให้ของ", () => {
+    expect(paths({ ...PROMO_FORM.blank(), kind: "price-discount" })).not.toContain(
+      "freeGoodsWarehouse",
+    );
+    const req = PROMO_FORM.required.find((r) => r.path === "freeGoodsWarehouse")!;
+    expect(req.test!({ ...PROMO_FORM.blank(), kind: "price-discount" }), "ส่วนลดผ่านได้").toBe(true);
+    expect(req.test!({ ...PROMO_FORM.blank(), kind: "free-goods" }), "แถมสินค้ายังบังคับ").toBe(false);
+  });
+
+  it("โปรส่วนลดต้องมีขั้นอย่างน้อยหนึ่งขั้น", () => {
+    const req = PROMO_FORM.required.find((r) => r.path === "discountTiers")!;
+    expect(req.test!({ ...PROMO_FORM.blank(), kind: "price-discount" })).toBe(false);
+    expect(req.test!(discountState())).toBe(true);
+    /* ไม่ไปบังคับชนิดอื่นแทน */
+    expect(req.test!({ ...PROMO_FORM.blank(), kind: "free-goods" })).toBe(true);
+  });
+
+  it("ช่องบังคับยังไม่เกินเก้า แม้เพิ่มของชนิดที่สอง", () => {
+    expect(PROMO_FORM.required.length).toBeLessThanOrEqual(9);
+  });
+
+  it("กฎกันขั้นที่กรอกไม่ครบตามแบบ และกันจำนวนซ้ำ", () => {
+    const half = PROMO_FORM.rules!.find((r) => String(r.label).includes("ครบตามแบบ"))!;
+    expect(half.test(discountState())).toBe(true);
+    /* เลือกเปอร์เซ็นต์แต่กรอกราคาไว้ = ขั้นที่ไม่ให้อะไรกับใคร */
+    expect(half.test({ ...discountState(), discountMode: "percent" })).toBe(false);
+
+    const dup = PROMO_FORM.rules!.find((r) => String(r.label).includes("ซ้ำ"))!;
+    expect(dup.test(discountState())).toBe(true);
+    expect(
+      dup.test({
+        ...discountState(),
+        discountTiers: [
+          { minQty: 5, price: 600, discPct: "" },
+          { minQty: 5, price: 500, discPct: "" },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("เตือนตอนพิมพ์: ราคาหลังลดต่ำกว่าราคาขั้นต่ำ — ไม่ต้องกดบันทึก", () => {
+    /* 650 − 60% = 260 ต่ำกว่าขั้นต่ำ 280 ของ D-AD001-01 */
+    const deep: FormState = {
+      ...discountState(),
+      discountMode: "percent",
+      discountTiers: [{ minQty: 3, price: "", discPct: 60 }],
+    };
+    const notes = noteTexts(deep).join(" ");
+    expect(notes).toContain("ต่ำกว่าราคาขั้นต่ำ");
+    expect(notes).toContain("D-AD001-01");
+  });
+
+  it("เตือนตอนพิมพ์: โปรนี้ไม่มีผลกับกลุ่มไหน — คำนวณจากตารางราคาจริง", () => {
+    /* ขั้นถูกสุด 470 ยังแพงกว่าราคาดีลเลอร์ 460 ⇒ ไม่มีผลกับดีลเลอร์ */
+    const notes = noteTexts(discountState()).join(" ");
+    expect(notes).toContain("ไม่มีผลกับ");
+    expect(notes).toContain("Dealer");
+
+    /* ลดลึกจนถูกกว่าทุกชั้น คำเตือนนั้นต้องหายไป ไม่ใช่ค้างอยู่ตลอด */
+    const deeper = noteTexts({
+      ...discountState(),
+      discountTiers: [{ minQty: 5, price: 300, discPct: "" }],
+    }).join(" ");
+    expect(deeper).not.toContain("ไม่มีผลกับ");
+  });
+
+  it("ยังไม่ได้ตั้งขั้น — ไม่ขึ้นคำเตือนสองอันนั้น", () => {
+    /* คำเตือนที่ขึ้นตั้งแต่ฟอร์มยังว่าง คือคำเตือนที่คนกรอกเรียนรู้จะกดข้าม */
+    const notes = noteTexts({ ...PROMO_FORM.blank(), kind: "price-discount" }).join(" ");
+    expect(notes).not.toContain("ไม่มีผลกับ");
+    expect(notes).not.toContain("ต่ำกว่าราคาขั้นต่ำ");
+  });
+
+  it("บันทึกแล้วขั้นส่วนลดอยู่ครบ และเปิดกลับมาแก้ยังอยู่", () => {
+    setCurrentUser(SALES_ADMIN);
+    const { ctx } = stubCtx();
+    PROMO_FORM.save(discountState(), ctx);
+
+    const row = PROMOTIONS.find((p) => p.name === "ปลายกรอเพชร ราคาพิเศษ")!;
+    expect(row.kind).toBe("price-discount");
+    expect(row.discountMode).toBe("price");
+    expect(row.discountTiers).toEqual([
+      { minQty: 5, price: 600, discPct: null },
+      { minQty: 30, price: 470, discPct: null },
+    ]);
+    /* ขั้นของแถมต้องไม่ถูกเขียนอะไรใส่ */
+    expect(row.tiers).toEqual([]);
+
+    /* รอบสอง — เปิดหน้าแก้แล้วเซฟทับ ขั้นต้องไม่หาย */
+    const back = PROMO_FORM.toState!(row);
+    expect(back.discountMode).toBe("price");
+    expect(back.discountTiers).toEqual([
+      { minQty: 5, price: 600, discPct: "" },
+      { minQty: 30, price: 470, discPct: "" },
+    ]);
+    PROMO_FORM.save({ ...back, name: "แก้ชื่อโปรส่วนลด" }, ctx);
+    const again = getPromotion(row.code)!;
+    expect(again.discountTiers).toHaveLength(2);
+    expect(again.discountTiers[1].price).toBe(470);
+    expect(again.discountMode).toBe("price");
+  });
+
+  it("แถวขั้นที่ยังไม่กรอกจำนวน ไม่ถูกบันทึกเป็นขั้น 0", () => {
+    setCurrentUser(SALES_ADMIN);
+    const { ctx } = stubCtx();
+    PROMO_FORM.save(
+      {
+        ...discountState(),
+        name: "โปรที่มีแถวว่างค้างไว้",
+        discountTiers: [
+          { minQty: 5, price: 600, discPct: "" },
+          { minQty: "", price: "", discPct: "" },
+        ],
+      },
+      ctx,
+    );
+    const row = PROMOTIONS.find((p) => p.name === "โปรที่มีแถวว่างค้างไว้")!;
+    /* ขั้น 0 คือ "ซื้ออะไรก็ได้ราคานี้" ซึ่งไม่มีใครสั่ง */
+    expect(row.discountTiers).toEqual([{ minQty: 5, price: 600, discPct: null }]);
+  });
+
+  it("เปอร์เซ็นต์เดินมาถึงแถวเป็นเปอร์เซ็นต์ ไม่ถูกแปลงเป็นราคา", () => {
+    setCurrentUser(SALES_ADMIN);
+    const { ctx } = stubCtx();
+    PROMO_FORM.save(
+      {
+        ...discountState(),
+        name: "โปรลดเปอร์เซ็นต์",
+        discountMode: "percent",
+        discountTiers: [{ minQty: 10, price: "", discPct: 25 }],
+      },
+      ctx,
+    );
+    const row = PROMOTIONS.find((p) => p.name === "โปรลดเปอร์เซ็นต์")!;
+    expect(row.discountMode).toBe("percent");
+    expect(row.discountTiers).toEqual([{ minQty: 10, price: null, discPct: 25 }]);
+  });
+});

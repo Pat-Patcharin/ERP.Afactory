@@ -104,11 +104,21 @@ describe("ลงทะเบียนเป็น entity", () => {
     expect(pageHref("Promotion")).toBe("/m/promotion");
   });
 
-  it("การ์ดแถมสินค้าชี้ไปทางสร้างจริงแล้ว ไม่ใช่ placeholder", () => {
-    const card = PROMOTION_KINDS.find((k) => k.key === "free-goods")!;
-    expect(card.href).toBe("/m/promotion/new?kind=free-goods");
-    /* อีกสามใบยังปิดอยู่เหมือนเดิม การเปิด entity ไม่ได้เปิดใบอื่นตามไปด้วย */
-    expect(PROMOTION_KINDS.filter((k) => k.href !== null)).toHaveLength(1);
+  it("การ์ดที่เปิดชี้ไปทางสร้างจริง และเปิดเฉพาะชนิดที่มีตัวคำนวณของตัวเอง", () => {
+    /* สองชนิดที่เปิด — แถมสินค้า (รอบที่ 1) และส่วนลดราคา (รอบที่ 2)
+       ทั้งคู่มีตัวคำนวณคนละไฟล์และฟอร์มของตัวเอง */
+    const open = PROMOTION_KINDS.filter((k) => k.href !== null);
+    expect(open.map((k) => k.key)).toEqual(["free-goods", "price-discount"]);
+    for (const k of open) {
+      expect(k.href, k.label).toBe(`/m/promotion/new?kind=${k.key}`);
+    }
+
+    /* แพ็กเกจยังปิด — ติดคำถามฝ่ายบัญชีเรื่องใบกำกับเต็มจำนวนเมื่อส่งของไม่ครบ
+       สิทธิแลกซื้อยังปิด — เปิดพร้อมตัวคำนวณของมันเอง */
+    expect(PROMOTION_KINDS.filter((k) => k.href === null).map((k) => k.key)).toEqual([
+      "package",
+      "redeem",
+    ]);
   });
 });
 

@@ -10,13 +10,17 @@ import {
   mayEditPromotion,
   pausePromotion,
   promotionApprovalLevel,
+  promotionDiscountBreaches,
   promotionFloorBreaches,
+  promotionIneffectiveTiers,
   promotionPrintName,
   resumePromotion,
   type PromotionRow,
 } from "@/lib/domain/promotion";
 import { PROMOTION_KINDS } from "@/lib/domain/promotion";
 import { bestLadder } from "@/lib/domain/promotion-ladder";
+import { discountImpact } from "@/lib/domain/promotion-discount";
+import { TIER_TH } from "@/lib/domain/price-tier";
 import { PROMO_FORM } from "./forms/promotion";
 import { PROMO_TONE, tone } from "@/lib/badges";
 import { DASH, fmt, money, money0 } from "@/lib/format";
@@ -37,15 +41,37 @@ import { Badge, CellSub, Textarea } from "@/components/ui";
 const kindLabel = (row: PromotionRow) =>
   PROMOTION_KINDS.find((k) => k.key === row.kind)?.label ?? row.kind;
 
-/** ขั้นบันไดย่อเป็นบรรทัดเดียว — "3 แถม 1 · 10 แถม 4" */
-const tierText = (row: PromotionRow) =>
-  row.tiers.length
+/**
+ * ขั้นย่อเป็นบรรทัดเดียว — คนละความหมายตามชนิด
+ *
+ * "3 แถม 1 · 10 แถม 4" สำหรับโปรแถมสินค้า
+ * "5+ = 600 · 30+ = 470" สำหรับโปรส่วนลดราคา
+ *
+ * ถ้าอ่าน `row.tiers` ตัวเดียวเหมือนก่อน โปรส่วนลดจะขึ้นขีดกลางในคอลัมน์นี้
+ * ทั้งที่มีขั้นครบ — ดูเหมือนโปรที่ยังตั้งไม่เสร็จ
+ */
+const tierText = (row: PromotionRow) => {
+  if (row.kind === "price-discount") {
+    if (!row.discountTiers.length) return DASH;
+    return row.discountTiers
+      .slice()
+      .sort((a, b) => a.minQty - b.minQty)
+      .map((t) =>
+        row.discountMode === "percent"
+          ? `${fmt(t.minQty)}+ ลด ${t.discPct ?? 0}%`
+          : `${fmt(t.minQty)}+ = ${money0(t.price ?? 0)}`,
+      )
+      .join(" · ");
+  }
+
+  return row.tiers.length
     ? row.tiers
         .slice()
         .sort((a, b) => a.buy - b.buy)
         .map((t) => `${fmt(t.buy)} แถม ${fmt(t.free)}`)
         .join(" · ")
     : DASH;
+};
 
 /** เรียกครั้งเดียวแล้วส่งต่อ — ทุกด่านคืนเหตุผลมาให้ toast ใช้เป็นข้อความ */
 const runGuard = (
@@ -264,6 +290,108 @@ export const PROMO_LIST: ListSchema<PromotionRow> = {
   hideImportExport: true,
 };
 
+/**
+ * แท็บขั้นของโปรส่วนลดราคา
+ *
+ * สามอย่างที่หน้านี้ต้องตอบ และทั้งสามอ่านจากตัวคำนวณ ไม่ได้พิมพ์ทับไว้:
+ * ขั้นที่ตั้งไว้ · ราคาที่แต่ละชั้นลูกค้าจะได้จริง · ขั้นที่หลุดราคาขั้นต่ำ
+ */
+function discountBlocks(p: PromotionRow): Block[] {
+  const breaches = promotionDiscountBreaches(p);
+  const dead = promotionIneffectiveTiers(p);
+  const impact = discountImpact(p.items, p.discountTiers, p.discountMode);
+
+  return [
+    breaches.length
+      ? {
+          type: "alert",
+          tone: "danger",
+          title: `มี ${breaches.length} ขั้นที่ราคาหลังลดต่ำกว่าราคาขั้นต่ำ`,
+          message:
+            "โปรนี้ต้องให้ผู้จัดการฝ่ายขายอนุมัติเท่านั้น และทุกใบที่ใช้โปรนี้จะถูกส่งขออนุมัติราคาตามกฎเดิม",
+        }
+      : null,
+    dead.length
+      ? {
+          type: "alert",
+          tone: "warn",
+          title: `โปรนี้ไม่มีผลกับ${dead.map((t) => TIER_TH[t]).join(" · ")}`,
+          message:
+            "ราคาที่กลุ่มนั้นได้อยู่แล้วต่ำกว่าราคาที่โปรนี้ให้ ทุกใบของกลุ่มนั้นจะได้ราคาเดิม แต่โปรยังนับเข้างบ",
+        }
+      : null,
+    {
+      type: "table",
+      title: `ขั้นส่วนลด — ${p.discountMode === "percent" ? "คิดเป็นเปอร์เซ็นต์จากราคามาตรฐาน" : "ราคาตายตัวต่อชิ้น"}`,
+      empty: "ยังไม่ได้ตั้งขั้น",
+      rows: p.discountTiers.slice().sort((a, b) => a.minQty - b.minQty),
+      cols: [
+        { key: "minQty", label: "ซื้อตั้งแต่", align: "right", cell: (t) => fmt(t.minQty) },
+        {
+          key: "give",
+          label: p.discountMode === "percent" ? "ส่วนลด" : "ราคาต่อชิ้น",
+          align: "right",
+          cell: (t) => (
+            <span className="tnum">
+              {p.discountMode === "percent" ? `${t.discPct ?? 0}%` : money(t.price ?? 0)}
+            </span>
+          ),
+        },
+      ],
+    },
+    /* ขั้นไม่ผสมกัน จึงไม่มีตาราง "ตัวอย่างผลลัพธ์" แบบโปรแถมสินค้า —
+       ราคาต่อชิ้นของขั้นไหนก็คือราคานั้นทุกชิ้น ไม่มีอะไรให้ลองคำนวณ
+       สิ่งที่ต้องเห็นแทนคือแต่ละชั้นลูกค้าได้ราคาไหนจริง */
+    impact.length
+      ? {
+          type: "table",
+          title: "ราคาที่แต่ละชั้นลูกค้าได้จริง เมื่อถึงขั้นถูกสุด",
+          rows: impact.flatMap((i) =>
+            i.byTier.map((b) => ({
+              code: i.code,
+              tier: TIER_TH[b.tier],
+              tierPrice: b.tierPrice,
+              promo: b.promoPrice,
+              final: b.final,
+              applies: b.promoApplies,
+            })),
+          ),
+          cols: [
+            { key: "code", label: "สินค้า", cell: (r) => r.code },
+            { key: "tier", label: "ชั้นลูกค้า", cell: (r) => r.tier },
+            {
+              key: "tierPrice",
+              label: "ราคาที่ได้อยู่",
+              align: "right",
+              cell: (r) => <span className="tnum">{r.tierPrice === null ? DASH : money(r.tierPrice)}</span>,
+            },
+            {
+              key: "promo",
+              label: "ราคาโปร",
+              align: "right",
+              cell: (r) => <span className="tnum">{r.promo === null ? DASH : money(r.promo)}</span>,
+            },
+            {
+              key: "final",
+              label: "ราคาสุดท้าย",
+              align: "right",
+              cell: (r) => (
+                <span className={r.applies ? "font-semibold text-success-text tnum" : "tnum"}>
+                  {r.final === null ? DASH : money(r.final)}
+                </span>
+              ),
+            },
+            {
+              key: "applies",
+              label: "โปรมีผล",
+              cell: (r) => (r.applies ? "มีผล" : <CellSub>ไม่มีผล — ได้ราคาเดิม</CellSub>),
+            },
+          ],
+        }
+      : null,
+  ];
+}
+
 export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
   key: "promotion",
   entityLabel: "Promotion",
@@ -408,6 +536,11 @@ export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
       key: "tiers",
       label: "ขั้นบันไดและของแถม",
       blocks: (p): Block[] => {
+        /* โปรส่วนลดมีขั้นคนละความหมาย และไม่มีของแถมให้เฉลี่ย จึงเป็นแท็บ
+           คนละชุด ไม่ใช่ตารางเดิมที่ปล่อยว่าง — ตารางว่างอ่านว่า "ยังไม่ตั้ง"
+           ซึ่งไม่จริง */
+        if (p.kind === "price-discount") return discountBlocks(p);
+
         const breaches = promotionFloorBreaches(p);
         return [
           breaches.length
