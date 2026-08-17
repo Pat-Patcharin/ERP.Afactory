@@ -1,11 +1,14 @@
 import {
   BUDGET_BASIS_TH,
   COMMISSION_BASES,
+  OPEN_PROMOTION_SCOPES,
   PROMOTION_REASONS,
   PROMOTION_SCOPE_TH,
   PROMOTIONS,
   PROMOTION_KINDS,
   applyPromotionPatch,
+  averageUnitPrice,
+  productFloor,
   createPromotion,
   getPromotion,
   type PromotionRow,
@@ -18,14 +21,15 @@ import {
   type DiscountTier,
 } from "@/lib/domain/promotion-discount";
 import { TIER_TH } from "@/lib/domain/price-tier";
-import { money } from "@/lib/format";
+import { catalogPrice } from "@/lib/domain/pricing";
 import { QT_PRICE_LISTS } from "@/data/quotations";
 import { SR_CHANNELS } from "@/data/sales-requests";
 import { SALES_AREAS } from "@/data/sales-areas";
 import { SR_CUST_GROUPS } from "@/data/sales-reps";
 import { PRODUCTS } from "@/lib/domain/product";
 import { WAREHOUSES } from "@/lib/domain/warehouse";
-import { DASH, isoToDmy, dmyToIso } from "@/lib/format";
+import { DASH, fmt, isoToDmy, dmyToIso, money } from "@/lib/format";
+import type { LadderTier } from "@/lib/domain/promotion-ladder";
 import type { FormBlock, FormSchema, FormState, GridRow } from "@/lib/types";
 import { opts, saved } from "./common";
 
@@ -52,6 +56,31 @@ const num = (v: unknown) => Number(v) || 0;
 const givesGoods = (st: FormState) => String(st.kind ?? "free-goods") === "free-goods";
 
 const isDiscount = (st: FormState) => String(st.kind ?? "") === "price-discount";
+
+const isFreeGoods = (st: FormState) => String(st.kind ?? "free-goods") === "free-goods";
+
+const scopeOf = (st: FormState) => String(st.scope ?? "");
+
+/** ขั้นของแถมจากกริด — แถวที่ยังไม่กรอกจำนวนซื้อถูกทิ้ง ไม่ใช่นับเป็นขั้น 0 */
+const ladderTiersOf = (st: FormState): LadderTier[] =>
+  ((st.tiers ?? []) as GridRow[])
+    .filter((r) => num(r.buy) > 0)
+    .map((r) => ({ buy: num(r.buy), free: num(r.free) }));
+
+/**
+ * ราคาต่อชิ้นที่ใช้คิดราคาเฉลี่ยในตารางขั้น
+ *
+ * อ่าน `catalogPrice` ตัวเดียวกับที่ `promotionFloorBreaches` ใช้ตัดสินว่าใคร
+ * อนุมัติได้ — ถ้าหน้าจอใช้ราคาคนละตัวกับตัวที่ตัดสิน คนกรอกจะเห็นเขียวแล้ว
+ * ถูกตีกลับตอนขออนุมัติ
+ *
+ * สินค้าหลายตัวในโปรใช้ตัวแรกเป็นตัวแทน และบอกไว้ในหัวคอลัมน์
+ */
+const unitPriceOf = (st: FormState): { code: string; price: number; floor: number | null } | null => {
+  const [code] = itemCodes(st);
+  if (!code) return null;
+  return { code, price: catalogPrice(code), floor: productFloor(code) };
+};
 
 const discountMode = (st: FormState): DiscountMode =>
   String(st.discountMode ?? "price") === "percent" ? "percent" : "price";
@@ -113,6 +142,9 @@ function toPatch(s: FormState): Partial<PromotionRow> {
     owner: String(s.owner ?? ""),
 
     scope: (String(s.scope ?? "item") as PromotionRow["scope"]),
+    freeItems: list("freeItems"),
+    freeGroup: String(s.freeGroup ?? ""),
+    tiers: ladderTiersOf(s),
     discountTiers: discountTiersOf(s),
     discountMode: discountMode(s),
     items: list("items"),
@@ -177,8 +209,12 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     reasonNote: "",
     owner: "",
 
-    scope: "item",
+    /* ห้ามมีค่าเริ่มต้น — สามรูปแบบให้ของแถมคนละอย่าง */
+    scope: "",
     items: [],
+    freeItems: [],
+    freeGroup: "",
+    tiers: [],
     priceLists: [],
     discountTiers: [],
     discountMode: "price",
@@ -226,6 +262,9 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
 
     scope: p.scope,
     items: p.items.map((code) => ({ code })),
+    freeItems: p.freeItems.map((code) => ({ code })),
+    freeGroup: p.freeGroup,
+    tiers: p.tiers.map((t) => ({ buy: t.buy, free: t.free })),
     discountTiers: p.discountTiers.map((t) => ({
       minQty: t.minQty,
       price: t.price ?? "",
@@ -358,12 +397,17 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
             {
               type: "select",
               path: "scope",
-              label: "นับยอดแบบไหน",
+              label: "รูปแบบ — นับยอดแบบไหน แถมอะไร",
               required: true,
-              options: Object.entries(PROMOTION_SCOPE_TH).map(([value, label]) => ({
+              /* เฉพาะแบบที่เปิดแล้ว แบบกลุ่มไม่อยู่ในรายการ และถูกปฏิเสธที่
+                 ทางเขียนด้วย (`applyPromotionPatch`) เพราะรายการที่ซ่อนยังส่ง
+                 มาทาง `?scope=group` ได้ */
+              options: OPEN_PROMOTION_SCOPES.map((value) => ({
                 value,
-                label,
+                label: PROMOTION_SCOPE_TH[value],
               })),
+              span: true,
+              hint: "ไม่มีค่าเริ่มต้น — สามรูปแบบให้ของแถมคนละอย่าง",
             },
             {
               type: "select",
@@ -409,6 +453,130 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
             },
           ],
         },
+        /* ---------- ของแถมคืออะไร — คนละฝั่งกับสินค้าที่เข้าโปร ---------- */
+        isFreeGoods(s) &&
+          scopeOf(s) === "item" && {
+            type: "note",
+            label: "ของแถมคือสินค้าตัวเดียวกัน",
+            text: "แบบรายตัวแถมสินค้าตัวเดียวกันกับที่นับ จึงไม่ต้องเลือกของแถมซ้ำ — ถ้าต้องแถมของอีกตัว ให้เปลี่ยนรูปแบบเป็นชุดที่กำหนด",
+          },
+        isFreeGoods(s) &&
+          scopeOf(s) === "set" && {
+            type: "grid",
+            path: "freeItems",
+            label: "ของแถม — สินค้าที่แถมได้",
+            addLabel: "เพิ่มของแถม",
+            empty: "ยังไม่ได้เลือกของแถม — แบบชุดต้องระบุว่าแถมอะไร",
+            hint: "คนละฝั่งกับสินค้าที่เข้าโปร ชุดที่นับกับชุดที่แถมไม่จำเป็นต้องเป็นชุดเดียวกัน",
+            cols: [
+              {
+                key: "code",
+                label: "รหัสสินค้า",
+                type: "select",
+                options: productOptions(),
+                required: true,
+              },
+            ],
+          },
+        /* แบบที่สามยังปิด บอกไว้ให้เห็นว่ามีอยู่และปิดเพราะอะไร ไม่ใช่หายไป */
+        isFreeGoods(s) && {
+          type: "note",
+          label: "ยังมีรูปแบบที่สาม — กลุ่ม (แถมตัวที่ถูกที่สุด) แต่ยังเลือกไม่ได้",
+          text: 'รอการตัดสินว่า "ถูกที่สุด" วัดจากราคาไหน — ราคาตั้ง · ราคาหลังหักส่วนลดของลูกค้ารายนั้น · หรือต้นทุน สามคำตอบให้ของแถมคนละชิ้น และถ้าวัดจากราคาหลังหักส่วนลด ของที่ถูกสุดจะเปลี่ยนไปตามลูกค้าแต่ละราย',
+        },
+
+        /* ---------- ขั้นบันได — ซื้อเท่าไหร่ แถมเท่าไหร่ ---------- */
+        ...(() => {
+          if (!isFreeGoods(s)) return [];
+          const base = unitPriceOf(s);
+
+          /* คอลัมน์ถูกสร้างข้างใน blocks() เพื่อให้ closure ปิดทับ state ได้ —
+             `GridCol.get` รับแค่ row จึงไม่เห็นราคาสินค้า ซึ่งอยู่ในอีกกริด
+             blocks() ถูกเรียกใหม่ทุกครั้งที่พิมพ์ คำเตือนจึงขึ้นทันทีโดยไม่ต้องบันทึก */
+          const avgOf = (r: GridRow): number | null => {
+            if (!base || !(base.price > 0)) return null;
+            const buy = num(r.buy);
+            if (buy <= 0) return null;
+            return averageUnitPrice(base.price, buy, num(r.free));
+          };
+
+          const below = (r: GridRow): boolean => {
+            const avg = avgOf(r);
+            return avg !== null && base?.floor !== null && base !== null && avg < base.floor!;
+          };
+
+          const grid: FormBlock = {
+            type: "grid",
+            path: "tiers",
+            label: "ขั้นบันได — ซื้อเท่าไหร่ แถมเท่าไหร่",
+            addLabel: "เพิ่มขั้น",
+            empty: "ยังไม่ได้ตั้งขั้น — โปรแถมสินค้าที่ไม่มีขั้นจะไม่แถมอะไรเลย",
+            hint: base
+              ? `ราคาเฉลี่ยคิดจาก ${base.code} ราคา ${money(base.price)}${
+                  base.floor !== null ? ` · ราคาขั้นต่ำ ${money(base.floor)}` : ""
+                }`
+              : "เลือกสินค้าที่เข้าโปรก่อน แล้วราคาเฉลี่ยจะคำนวณให้",
+            cols: [
+              {
+                key: "buy",
+                /* คำนี้ตั้งใจ — "ซื้อ" เฉย ๆ ทำให้คนกรอกไม่รู้ว่านับของแถมด้วยไหม */
+                label: "ซื้อ (จ่ายจริง)",
+                type: "number",
+                align: "right",
+                required: true,
+              },
+              { key: "free", label: "แถม", type: "number", align: "right", required: true },
+              {
+                key: "total",
+                label: "รวมที่ได้รับ",
+                type: "computed",
+                align: "right",
+                muted: true,
+                get: (r) => (num(r.buy) > 0 ? fmt(num(r.buy) + num(r.free)) : DASH),
+              },
+              {
+                key: "avg",
+                label: "ราคาเฉลี่ยต่อชิ้น",
+                type: "computed",
+                align: "right",
+                get: (r) => {
+                  const avg = avgOf(r);
+                  if (avg === null) return DASH;
+                  return below(r) ? `${money(avg)} ⚠` : money(avg);
+                },
+                /* สีเตือนใช้ token เดิมของระบบ ไม่ได้ตั้งสีใหม่ */
+                cls: (r) => (below(r) ? "font-semibold text-danger" : ""),
+              },
+            ],
+          };
+          return [grid];
+        })(),
+        /* สรุปเป็นข้อความด้วย เพราะสีในตารางอ่านไม่ออกถ้าตารางเลื่อนออกนอกจอ */
+        ...(() => {
+          if (!isFreeGoods(s)) return [];
+          const base = unitPriceOf(s);
+          if (!base || !(base.price > 0) || base.floor === null) return [];
+          const bad = ladderTiersOf(s).filter(
+            (t) => averageUnitPrice(base.price, t.buy, t.free) < base.floor!,
+          );
+          if (!bad.length) return [];
+          return [
+            {
+              type: "note",
+              label: `⚠ มี ${bad.length} ขั้นที่ราคาเฉลี่ยต่ำกว่าราคาขั้นต่ำ`,
+              text:
+                bad
+                  .map(
+                    (t) =>
+                      `ซื้อ ${fmt(t.buy)} แถม ${fmt(t.free)} → เฉลี่ย ${money(
+                        averageUnitPrice(base.price, t.buy, t.free),
+                      )}`,
+                  )
+                  .join(" · ") +
+                ` — ต่ำกว่าราคาขั้นต่ำ ${money(base.floor)} ของ ${base.code} โปรนี้ต้องให้ผู้จัดการฝ่ายขายอนุมัติ`,
+            } as FormBlock,
+          ];
+        })(),
         {
           type: "grid",
           path: "priceLists",
@@ -817,9 +985,47 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       step: "what",
       test: (s) => !isDiscount(s) || discountTiersOf(s).length > 0,
     },
+    {
+      /* โปรแถมสินค้าที่ไม่มีขั้น คือโปรที่ไม่แถมอะไรเลย — และเป็นสิ่งที่ระบบนี้
+         ปล่อยให้บันทึกได้มาตลอด เพราะยังไม่มีที่กรอกขั้น */
+      path: "tiers",
+      label: "ขั้นบันไดของแถม",
+      step: "what",
+      test: (s) => !isFreeGoods(s) || ladderTiersOf(s).length > 0,
+    },
   ],
 
   rules: [
+    {
+      /* ด่านจริงอยู่ที่ `applyPromotionPatch` ตัวนี้คือการบอกก่อนกดบันทึก
+         ไม่ใช่ด่านที่สอง — ข้อความมาจากเรื่องเดียวกันแต่คนละจังหวะ */
+      label: "รูปแบบกลุ่มยังใช้ไม่ได้ — เลือกรายตัว หรือ ชุดที่กำหนด",
+      step: "what",
+      test: (s) => OPEN_PROMOTION_SCOPES.includes(scopeOf(s) as PromotionRow["scope"]),
+    },
+    {
+      label: "แบบชุดที่กำหนดต้องระบุว่าแถมอะไร",
+      step: "what",
+      test: (s) =>
+        !isFreeGoods(s) ||
+        scopeOf(s) !== "set" ||
+        ((s.freeItems ?? []) as GridRow[]).some((r) => String(r.code ?? "").trim()),
+    },
+    {
+      label: "ทุกขั้นของแถมต้องมีจำนวนแถมมากกว่าศูนย์",
+      step: "what",
+      test: (s) => !isFreeGoods(s) || ladderTiersOf(s).every((t) => t.free > 0),
+    },
+    {
+      /* สองขั้นที่ซื้อเท่ากันคือสองคำตอบสำหรับจำนวนเดียว `bestLadder` จะเลือก
+         ตัวที่ให้ของแถมมากกว่าอย่างเงียบ ๆ และอีกตัวจะไม่เคยถูกใช้ */
+      label: "ขั้นของแถมห้ามมีจำนวนซื้อซ้ำกัน",
+      step: "what",
+      test: (s) => {
+        const buys = ladderTiersOf(s).map((t) => t.buy);
+        return new Set(buys).size === buys.length;
+      },
+    },
     {
       label: "ทุกขั้นส่วนลดต้องกรอกราคาหรือเปอร์เซ็นต์ให้ครบตามแบบที่เลือก",
       step: "what",

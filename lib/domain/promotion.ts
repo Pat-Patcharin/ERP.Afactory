@@ -133,14 +133,32 @@ export const PROMOTION_STATUS_TH: Record<PromotionStatus, string> = {
   Ended: "สิ้นสุด",
 };
 
-/** §2 — สามแบบต่างกันที่ขอบเขตการนับและวิธีเลือกของแถม */
-export type PromotionScope = "item" | "set" | "group";
+/**
+ * §2 — สามแบบต่างกันที่ขอบเขตการนับและวิธีเลือกของแถม
+ *
+ * `""` คือยังไม่ได้เลือก และเป็นค่าเริ่มต้นโดยตั้งใจ แบบเดียวกับ `BudgetBasis`
+ * — สามแบบนี้ให้ของแถมคนละอย่าง เดาให้แบบหนึ่งคือเดาว่าลูกค้าจะได้อะไร
+ */
+export type PromotionScope = "" | "item" | "set" | "group";
 
 export const PROMOTION_SCOPE_TH: Record<PromotionScope, string> = {
-  item: "สินค้าตัวเดียว",
-  set: "ชุดที่กำหนด",
+  "": "— ยังไม่ได้เลือก —",
+  item: "รายตัว — แถมสินค้าตัวเดียวกัน",
+  set: "ชุดที่กำหนด — แถมจากชุดที่ระบุ",
   group: "กลุ่ม — แถมตัวที่ถูกที่สุด",
 };
+
+/**
+ * แบบที่เลือกได้จริงวันนี้
+ *
+ * แบบกลุ่มยังไม่เปิด เพราะ §2 ยังไม่ตัดสินว่า "ถูกที่สุด" วัดจากราคาไหน —
+ * ราคาตั้ง · ราคาหลังหักส่วนลดของลูกค้ารายนั้น · หรือต้นทุน สามคำตอบให้ของแถม
+ * คนละชิ้น และถ้าวัดจากราคาหลังหักส่วนลด ของที่ถูกสุดจะเปลี่ยนไปตามลูกค้าแต่ละราย
+ *
+ * ปิดที่ **ทางเขียน** ไม่ใช่แค่ไม่ใส่ในรายการตัวเลือก — ตัวเลือกที่ซ่อนยังส่งมา
+ * ทาง `?scope=group` ได้ และ disabled option ในหลายเบราว์เซอร์ยังโฟกัสได้
+ */
+export const OPEN_PROMOTION_SCOPES: readonly PromotionScope[] = ["item", "set"];
 
 /** §6c — ตัวเลือกตายตัว ไม่ใช่ช่องพิมพ์อิสระ เพราะต้องเอาไปจัดกลุ่มเทียบผล */
 export const PROMOTION_REASONS = [
@@ -194,7 +212,17 @@ export interface PromotionRow extends RecordBase {
 
   /* ---------- กลุ่ม 2 · ใช้กับอะไร ---------- */
   scope: PromotionScope;
+  /** ฝั่งเงื่อนไข — สินค้าที่นับเข้าโปร */
   items: string[];
+  /**
+   * ฝั่งของแถม — คนละฝั่งกับ `items` โดยตั้งใจ
+   *
+   * แบบรายตัวไม่ใช้ช่องนี้ ของแถมคือสินค้าตัวเดียวกันกับที่นับ เขียนซ้ำลงมา
+   * จะได้ข้อมูลสองที่ที่ต้องคอยให้ตรงกัน แบบชุดใช้ช่องนี้ระบุว่าแถมอะไรได้
+   */
+  freeItems: string[];
+  /** แบบกลุ่ม — กลุ่มที่ของแถมจะถูกเลือกมาจาก ยังไม่เปิดใช้ ดู OPEN_PROMOTION_SCOPES */
+  freeGroup: string;
   /** ว่าง = ทุกตารางราคา */
   priceLists: string[];
   /** null = ไม่กำหนดยอดขั้นต่ำ */
@@ -285,8 +313,12 @@ export const blankPromotion = (): PromotionRow => ({
   reasonNote: "",
   owner: "",
 
-  scope: "item",
+  /* ห้ามมีค่าเริ่มต้น — สามแบบให้ของแถมคนละอย่าง เดาให้แบบหนึ่งคือเดาว่า
+     ลูกค้าจะได้อะไร */
+  scope: "",
   items: [],
+  freeItems: [],
+  freeGroup: "",
   priceLists: [],
   minOrder: null,
   minOrderBasis: "ยอดก่อนภาษี",
@@ -518,7 +550,8 @@ export function mayApprovePromotion(p: PromotionRow): PromotionGuard {
  * เพราะไม่ได้เปลี่ยนว่าใครได้อะไรเท่าไหร่
  */
 export const PROMOTION_CONDITION_FIELDS: readonly (keyof PromotionRow)[] = [
-  "kind", "scope", "items", "tiers", "discountTiers", "discountMode",
+  "kind", "scope", "items", "freeItems", "freeGroup",
+  "tiers", "discountTiers", "discountMode",
   "priceLists", "minOrder", "minOrderBasis",
   "nearExpiryOnly", "nearExpiryDays", "customerGroups", "customers", "areas",
   "channels", "allowDraftPartner", "usePerCustomer", "useTotal", "stackWithPromo",
@@ -562,6 +595,20 @@ export function applyPromotionPatch(
 ): PromotionGuard {
   const guard = mayEditPromotion(p);
   if (!guard.ok) return guard;
+
+  /* แบบกลุ่มยังไม่เปิด และปิดที่ทางเขียน ไม่ใช่ที่รายการตัวเลือก
+     ตรวจว่า patch **ตั้ง** เป็นแบบนั้น ไม่ใช่ว่าแถวเดิมเป็นแบบนั้นอยู่แล้ว —
+     ข้อมูลตัวอย่างมีโปรแบบกลุ่มค้างอยู่หนึ่งตัว และการแก้ชื่อของมันไม่ควร
+     ถูกปฏิเสธเพราะเรื่องที่คนแก้ไม่ได้แตะ */
+  if ("scope" in patch && !OPEN_PROMOTION_SCOPES.includes(patch.scope as PromotionScope)) {
+    return {
+      ok: false,
+      reason:
+        patch.scope === "group"
+          ? "แบบกลุ่มยังใช้ไม่ได้ — ยังไม่ได้ตัดสินว่า \"ถูกที่สุด\" วัดจากราคาไหน (ราคาตั้ง · ราคาหลังหักส่วนลด · ต้นทุน)"
+          : "ต้องเลือกรูปแบบว่านับยอดแบบไหน — รายตัว หรือ ชุดที่กำหนด",
+    };
+  }
 
   const touchedCondition = PROMOTION_CONDITION_FIELDS.some(
     (k) => k in patch && JSON.stringify(patch[k]) !== JSON.stringify(p[k]),

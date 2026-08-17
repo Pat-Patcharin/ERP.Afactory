@@ -82,6 +82,20 @@ function stubCtx() {
 
 const g = (codes: string[]): GridRow[] => codes.map((code) => ({ code }));
 
+/**
+ * ช่องบังคับที่คนกรอกชนิดนี้เห็นจริง
+ *
+ * นับจาก `required` ที่ยัง **ไม่ผ่าน** บนฟอร์มเปล่าของชนิดนั้น — ไม่ใช่ความยาว
+ * ของ `required` ดิบ เพราะรายการนั้นรวมช่องของทุกชนิดไว้ด้วยกัน ขั้นของแถม
+ * กับขั้นส่วนลดไม่เคยบังคับพร้อมกัน คนกรอกโปรหนึ่งใบจึงไม่เคยเจอทั้งคู่
+ *
+ * เกณฑ์ที่ตกลงกันคือภาระของคนกรอก ตัวเลขนี้จึงเป็นตัวที่ตรงกับเกณฑ์
+ */
+const requiredFor = (kind: string): string[] => {
+  const blank = { ...PROMO_FORM.blank(), kind };
+  return PROMO_FORM.required.filter((r) => !r.test || !r.test(blank)).map((r) => r.path);
+};
+
 /** ค่าครบทุกกลุ่ม — ในรูปของ state ที่ฟอร์มถืออยู่จริง */
 const filled = (): FormState => ({
   ...PROMO_FORM.blank(),
@@ -150,8 +164,19 @@ describe("โครงฟอร์ม — §6b", () => {
     expect(paths({ ...PROMO_FORM.blank(), nearExpiryOnly: true })).toContain("nearExpiryDays");
   });
 
-  it("ช่องบังคับไม่เกินเก้า และทุกช่องเป็นสิ่งที่ระบบเดาแทนไม่ได้", () => {
-    expect(PROMO_FORM.required.length).toBeLessThanOrEqual(9);
+  it("ช่องบังคับที่แต่ละชนิดเห็น ไม่เกินเก้า และทุกช่องเป็นสิ่งที่ระบบเดาแทนไม่ได้", () => {
+    for (const kind of ["free-goods", "price-discount"]) {
+      const req = requiredFor(kind);
+      expect(req.length, `${kind}: ${req.join(" ")}`).toBeLessThanOrEqual(9);
+    }
+
+    /* และขั้นของสองชนิดไม่เคยบังคับพร้อมกัน — ถ้าวันหนึ่งบังคับพร้อมกัน
+       คนกรอกจะถูกขอขั้นสองชุดสำหรับโปรใบเดียว */
+    expect(requiredFor("free-goods")).toContain("tiers");
+    expect(requiredFor("free-goods")).not.toContain("discountTiers");
+    expect(requiredFor("price-discount")).toContain("discountTiers");
+    expect(requiredFor("price-discount")).not.toContain("tiers");
+
     const req = PROMO_FORM.required.map((r) => r.path);
     /* สามช่องที่ตกลงกันว่าต้องบังคับและห้ามมีค่าเริ่มต้น */
     expect(req).toContain("reason");
@@ -489,8 +514,8 @@ describe("ฟอร์มโปรส่วนลดราคา", () => {
     expect(req.test!({ ...PROMO_FORM.blank(), kind: "free-goods" })).toBe(true);
   });
 
-  it("ช่องบังคับยังไม่เกินเก้า แม้เพิ่มของชนิดที่สอง", () => {
-    expect(PROMO_FORM.required.length).toBeLessThanOrEqual(9);
+  it("ช่องบังคับที่โปรส่วนลดเห็น ไม่เกินเก้า", () => {
+    expect(requiredFor("price-discount").length).toBeLessThanOrEqual(9);
   });
 
   it("กฎกันขั้นที่กรอกไม่ครบตามแบบ และกันจำนวนซ้ำ", () => {
@@ -499,7 +524,9 @@ describe("ฟอร์มโปรส่วนลดราคา", () => {
     /* เลือกเปอร์เซ็นต์แต่กรอกราคาไว้ = ขั้นที่ไม่ให้อะไรกับใคร */
     expect(half.test({ ...discountState(), discountMode: "percent" })).toBe(false);
 
-    const dup = PROMO_FORM.rules!.find((r) => String(r.label).includes("ซ้ำ"))!;
+    /* ระบุเจาะจง — มีกฎห้ามซ้ำสองข้อแล้ว (ขั้นของแถม กับ ขั้นส่วนลด)
+       `includes("ซ้ำ")` เฉย ๆ จะไปเจอกฎของอีกชนิดแล้วทดสอบผิดตัว */
+    const dup = PROMO_FORM.rules!.find((r) => String(r.label).includes("ขั้นส่วนลดห้าม"))!;
     expect(dup.test(discountState())).toBe(true);
     expect(
       dup.test({
@@ -608,5 +635,266 @@ describe("ฟอร์มโปรส่วนลดราคา", () => {
     const row = PROMOTIONS.find((p) => p.name === "โปรลดเปอร์เซ็นต์")!;
     expect(row.discountMode).toBe("percent");
     expect(row.discountTiers).toEqual([{ minQty: 10, price: null, discPct: 25 }]);
+  });
+});
+
+/* ============================================================
+   PR3b — รูปแบบย่อย · ของแถม · ตารางขั้นบันได
+
+   ก่อนรอบนี้ ขั้นบันไดเข้าระบบได้ทางเดียวคือเขียนลงไฟล์ข้อมูล ฟอร์มไม่มี
+   ที่กรอกเลย ทั้งที่มันคือสาระของโปรแถมสินค้า
+   ============================================================ */
+
+/** โปรแถมสินค้าที่กรอกครบ — 3 แถม 1 · 10 แถม 4 · 30 แถม 15 ตามเกณฑ์รับงาน */
+const freeGoodsState = (): FormState => ({
+  ...PROMO_FORM.blank(),
+  kind: "free-goods",
+  name: "ปลายกรอเพชร ซื้อ 3 แถม 1",
+  from: "2026-09-01",
+  reason: "แข่งกับคู่แข่ง",
+  scope: "item",
+  items: g(["D-AD001-01"]),
+  tiers: [
+    { buy: 3, free: 1 },
+    { buy: 10, free: 4 },
+    { buy: 30, free: 15 },
+  ],
+  commissionBase: "มูลค่าบรรทัดหลังเฉลี่ยของแถม",
+  freeGoodsWarehouse: "WH-BKK Bangkok Main Warehouse",
+});
+
+const gridCols = (st: FormState, path: string) =>
+  (allFields(st).find((f) => f.path === path)?.cols ?? []).map((c) => c.key);
+
+/** เซลล์คำนวณของกริดหนึ่งคอลัมน์ — เรียก get/cls ตรง ๆ เหมือนที่ engine ทำ */
+const computed = (st: FormState, path: string, key: string, row: GridRow) => {
+  const col = (allFields(st).find((f) => f.path === path)?.cols ?? []).find((c) => c.key === key)!;
+  return { value: String(col.get!(row) ?? ""), cls: col.cls?.(row) ?? "" };
+};
+
+describe("รูปแบบย่อย — บังคับเลือก และแบบกลุ่มยังปิด", () => {
+  it("ไม่มีค่าเริ่มต้น ต้องเลือกเอง", () => {
+    expect(PROMO_FORM.blank().scope).toBe("");
+    expect(PROMO_FORM.required.map((r) => r.path)).toContain("scope");
+  });
+
+  it("ตัวเลือกมีสองแบบ ไม่มีแบบกลุ่มให้เลือก", () => {
+    const field = allFields({ ...PROMO_FORM.blank(), kind: "free-goods" }).find(
+      (f) => f.path === "scope",
+    )!;
+    const values = (field.options as { value: string }[]).map((o) => o.value);
+    expect(values).toEqual(["item", "set"]);
+    expect(values).not.toContain("group");
+  });
+
+  it("แบบกลุ่มถูกปฏิเสธที่ทางเขียน ไม่ใช่แค่ไม่อยู่ในรายการ", () => {
+    /* รายการที่ซ่อนยังส่งมาทาง ?scope=group ได้ และ disabled option ในหลาย
+       เบราว์เซอร์ยังโฟกัสได้ — ด่านจริงจึงอยู่ที่ applyPromotionPatch */
+    setCurrentUser(SALES_ADMIN);
+    const before = PROMOTIONS.length;
+    const { ctx, toasts } = stubCtx();
+
+    PROMO_FORM.save({ ...freeGoodsState(), scope: "group", name: "โปรแบบกลุ่ม" }, ctx);
+
+    expect(PROMOTIONS).toHaveLength(before);
+    expect(toasts[0].tone).toBe("danger");
+    expect(toasts[0].body).toContain("แบบกลุ่มยังใช้ไม่ได้");
+  });
+
+  it("มีโน้ตบอกว่ามีแบบที่สามและปิดเพราะอะไร", () => {
+    /* ตัวเลือกที่หายไปเงียบ ๆ ทำให้คนตั้งโปรคิดว่าระบบทำไม่ได้ ไม่ใช่ยังไม่ตัดสิน */
+    const notes = noteTexts({ ...PROMO_FORM.blank(), kind: "free-goods" }).join(" ");
+    expect(notes).toContain("กลุ่ม");
+    expect(notes).toContain("ถูกที่สุด");
+  });
+
+  it("โปรส่วนลดไม่เห็นโน้ตของฝั่งของแถม", () => {
+    const notes = noteTexts({ ...PROMO_FORM.blank(), kind: "price-discount" }).join(" ");
+    expect(notes).not.toContain("ถูกที่สุด");
+  });
+});
+
+describe("ของแถมคืออะไร — คนละฝั่งกับสินค้าที่เข้าโปร", () => {
+  it("แบบรายตัวไม่ต้องเลือกของแถม แต่บอกไว้ว่าคือตัวเดียวกัน", () => {
+    const st = { ...freeGoodsState(), scope: "item" };
+    expect(paths(st)).not.toContain("freeItems");
+    expect(noteTexts(st).join(" ")).toContain("สินค้าตัวเดียวกัน");
+  });
+
+  it("แบบชุดมีกริดของแถมแยก และบังคับให้ระบุ", () => {
+    const st = { ...freeGoodsState(), scope: "set" };
+    expect(paths(st)).toContain("freeItems");
+
+    const rule = PROMO_FORM.rules!.find((r) => String(r.label).includes("แถมอะไร"))!;
+    expect(rule.test(st), "แบบชุดที่ยังไม่ระบุของแถม").toBe(false);
+    expect(rule.test({ ...st, freeItems: g(["D-AD004-01"]) })).toBe(true);
+    /* ไม่ไปบังคับแบบรายตัวแทน */
+    expect(rule.test({ ...freeGoodsState(), scope: "item" })).toBe(true);
+  });
+
+  it("ของแถมเดินถึงแถวจริง และเปิดกลับมายังอยู่", () => {
+    setCurrentUser(SALES_ADMIN);
+    const { ctx } = stubCtx();
+    PROMO_FORM.save(
+      { ...freeGoodsState(), name: "โปรแบบชุด", scope: "set", freeItems: g(["D-AD004-01"]) },
+      ctx,
+    );
+    const row = PROMOTIONS.find((p) => p.name === "โปรแบบชุด")!;
+    expect(row.scope).toBe("set");
+    expect(row.freeItems).toEqual(["D-AD004-01"]);
+    /* ฝั่งเงื่อนไขไม่ถูกปนกับฝั่งของแถม */
+    expect(row.items).toEqual(["D-AD001-01"]);
+
+    expect(PROMO_FORM.toState!(row).freeItems).toEqual([{ code: "D-AD004-01" }]);
+  });
+});
+
+describe("ตารางขั้นบันได", () => {
+  it("คอลัมน์ครบ และช่องกรอกเขียนว่า ซื้อ (จ่ายจริง)", () => {
+    const st = freeGoodsState();
+    expect(gridCols(st, "tiers")).toEqual(["buy", "free", "total", "avg"]);
+
+    /* คำนี้เป็นจุดที่สับสนที่สุด — "ซื้อ" เฉย ๆ ไม่บอกว่านับของแถมด้วยไหม */
+    const col = (allFields(st).find((f) => f.path === "tiers")!.cols ?? []).find(
+      (c) => c.key === "buy",
+    )!;
+    expect(col.label).toBe("ซื้อ (จ่ายจริง)");
+  });
+
+  it("ตารางขั้นของแถมไม่โผล่ในโปรส่วนลด และกลับกัน", () => {
+    expect(paths({ ...PROMO_FORM.blank(), kind: "free-goods" })).toContain("tiers");
+    expect(paths({ ...PROMO_FORM.blank(), kind: "price-discount" })).not.toContain("tiers");
+    expect(paths({ ...PROMO_FORM.blank(), kind: "free-goods" })).not.toContain("discountTiers");
+  });
+
+  it("ราคาเฉลี่ยคำนวณจากราคาสินค้าจริง — 650 ซื้อ 3 แถม 1 = 487.50", () => {
+    const st = freeGoodsState();
+    expect(computed(st, "tiers", "avg", { buy: 3, free: 1 }).value).toContain("487.50");
+    expect(computed(st, "tiers", "total", { buy: 3, free: 1 }).value).toBe("4");
+  });
+
+  it("ราคาเฉลี่ยขึ้นสีเตือนทันทีที่ต่ำกว่าราคาขั้นต่ำ — ตอนพิมพ์ ไม่ต้องบันทึก", () => {
+    /* D-AD001-01 ราคา 650 ขั้นต่ำ 280 — ซื้อ 3 แถม 5 ได้เฉลี่ย 243.75 */
+    const st = freeGoodsState();
+    const bad = computed(st, "tiers", "avg", { buy: 3, free: 5 });
+    expect(bad.value).toContain("243.75");
+    expect(bad.cls, "ต้องใช้ token สีเดิมของระบบ").toContain("text-danger");
+
+    const ok = computed(st, "tiers", "avg", { buy: 3, free: 1 });
+    expect(ok.cls).toBe("");
+  });
+
+  it("สรุปเป็นข้อความด้วย ไม่ใช่มีแต่สีในตารางที่อาจเลื่อนออกนอกจอ", () => {
+    const notes = noteTexts({
+      ...freeGoodsState(),
+      tiers: [{ buy: 3, free: 5 }],
+    }).join(" ");
+    expect(notes).toContain("ต่ำกว่าราคาขั้นต่ำ");
+    expect(notes).toContain("243.75");
+
+    /* ขั้นที่ปลอดภัยไม่ทำให้ขึ้นคำเตือน */
+    expect(noteTexts(freeGoodsState()).join(" ")).not.toContain("ต่ำกว่าราคาขั้นต่ำ");
+  });
+
+  it("ยังไม่เลือกสินค้า — ราคาเฉลี่ยเป็นขีด ไม่ใช่ศูนย์", () => {
+    /* ศูนย์อ่านว่าแถมแล้วฟรีทั้งบรรทัด ซึ่งไม่จริง ยังไม่รู้ราคาต่างหาก */
+    const st = { ...freeGoodsState(), items: [] };
+    expect(computed(st, "tiers", "avg", { buy: 3, free: 1 }).value).toBe("—");
+  });
+
+  it("กฎกันขั้นที่แถมศูนย์ และกันจำนวนซื้อซ้ำ", () => {
+    const zero = PROMO_FORM.rules!.find((r) => String(r.label).includes("มากกว่าศูนย์"))!;
+    expect(zero.test(freeGoodsState())).toBe(true);
+    expect(zero.test({ ...freeGoodsState(), tiers: [{ buy: 3, free: 0 }] })).toBe(false);
+
+    const dup = PROMO_FORM.rules!.find((r) => String(r.label).includes("ขั้นของแถมห้าม"))!;
+    expect(dup.test(freeGoodsState())).toBe(true);
+    expect(
+      dup.test({
+        ...freeGoodsState(),
+        tiers: [
+          { buy: 3, free: 1 },
+          { buy: 3, free: 2 },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("โปรแถมสินค้าต้องมีขั้นอย่างน้อยหนึ่งขั้น", () => {
+    const req = PROMO_FORM.required.find((r) => r.path === "tiers")!;
+    expect(req.test!({ ...freeGoodsState(), tiers: [] })).toBe(false);
+    expect(req.test!(freeGoodsState())).toBe(true);
+    /* ไม่ไปบังคับโปรส่วนลด */
+    expect(req.test!({ ...PROMO_FORM.blank(), kind: "price-discount" })).toBe(true);
+  });
+});
+
+describe("ขั้นบันไดอยู่ครบตลอดทาง", () => {
+  it("กรอก 3 แถม 1 · 10 แถม 4 · 30 แถม 15 แล้วบันทึกได้ครบ และเปิดกลับมายังอยู่", () => {
+    setCurrentUser(SALES_ADMIN);
+    const { ctx, toasts } = stubCtx();
+    PROMO_FORM.save(freeGoodsState(), ctx);
+
+    expect(toasts[0]?.tone, toasts[0]?.body).not.toBe("danger");
+    const row = PROMOTIONS.find((p) => p.name === "ปลายกรอเพชร ซื้อ 3 แถม 1")!;
+    expect(row.tiers).toEqual([
+      { buy: 3, free: 1 },
+      { buy: 10, free: 4 },
+      { buy: 30, free: 15 },
+    ]);
+    /* ขั้นส่วนลดต้องไม่ถูกเขียนอะไรใส่ */
+    expect(row.discountTiers).toEqual([]);
+
+    /* รอบสอง — เปิดหน้าแก้ ขั้นต้องอยู่ครบสามขั้นในรูปที่กริดอ่านได้ */
+    const back = PROMO_FORM.toState!(row);
+    expect(back.tiers).toEqual([
+      { buy: 3, free: 1 },
+      { buy: 10, free: 4 },
+      { buy: 30, free: 15 },
+    ]);
+
+    /* แล้วเซฟทับ ขั้นต้องไม่หาย */
+    PROMO_FORM.save({ ...back, name: "แก้ชื่อแล้ว" }, ctx);
+    expect(getPromotion(row.code)!.tiers).toHaveLength(3);
+  });
+
+  it("แก้โปรที่มีขั้นอยู่แล้ว โดยไม่แตะตารางขั้น — ขั้นเดิมยังอยู่ครบ", () => {
+    /* ก่อน PR3b `tiers` ไม่อยู่ใน toPatch เลย จึงไม่มีทางถูกล้าง พอต่อสายแล้ว
+       ความปลอดภัยนั้นหายไป — การเปิดหน้าแก้แล้วเซฟโดยไม่แตะตาราง ต้องไม่ทำให้
+       ขั้นสามขั้นของโปรที่ใช้งานอยู่กลายเป็นศูนย์ขั้น
+       นี่คือรูปแบบ "เซฟแล้วมีค่า แต่เปิดกลับมาแล้วหาย" ที่เจอตอน A2a */
+    setCurrentUser(SALES_ADMIN);
+    const seeded = getPromotion("PM-0001")!;
+    expect(seeded.tiers, "ข้อมูลตัวอย่างต้องมีขั้นอยู่ก่อน").toHaveLength(3);
+    const wasTiers = JSON.parse(JSON.stringify(seeded.tiers));
+    /* โปรที่ใช้งานอยู่แก้ไม่ได้ตามด่านเดิม จึงหยุดชั่วคราวก่อนเหมือนคนจริง */
+    seeded.status = "Paused";
+
+    const { ctx, toasts } = stubCtx();
+    PROMO_FORM.save({ ...PROMO_FORM.toState!(seeded), printName: "ชื่อใหม่บนเอกสาร" }, ctx);
+
+    expect(toasts[0]?.tone, toasts[0]?.body).not.toBe("danger");
+    const after = getPromotion("PM-0001")!;
+    expect(after.printName).toBe("ชื่อใหม่บนเอกสาร");
+    expect(after.tiers, "ขั้นเดิมต้องยังอยู่ครบ").toEqual(wasTiers);
+    expect(after.tiers).toHaveLength(3);
+  });
+
+  it("แถวขั้นที่ยังไม่กรอกจำนวนซื้อ ไม่ถูกบันทึกเป็นขั้น 0", () => {
+    setCurrentUser(SALES_ADMIN);
+    const { ctx } = stubCtx();
+    PROMO_FORM.save(
+      {
+        ...freeGoodsState(),
+        name: "โปรที่มีแถวขั้นว่างค้าง",
+        tiers: [{ buy: 3, free: 1 }, { buy: "", free: "" }],
+      },
+      ctx,
+    );
+    /* ขั้นที่ซื้อ 0 คือของแถมไม่จำกัด และจะทำให้ bestLadder วนไม่รู้จบ
+       ตัวคำนวณกันไว้อยู่แล้ว แต่ข้อมูลที่บันทึกไปก็ไม่ควรมีขั้นนั้น */
+    expect(PROMOTIONS.find((p) => p.name === "โปรที่มีแถวขั้นว่างค้าง")!.tiers).toEqual([
+      { buy: 3, free: 1 },
+    ]);
   });
 });

@@ -82,10 +82,16 @@ describe("ลงทะเบียนเป็น entity", () => {
     expect(keys.indexOf("budget")).toBeGreaterThan(keys.indexOf("limits"));
   });
 
-  it("ช่องบังคับไม่เกินเก้าช่อง", () => {
-    /* เกณฑ์ที่ตกลงกันไว้ — ฟอร์มที่บังคับสิบห้าช่องคือฟอร์มที่คนกรอกมั่วให้ผ่าน */
-    const req = getSchemas("promotion")!.form!.required ?? [];
-    expect(req.length, req.map((r) => r.path).join(" ")).toBeLessThanOrEqual(9);
+  it("ช่องบังคับที่แต่ละชนิดเห็น ไม่เกินเก้าช่อง", () => {
+    /* เกณฑ์ที่ตกลงกันไว้ — ฟอร์มที่บังคับสิบห้าช่องคือฟอร์มที่คนกรอกมั่วให้ผ่าน
+       นับต่อชนิด เพราะ `required` ดิบรวมช่องของทุกชนิด และขั้นของแถมกับ
+       ขั้นส่วนลดไม่เคยบังคับพร้อมกันในโปรใบเดียว */
+    const form = getSchemas("promotion")!.form!;
+    for (const kind of ["free-goods", "price-discount"]) {
+      const blank = { ...form.blank!(), kind };
+      const req = (form.required ?? []).filter((r) => !r.test || !r.test(blank));
+      expect(req.length, `${kind}: ${req.map((r) => r.path).join(" ")}`).toBeLessThanOrEqual(9);
+    }
   });
 
   it("สามช่องที่ห้ามเดาให้ ต้องว่างจริงในฟอร์มเปล่า", () => {
