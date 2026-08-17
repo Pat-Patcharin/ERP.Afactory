@@ -87,7 +87,7 @@ describe("ลงทะเบียนเป็น entity", () => {
        นับต่อชนิด เพราะ `required` ดิบรวมช่องของทุกชนิด และขั้นของแถมกับ
        ขั้นส่วนลดไม่เคยบังคับพร้อมกันในโปรใบเดียว */
     const form = getSchemas("promotion")!.form!;
-    for (const kind of ["free-goods", "price-discount"]) {
+    for (const kind of ["free-goods", "price-discount", "redeem"]) {
       const blank = { ...form.blank!(), kind };
       const req = (form.required ?? []).filter((r) => !r.test || !r.test(blank));
       expect(req.length, `${kind}: ${req.map((r) => r.path).join(" ")}`).toBeLessThanOrEqual(9);
@@ -111,20 +111,17 @@ describe("ลงทะเบียนเป็น entity", () => {
   });
 
   it("การ์ดที่เปิดชี้ไปทางสร้างจริง และเปิดเฉพาะชนิดที่มีตัวคำนวณของตัวเอง", () => {
-    /* สองชนิดที่เปิด — แถมสินค้า (รอบที่ 1) และส่วนลดราคา (รอบที่ 2)
-       ทั้งคู่มีตัวคำนวณคนละไฟล์และฟอร์มของตัวเอง */
+    /* สามชนิดที่เปิด — แถมสินค้า (รอบที่ 1) · ส่วนลดราคา และแลกซื้อ (รอบที่ 2)
+       ทุกชนิดมีตัวคำนวณคนละไฟล์และฟอร์มของตัวเอง */
     const open = PROMOTION_KINDS.filter((k) => k.href !== null);
-    expect(open.map((k) => k.key)).toEqual(["free-goods", "price-discount"]);
+    expect(open.map((k) => k.key)).toEqual(["free-goods", "price-discount", "redeem"]);
     for (const k of open) {
       expect(k.href, k.label).toBe(`/m/promotion/new?kind=${k.key}`);
     }
 
     /* แพ็กเกจยังปิด — ติดคำถามฝ่ายบัญชีเรื่องใบกำกับเต็มจำนวนเมื่อส่งของไม่ครบ
-       สิทธิแลกซื้อยังปิด — เปิดพร้อมตัวคำนวณของมันเอง */
-    expect(PROMOTION_KINDS.filter((k) => k.href === null).map((k) => k.key)).toEqual([
-      "package",
-      "redeem",
-    ]);
+       คำตอบเปลี่ยนโครงข้อมูล จึงไม่ใช่เรื่องที่ตัดสินในโค้ด */
+    expect(PROMOTION_KINDS.filter((k) => k.href === null).map((k) => k.key)).toEqual(["package"]);
   });
 });
 
@@ -570,9 +567,22 @@ describe("createPromotion", () => {
 
   it("รหัสโปรลอกตรรกะจาก nextPRCode — อ่านเฉพาะส่วนหลังขีด", () => {
     /* ถ้าอ่านตัวเลขทั้งรหัสแบบ nextBPCode รหัสที่มีปีอยู่ใน prefix จะทำให้
-       เลขถัดไปกระโดดไปหลายล้าน */
+       เลขถัดไปกระโดดไปหลายล้าน
+
+       เดิมข้อนี้ปักผลลัพธ์เป็น "PM-0010" ตรง ๆ ซึ่งผูกกับ**จำนวนแถวใน
+       ข้อมูลตัวอย่าง** และแดงทันทีที่เพิ่มโปรตัวที่สิบเข้าไป ทั้งที่ตรรกะที่
+       ต้องการปักไม่ได้เปลี่ยน — ตอนนี้ปักที่ตรรกะ: 99 มาจากส่วนหลังขีด
+       ไม่ใช่ 25060099 ที่มาจากการอ่านตัวเลขทั้งรหัส */
     setCurrentUser(SALES_ADMIN);
-    PROMOTIONS.unshift({ ...blankPromotion(), code: "PM2506-0009", name: "รหัสมีปี" });
-    expect(nextPromotionCode()).toBe("PM-0010");
+    const highest = Math.max(
+      ...PROMOTIONS.map((x) => parseInt(String(x.code).split("-")[1], 10) || 0),
+    );
+    expect(highest, "ข้อมูลตัวอย่างต้องยังต่ำกว่า 99 ไม่งั้นข้อนี้ทดสอบอย่างอื่น").toBeLessThan(99);
+
+    PROMOTIONS.unshift({ ...blankPromotion(), code: "PM2506-0099", name: "รหัสมีปี" });
+    const next = nextPromotionCode();
+
+    expect(next).toBe("PM-0100");
+    expect(next, "เลขต้องไม่กระโดดเป็นแปดหลัก").toMatch(/^PM-\d{4}$/);
   });
 });

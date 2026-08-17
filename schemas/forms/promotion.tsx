@@ -18,6 +18,11 @@ import {
   type PromotionRow,
 } from "@/lib/domain/promotion";
 import {
+  REDEEM_BASIS_TH,
+  redeemPreview,
+  type RedeemBasis,
+} from "@/lib/domain/promotion-redeem";
+import {
   DISCOUNT_MODE_TH,
   discountFloorBreaches,
   discountIneffectiveTiers,
@@ -62,6 +67,12 @@ const givesGoods = (st: FormState) => String(st.kind ?? "free-goods") === "free-
 const isDiscount = (st: FormState) => String(st.kind ?? "") === "price-discount";
 
 const isFreeGoods = (st: FormState) => String(st.kind ?? "free-goods") === "free-goods";
+
+const isRedeem = (st: FormState) => String(st.kind ?? "") === "redeem";
+
+/** ตัวเลขที่ยังไม่กรอก = null ไม่ใช่ 0 — 0 เป็นค่าที่มีความหมายคนละอย่าง */
+const numOrNull = (v: unknown): number | null =>
+  String(v ?? "").trim() === "" ? null : Number(v) || 0;
 
 const scopeOf = (st: FormState) => String(st.scope ?? "");
 
@@ -151,6 +162,11 @@ function toPatch(s: FormState): Partial<PromotionRow> {
     tiers: ladderTiersOf(s),
     discountTiers: discountTiersOf(s),
     discountMode: discountMode(s),
+    redeemBasis: (String(s.redeemBasis ?? "") as PromotionRow["redeemBasis"]),
+    redeemThreshold: numOrNull(s.redeemThreshold),
+    redeemItems: list("redeemItems"),
+    redeemDiscPct: numOrNull(s.redeemDiscPct),
+    redeemPerRound: numOrNull(s.redeemPerRound),
     items: list("items"),
     priceLists: list("priceLists"),
     minOrder: nullNum(s.minOrder),
@@ -221,6 +237,13 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     tiers: [],
     priceLists: [],
     discountTiers: [],
+    /* ห้ามมีค่าเริ่มต้น — นับเงินกับนับชิ้นให้สิทธิคนละจำนวน */
+    redeemBasis: "",
+    redeemThreshold: "",
+    redeemItems: [],
+    redeemDiscPct: "",
+    /* ห้ามเดาเป็น 1 — ลืมกรอกแล้วลูกค้าได้ 1 ชิ้นแทน 3 โดยไม่มีใครรู้ */
+    redeemPerRound: "",
     discountMode: "price",
     minOrder: "",
     minOrderBasis: "ยอดก่อนภาษี",
@@ -275,6 +298,11 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       discPct: t.discPct ?? "",
     })),
     discountMode: p.discountMode,
+    redeemBasis: p.redeemBasis,
+    redeemThreshold: p.redeemThreshold ?? "",
+    redeemItems: p.redeemItems.map((code) => ({ code })),
+    redeemDiscPct: p.redeemDiscPct ?? "",
+    redeemPerRound: p.redeemPerRound ?? "",
     priceLists: p.priceLists.map((code) => ({ code })),
     minOrder: p.minOrder ?? "",
     minOrderBasis: p.minOrderBasis,
@@ -403,6 +431,9 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
               path: "scope",
               label: "รูปแบบ — นับยอดแบบไหน แถมอะไร",
               required: true,
+              /* รายตัว/ชุด ไม่มีความหมายกับแลกซื้อ — เงื่อนไขของมันคือ
+                 "ทุก ๆ X ได้หนึ่งรอบ" ไม่ใช่ขอบเขตการนับของแถม */
+              when: (st) => !isRedeem(st),
               /* เฉพาะแบบที่เปิดแล้ว แบบกลุ่มไม่อยู่ในรายการ และถูกปฏิเสธที่
                  ทางเขียนด้วย (`applyPromotionPatch`) เพราะรายการที่ซ่อนยังส่ง
                  มาทาง `?scope=group` ได้ */
@@ -418,7 +449,7 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
               path: "minOrderBasis",
               label: "ยอดขั้นต่ำคิดจาก",
               options: opts(["ยอดก่อนภาษี", "ยอดรวมภาษี"]),
-              when: (st) => String(st.minOrder ?? "").trim() !== "",
+              when: (st) => !isRedeem(st) && String(st.minOrder ?? "").trim() !== "",
             },
             {
               type: "number",
@@ -426,6 +457,12 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
               label: "ยอดสั่งซื้อขั้นต่ำ (บาท)",
               min: 0,
               hint: "ว่างไว้ = ไม่กำหนดยอดขั้นต่ำ",
+              /* ซ่อนจากชนิดแลกซื้อ และห้ามเปิดคืนโดยไม่คิดให้จบ:
+                 ช่องนี้เป็นเกณฑ์ผ่าน/ไม่ผ่านครั้งเดียว (บิลถึงยอดนี้โปรจึงใช้ได้)
+                 ส่วน "ครบกี่บาทต่อหนึ่งรอบ" ของแลกซื้อเป็นตัวหารที่ทวีคูณ
+                 สองช่องนี้หน้าตาเหมือนกันบนหน้าจอ ต่างกันที่ความหมาย และการวาง
+                 ไว้ในหน้าเดียวกันคือที่มาของโปรที่ตั้งผิดโดยไม่มีใครรู้ */
+              when: (st) => !isRedeem(st),
             },
           ],
         },
@@ -657,6 +694,143 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
           }
 
           return blocks;
+        })(),
+        /* ---------- สิทธิแลกซื้อ — เงื่อนไข และสิทธิที่ได้ ---------- */
+        isRedeem(s) && {
+          type: "card",
+          title: "เงื่อนไข — ครบเท่าไหร่ได้สิทธิหนึ่งรอบ",
+          cols: "2",
+          fields: [
+            {
+              type: "select",
+              path: "redeemBasis",
+              label: "นับจากอะไร",
+              required: true,
+              options: Object.entries(REDEEM_BASIS_TH)
+                .filter(([value]) => value !== "")
+                .map(([value, label]) => ({ value, label })),
+              hint: "ไม่มีค่าเริ่มต้น — นับเงินกับนับชิ้นให้สิทธิคนละจำนวนกับลูกค้าคนเดียวกัน",
+            },
+            {
+              type: "number",
+              path: "redeemThreshold",
+              label:
+                String(s.redeemBasis ?? "") === "qty"
+                  ? "ครบกี่ชิ้นต่อหนึ่งรอบ"
+                  : "ครบกี่บาทต่อหนึ่งรอบ",
+              min: 1,
+              required: true,
+              hint: "ทวีคูณเต็มจำนวน เศษทิ้ง — ครบสองเท่าได้สองรอบ",
+            },
+          ],
+        },
+        isRedeem(s) && {
+          type: "card",
+          title: "สิทธิที่ได้",
+          cols: "2",
+          fields: [
+            {
+              type: "number",
+              path: "redeemPerRound",
+              label: "แลกซื้อได้กี่ชิ้นต่อรอบ",
+              min: 1,
+              required: true,
+              /* ห้ามปล่อยว่างแล้วให้ระบบเดาเป็น 1 — คนตั้งโปรที่ลืมกรอกจะให้
+                 สิทธิ 1 ชิ้นแทน 3 และไม่มีใครรู้ว่าตั้งใจหรือลืม */
+              hint: "เป็นเพดาน ไม่ใช่ขั้นต่ำ — ลูกค้าซื้อน้อยกว่าได้ เกินไม่ได้",
+            },
+            {
+              type: "number",
+              path: "redeemDiscPct",
+              label: "ส่วนลดจากราคามาตรฐาน (%)",
+              min: 1,
+              max: 100,
+              hint: "แลกซื้อไม่ใช่ของฟรี ลูกค้ายังจ่าย — คิดจากราคามาตรฐาน ไม่ใช่จากราคาที่ลูกค้ารายนั้นได้อยู่",
+            },
+          ],
+        },
+        isRedeem(s) && {
+          type: "grid",
+          path: "redeemItems",
+          label: "สินค้าที่แลกซื้อได้",
+          addLabel: "เพิ่มสินค้า",
+          empty: "ยังไม่ได้เลือกสินค้าที่แลกซื้อได้ — สิทธิจะยังใช้ซื้ออะไรไม่ได้",
+          hint: "คนละฝั่งกับสินค้าที่นับเข้าเงื่อนไขข้างบน",
+          cols: [
+            {
+              key: "code",
+              label: "รหัสสินค้า",
+              type: "select",
+              options: productOptions(),
+              required: true,
+            },
+          ],
+        },
+        /* ข้อความนี้ต้องอยู่บนฟอร์ม ไม่ใช่อยู่ในเอกสารประกอบ — คนตั้งโปรที่
+           เข้าใจว่าสิทธิเก็บข้ามใบได้ จะบอกเซลล์ผิด แล้วเซลล์ไปสัญญากับลูกค้า
+           ซึ่งระบบทำตามไม่ได้ในเฟสนี้ */
+        isRedeem(s) && {
+          type: "note",
+          label: "สิทธิใช้ได้เฉพาะในใบเดียวกัน — ไม่ใช้ตอนนั้นจะหายไป",
+          text: "รอบสิทธิคำนวณจากยอดในใบนั้นใบเดียว ถ้าลูกค้าไม่ใช้สิทธิตอนออกใบ สิทธิไม่ถูกเก็บไว้ใช้ใบหลัง และระบบยังทำสิทธิค้างข้ามใบไม่ได้ในเฟสนี้ — อย่าสัญญากับลูกค้าว่าเก็บไว้ก่อนได้",
+        },
+        /* ตัวอย่างจากตัวคำนวณจริง — ตัวเลขทุกช่องมาจาก redeemRounds/redeemQuota
+           ไม่ได้คิดที่หน้าจอ และเห็นกฎเศษทิ้งด้วยตาโดยไม่ต้องอ่านเอกสาร */
+        ...(() => {
+          if (!isRedeem(s)) return [];
+          const basis = String(s.redeemBasis ?? "") as RedeemBasis;
+          const threshold = numOrNull(s.redeemThreshold);
+          const perRound = numOrNull(s.redeemPerRound);
+          if (basis === "" || threshold === null || threshold <= 0) return [];
+
+          const unit = basis === "qty" ? "ชิ้น" : "บาท";
+          const rows = redeemPreview(threshold, basis, perRound, [
+            threshold - 1,
+            threshold,
+            threshold * 2,
+            Math.round(threshold * 2.4),
+          ]);
+
+          return [
+            {
+              type: "note",
+              label: "ยอดเท่านี้ได้สิทธิเท่าไหร่",
+              text: rows
+                .map(
+                  (r) =>
+                    `${fmt(r.actual)} ${unit} → ${fmt(r.rounds)} รอบ · ${fmt(r.quota)} ชิ้น` +
+                    (r.remainder > 0 ? ` (เศษ ${fmt(r.remainder)} ${unit} ทิ้ง)` : ""),
+                )
+                .join(" · "),
+            } as FormBlock,
+          ];
+        })(),
+        /* ราคาแลกซื้อหลุดราคาขั้นต่ำ — สูตรเดียวกับโปรส่วนลด ไม่มีสำเนาที่สอง */
+        ...(() => {
+          if (!isRedeem(s)) return [];
+          const pct = numOrNull(s.redeemDiscPct);
+          const codes = ((s.redeemItems ?? []) as GridRow[])
+            .map((r) => String(r.code ?? "").trim())
+            .filter(Boolean);
+          if (pct === null || pct <= 0 || !codes.length) return [];
+
+          const breaches = discountFloorBreaches(
+            codes,
+            [{ minQty: 1, price: null, discPct: pct }],
+            "percent",
+          );
+          if (!breaches.length) return [];
+
+          return [
+            {
+              type: "note",
+              label: `⚠ ราคาแลกซื้อของ ${breaches.length} รายการต่ำกว่าราคาขั้นต่ำ`,
+              text:
+                breaches
+                  .map((b) => `${b.code} ลด ${pct}% → ${money(b.price)} ต่ำกว่าขั้นต่ำ ${money(b.floor)}`)
+                  .join(" · ") + " — โปรนี้ต้องให้ผู้จัดการฝ่ายขายอนุมัติ",
+            } as FormBlock,
+          ];
         })(),
         {
           type: "grid",
@@ -1045,7 +1219,12 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       step: "identity",
       test: (s) => !String(s.reason ?? "").startsWith("อื่น ๆ") || Boolean(String(s.reasonNote ?? "").trim()),
     },
-    { path: "scope", label: "นับยอดแบบไหน", step: "what" },
+    {
+      path: "scope",
+      label: "นับยอดแบบไหน",
+      step: "what",
+      test: (s) => isRedeem(s) || Boolean(String(s.scope ?? "").trim()),
+    },
     {
       path: "items",
       label: "สินค้าที่เข้าโปร",
@@ -1074,9 +1253,59 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       step: "what",
       test: (s) => !isFreeGoods(s) || ladderTiersOf(s).length > 0,
     },
+    {
+      path: "redeemBasis",
+      label: "เงื่อนไขนับจากอะไร",
+      step: "what",
+      test: (s) => !isRedeem(s) || Boolean(String(s.redeemBasis ?? "").trim()),
+    },
+    {
+      path: "redeemThreshold",
+      label: "ยอดต่อหนึ่งรอบสิทธิ",
+      step: "what",
+      test: (s) => !isRedeem(s) || (numOrNull(s.redeemThreshold) ?? 0) > 0,
+    },
+    {
+      /* บังคับ ไม่ใช่ rule — ค่าว่างที่แปลว่า "หนึ่งชิ้น" คือการเดาแทนคนตั้งโปร
+         และความต่างระหว่าง 1 กับ 3 ชิ้นคือเงินที่บริษัทจ่ายทุกใบ */
+      path: "redeemPerRound",
+      label: "แลกซื้อได้กี่ชิ้นต่อรอบ",
+      step: "what",
+      test: (s) => !isRedeem(s) || (numOrNull(s.redeemPerRound) ?? 0) > 0,
+    },
+    {
+      path: "redeemItems",
+      label: "สินค้าที่แลกซื้อได้",
+      step: "what",
+      test: (s) =>
+        !isRedeem(s) ||
+        ((s.redeemItems ?? []) as GridRow[]).some((r) => String(r.code ?? "").trim()),
+    },
   ],
 
   rules: [
+    {
+      /* สิทธิที่ไม่มีส่วนลดคือการซื้อราคาปกติ ซึ่งไม่ใช่สิทธิ — เป็น rule
+         ไม่ใช่ช่องบังคับ เพราะไม่มีค่าที่ต้องเดาแทนใคร ค่าว่างมีความหมายเดียว
+         คือยังไม่ได้ตั้ง */
+      label: "สิทธิแลกซื้อต้องมีส่วนลด ไม่งั้นคือการซื้อราคาปกติ",
+      step: "what",
+      test: (s) => !isRedeem(s) || (numOrNull(s.redeemDiscPct) ?? 0) > 0,
+    },
+    {
+      label: "สินค้าที่แลกซื้อได้ ต้องไม่ใช่ตัวเดียวกับสินค้าที่นับเข้าเงื่อนไข",
+      step: "what",
+      /* ถ้าเป็นตัวเดียวกัน ลูกค้าจะซื้อตัวนั้นเพิ่มเพื่อให้ครบเงื่อนไขแล้วเอา
+         สิทธิไปซื้อตัวเดิมในราคาลด ซึ่งเป็นวงที่กติกาข้อ "แลกซื้อไม่นับเข้ายอด"
+         มีไว้กัน — และกฎข้อนั้นยังไม่ได้ทำ (PM-3) จึงต้องกันที่การตั้งโปรก่อน */
+      test: (s) => {
+        if (!isRedeem(s)) return true;
+        const counted = new Set(itemCodes(s));
+        return !((s.redeemItems ?? []) as GridRow[]).some((r) =>
+          counted.has(String(r.code ?? "").trim()),
+        );
+      },
+    },
     {
       /* ด่านจริงอยู่ที่ `applyPromotionPatch` ตัวนี้คือการบอกก่อนกดบันทึก
          ไม่ใช่ด่านที่สอง — ข้อความมาจากเรื่องเดียวกันแต่คนละจังหวะ */

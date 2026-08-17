@@ -13,6 +13,7 @@ import {
   promotionDiscountBreaches,
   promotionFloorBreaches,
   promotionIneffectiveTiers,
+  promotionRedeemBreaches,
   promotionPrintName,
   resumePromotion,
   type PromotionRow,
@@ -20,6 +21,7 @@ import {
 import { PROMOTION_KINDS } from "@/lib/domain/promotion";
 import { bestLadder } from "@/lib/domain/promotion-ladder";
 import { discountImpact } from "@/lib/domain/promotion-discount";
+import { REDEEM_BASIS_TH, redeemPreview } from "@/lib/domain/promotion-redeem";
 import { TIER_TH } from "@/lib/domain/price-tier";
 import { PROMO_FORM } from "./forms/promotion";
 import { PROMO_TONE, tone } from "@/lib/badges";
@@ -51,6 +53,15 @@ const kindLabel = (row: PromotionRow) =>
  * ทั้งที่มีขั้นครบ — ดูเหมือนโปรที่ยังตั้งไม่เสร็จ
  */
 const tierText = (row: PromotionRow) => {
+  if (row.kind === "redeem") {
+    /* แลกซื้อไม่มีขั้น — บอกเกณฑ์กับสิทธิแทน "ครบ 50,000 → 3 ชิ้น ลด 55%" */
+    if (!row.redeemThreshold || !row.redeemPerRound) return DASH;
+    const unit = row.redeemBasis === "qty" ? "ชิ้น" : "บาท";
+    return `ครบ ${fmt(row.redeemThreshold)} ${unit} → ${fmt(row.redeemPerRound)} ชิ้น${
+      row.redeemDiscPct ? ` ลด ${row.redeemDiscPct}%` : ""
+    }`;
+  }
+
   if (row.kind === "price-discount") {
     if (!row.discountTiers.length) return DASH;
     return row.discountTiers
@@ -392,6 +403,100 @@ function discountBlocks(p: PromotionRow): Block[] {
   ];
 }
 
+/**
+ * แท็บสิทธิของโปรแลกซื้อ — คู่ขนานกับ `discountBlocks`
+ *
+ * ตารางตัวอย่างคนละแกนกับของแถม: ของแถมถาม "จ่ายเท่านี้ได้แถมเท่าไหร่"
+ * แลกซื้อถาม "ยอดเท่านี้ได้สิทธิกี่รอบ กี่ชิ้น" และแถวตัวอย่างเลือกให้เห็น
+ * **กฎเศษทิ้ง** ด้วยตา — ยอดที่ขาดไปหนึ่งหน่วยได้ศูนย์รอบ ยอดที่เกินเกณฑ์
+ * สองเท่ากว่า ๆ ยังได้สองรอบเท่าเดิม
+ */
+function redeemBlocks(p: PromotionRow): Block[] {
+  const breaches = promotionRedeemBreaches(p);
+  const unit = p.redeemBasis === "qty" ? "ชิ้น" : "บาท";
+  const t = p.redeemThreshold ?? 0;
+  const rows =
+    t > 0
+      ? redeemPreview(p.redeemThreshold, p.redeemBasis, p.redeemPerRound, [
+          t - 1,
+          t,
+          t * 2,
+          Math.round(t * 2.4),
+        ])
+      : [];
+
+  return [
+    breaches.length
+      ? {
+          type: "alert",
+          tone: "danger",
+          title: `ราคาแลกซื้อของ ${breaches.length} รายการต่ำกว่าราคาขั้นต่ำ`,
+          message:
+            "โปรนี้ต้องให้ผู้จัดการฝ่ายขายอนุมัติเท่านั้น และทุกใบที่ใช้สิทธินี้จะถูกส่งขออนุมัติราคาตามกฎเดิม",
+        }
+      : null,
+    {
+      /* ข้อความนี้ต้องอยู่บนหน้าจอที่เซลล์เปิดดู ไม่ใช่เฉพาะบนฟอร์มของคนตั้งโปร */
+      type: "alert",
+      tone: "warn",
+      title: "สิทธิใช้ได้เฉพาะในใบเดียวกัน",
+      message:
+        "รอบสิทธิคำนวณจากยอดในใบนั้นใบเดียว ไม่ใช้ตอนออกใบแล้วสิทธิหายไป ระบบยังทำสิทธิค้างข้ามใบไม่ได้ในเฟสนี้ — อย่าสัญญากับลูกค้าว่าเก็บไว้ใช้ทีหลังได้",
+    },
+    {
+      type: "fields",
+      title: "เงื่อนไขและสิทธิ",
+      cols: 2,
+      items: [
+        { label: "นับจาก", value: REDEEM_BASIS_TH[p.redeemBasis] },
+        {
+          label: "ครบเท่าไหร่ต่อหนึ่งรอบ",
+          value: t > 0 ? `${fmt(t)} ${unit}` : DASH,
+        },
+        {
+          label: "แลกซื้อได้ต่อรอบ",
+          value: p.redeemPerRound ? `${fmt(p.redeemPerRound)} ชิ้น` : DASH,
+        },
+        {
+          label: "ส่วนลดจากราคามาตรฐาน",
+          value: p.redeemDiscPct ? `${p.redeemDiscPct}%` : DASH,
+        },
+      ],
+    },
+    {
+      type: "table",
+      title: "สินค้าที่แลกซื้อได้",
+      empty: "ยังไม่ได้เลือกสินค้าที่แลกซื้อได้",
+      rows: p.redeemItems.map((code) => ({ code })),
+      cols: [{ key: "code", label: "รหัสสินค้า", cell: (r) => r.code }],
+    },
+    rows.length
+      ? {
+          type: "table",
+          title: `ยอดเท่านี้ได้สิทธิเท่าไหร่ (${unit})`,
+          rows,
+          cols: [
+            { key: "actual", label: "ยอด", align: "right", cell: (r) => fmt(r.actual) },
+            { key: "rounds", label: "รอบ", align: "right", cell: (r) => fmt(r.rounds) },
+            {
+              key: "quota",
+              label: "แลกซื้อได้",
+              align: "right",
+              cell: (r) => <span className="font-semibold tnum">{fmt(r.quota)}</span>,
+            },
+            {
+              key: "remainder",
+              label: "เศษที่ทิ้ง",
+              align: "right",
+              cell: (r) =>
+                r.remainder > 0 ? <span className="text-ink-3 tnum">{fmt(r.remainder)}</span> : DASH,
+            },
+          ],
+        }
+      : null,
+  ];
+}
+
 export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
   key: "promotion",
   entityLabel: "Promotion",
@@ -535,11 +640,16 @@ export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
     {
       key: "tiers",
       label: "ขั้นบันไดและของแถม",
+      /* ชื่อแท็บเดียวสำหรับสามชนิดอ่านผิดสำหรับสองชนิด — แต่ชื่อแท็บมาจาก
+         สคีมาเดียว จึงใช้ชื่อกลางที่ครอบทั้งสามและให้เนื้อในบอกรายละเอียด */
       blocks: (p): Block[] => {
         /* โปรส่วนลดมีขั้นคนละความหมาย และไม่มีของแถมให้เฉลี่ย จึงเป็นแท็บ
            คนละชุด ไม่ใช่ตารางเดิมที่ปล่อยว่าง — ตารางว่างอ่านว่า "ยังไม่ตั้ง"
            ซึ่งไม่จริง */
         if (p.kind === "price-discount") return discountBlocks(p);
+        /* แลกซื้อไม่มีขั้นบันไดเลย มันมีเกณฑ์เดียวที่ทวีคูณ — ตารางขั้นที่ว่าง
+           อ่านว่า "ยังไม่ตั้ง" ซึ่งไม่จริง */
+        if (p.kind === "redeem") return redeemBlocks(p);
 
         const breaches = promotionFloorBreaches(p);
         return [

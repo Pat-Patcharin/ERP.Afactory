@@ -10,6 +10,11 @@ import { catalogPrice } from "./pricing";
 import { PRODUCTS } from "./product";
 import { bestLadder, type LadderResult, type LadderTier } from "./promotion-ladder";
 import {
+  type RedeemBasis,
+  redeemQuota,
+  redeemRounds,
+} from "./promotion-redeem";
+import {
   discountFloorBreaches,
   discountIneffectiveTiers,
   type DiscountBreach,
@@ -36,10 +41,11 @@ import {
    a gift is not a price, and putting it in the price ladder would
    make `winningLine()` answer a question nobody asked it.
 
-   แถมสินค้า and ส่วนลดราคา are open. The other two are listed rather than
-   hidden because a chooser that offers one choice is not a
-   chooser — somebody setting up a campaign needs to see that the
-   system knows the other three exist and has not lost them.
+   Three of the four are open. แพ็กเกจ is the one that is not, and it
+   is listed rather than hidden: a chooser that quietly drops a kind
+   reads as "the system cannot do this" when the truth is "nobody has
+   answered the accounting question yet" — see §0 of
+   docs/Promotion-Types-2-3-Spec.md.
 
    The wording of `desc` and `example` is provisional until
    docs/Promotion-Quantity-Discount-Spec.md lands.
@@ -101,9 +107,9 @@ export const PROMOTION_KINDS: readonly PromotionKind[] = [
     key: "redeem",
     label: "สิทธิแลกซื้อ",
     desc: "ซื้อครบเงื่อนไขแล้วได้สิทธิซื้อสินค้าอีกตัวในราคาพิเศษ ไม่ใช่ของฟรี",
-    example: "ซื้อครบ 20,000 แลกซื้อหัวกรอ 1 ตัว ราคา 500",
+    example: "ซื้อครบ 50,000 แลกซื้อได้ 3 ชิ้น ลด 55%",
     icon: "cart",
-    href: null,
+    href: "/m/promotion/new?kind=redeem",
   },
 ];
 
@@ -267,6 +273,23 @@ export interface PromotionRow extends RecordBase {
 
   /** โปรส่วนลดราคา — `{minQty, price|discPct}` ขั้นไม่ผสมกัน */
   discountTiers: DiscountTier[];
+
+  /* ---------- สิทธิแลกซื้อ ----------
+
+     ฟิลด์แบน ไม่ใช่ object ก้อนเดียว เพราะ `PROMOTION_CONDITION_FIELDS` เป็น
+     `keyof PromotionRow` — object ก้อนเดียวจะทำให้ธง `dirtySinceApproval`
+     ติดทั้งก้อนหรือไม่ติดเลย ซึ่งทำลายความละเอียดที่ทำไว้ตั้งแต่ PR2a */
+
+  /** เงื่อนไขนับจากเงินหรือจำนวนชิ้น — ไม่มีค่าเริ่มต้น ต้องเลือกเอง */
+  redeemBasis: RedeemBasis;
+  /** ครบเท่านี้ได้สิทธิหนึ่งรอบ ทวีคูณเต็มจำนวน เศษทิ้ง */
+  redeemThreshold: number | null;
+  /** สินค้าที่แลกซื้อได้ — ฝั่งสิทธิ คนละฝั่งกับ `items` ที่เป็นฝั่งเงื่อนไข */
+  redeemItems: string[];
+  /** ส่วนลดจากราคามาตรฐาน — แลกซื้อไม่ใช่ของฟรี ลูกค้ายังจ่าย */
+  redeemDiscPct: number | null;
+  /** เพดานชิ้นต่อรอบ — เพดาน ไม่ใช่ขั้นต่ำ */
+  redeemPerRound: number | null;
   /**
    * ราคาตายตัว หรือ ลดเป็นเปอร์เซ็นต์ — เลือกที่ระดับโปร ไม่ใช่ระดับขั้น
    *
@@ -348,6 +371,14 @@ export const blankPromotion = (): PromotionRow => ({
 
   tiers: [],
   discountTiers: [],
+  /* ห้ามมีค่าเริ่มต้น — โปรที่ยังไม่บอกว่านับเงินหรือนับชิ้น ให้สิทธิใครไม่ได้ */
+  redeemBasis: "",
+  redeemThreshold: null,
+  redeemItems: [],
+  redeemDiscPct: null,
+  /* ห้ามเดาเป็น 1 — คนตั้งโปรที่ลืมกรอกจะให้สิทธิ 1 ชิ้นแทน 3 โดยไม่มีใครรู้
+     ว่าตั้งใจหรือลืม ฟอร์มบังคับกรอก */
+  redeemPerRound: null,
   /* ราคาตายตัวเป็นค่าเริ่มต้นเพราะเป็นแบบที่อธิบายตัวเองได้ทันที — "ชิ้นละ 850"
      ไม่ต้องรู้ราคามาตรฐานก่อนจึงจะรู้ว่าลูกค้าจ่ายเท่าไหร่ */
   discountMode: "price",
@@ -596,6 +627,36 @@ export function promotionIneffectiveTiers(p: PromotionRow) {
 }
 
 /* ============================================================
+   สิทธิแลกซื้อ — ตัวห่อของ promotion-redeem.ts
+
+   `promotion-redeem.ts` เป็นเลขคณิตล้วน ไม่รู้จัก `PromotionRow` และไม่อ่าน
+   ราคา ตรงนี้คือที่ประกอบ: แปลงระเบียนเป็นพารามิเตอร์ และ **ยืมกฎราคาของ
+   ชนิดที่สองมาใช้** ไม่ได้เขียนสูตรใหม่
+
+   ส่วนลดหนึ่งอัตราคือ `DiscountTier` หนึ่งขั้น (`minQty: 1`) จึงเรียก
+   `discountFloorBreaches` ของเดิมได้ทั้งดุ้น — สินค้าที่แลกซื้อในราคาลด
+   หลุด `price_last` ได้เหมือนกัน และต้องขึ้นผู้จัดการด้วยเหตุผลเดียวกัน
+   ============================================================ */
+
+/** ส่วนลดของสิทธิ ในรูปที่ตัวคำนวณราคาของชนิดที่สองรับ */
+const redeemAsTier = (p: PromotionRow): DiscountTier[] =>
+  p.redeemDiscPct !== null && p.redeemDiscPct > 0
+    ? [{ minQty: 1, price: null, discPct: p.redeemDiscPct }]
+    : [];
+
+/** §2.1 — ยอดนี้ได้สิทธิกี่รอบ กี่ชิ้น */
+export function promotionRedeemQuota(p: PromotionRow, actual: number) {
+  const rounds = redeemRounds(p.redeemThreshold, p.redeemBasis, actual);
+  return { rounds, quota: redeemQuota(rounds, p.redeemPerRound) };
+}
+
+/** สินค้าที่แลกซื้อแล้วราคาหลังลดต่ำกว่าราคาขั้นต่ำ — สูตรเดียวกับชนิดที่สอง */
+export function promotionRedeemBreaches(p: PromotionRow): DiscountBreach[] {
+  if (p.kind !== "redeem") return [];
+  return discountFloorBreaches(p.redeemItems, redeemAsTier(p), "percent");
+}
+
+/* ============================================================
    ใครสร้างและอนุมัติโปร — §6h
 
    บทบาทที่สร้างได้ไม่ได้เขียนเป็นรายชื่อในไฟล์นี้ ตัวตัดสินคือ
@@ -624,6 +685,8 @@ export function promotionApprovalLevel(p: PromotionRow): PromotionApprovalLevel 
      แต่เป็นเหตุผลเดียวกัน และถ้าไม่เรียกตัวนี้ โปรชนิดที่สองจะผ่านแอดมิน
      ได้ทุกใบไม่ว่าลดลึกแค่ไหน */
   if (promotionDiscountBreaches(p).length > 0) return "manager";
+  /* และสินค้าที่แลกซื้อในราคาลด หลุดขั้นต่ำได้เหมือนกัน */
+  if (promotionRedeemBreaches(p).length > 0) return "manager";
   if ((p.budget ?? 0) > managerBudgetCeiling()) return "manager";
   return "admin";
 }
@@ -686,6 +749,7 @@ export function mayApprovePromotion(p: PromotionRow): PromotionGuard {
 export const PROMOTION_CONDITION_FIELDS: readonly (keyof PromotionRow)[] = [
   "kind", "scope", "items", "freeItems", "freeGroup",
   "tiers", "discountTiers", "discountMode",
+  "redeemBasis", "redeemThreshold", "redeemItems", "redeemDiscPct", "redeemPerRound",
   "priceLists", "minOrder", "minOrderBasis",
   "nearExpiryOnly", "nearExpiryDays", "customerGroups", "customers", "areas",
   "channels", "allowDraftPartner", "usePerCustomer", "useTotal", "stackWithPromo",
@@ -734,13 +798,24 @@ export function applyPromotionPatch(
      ตรวจว่า patch **ตั้ง** เป็นแบบนั้น ไม่ใช่ว่าแถวเดิมเป็นแบบนั้นอยู่แล้ว —
      ข้อมูลตัวอย่างมีโปรแบบกลุ่มค้างอยู่หนึ่งตัว และการแก้ชื่อของมันไม่ควร
      ถูกปฏิเสธเพราะเรื่องที่คนแก้ไม่ได้แตะ */
-  if ("scope" in patch && !OPEN_PROMOTION_SCOPES.includes(patch.scope as PromotionScope)) {
+  if ("scope" in patch && patch.scope === "group") {
     return {
       ok: false,
       reason:
-        patch.scope === "group"
-          ? "แบบกลุ่มยังใช้ไม่ได้ — ยังไม่ได้ตัดสินว่า \"ถูกที่สุด\" วัดจากราคาไหน (ราคาตั้ง · ราคาหลังหักส่วนลด · ต้นทุน)"
-          : "ต้องเลือกรูปแบบว่านับยอดแบบไหน — รายตัว หรือ ชุดที่กำหนด",
+        "แบบกลุ่มยังใช้ไม่ได้ — ยังไม่ได้ตัดสินว่า \"ถูกที่สุด\" วัดจากราคาไหน (ราคาตั้ง · ราคาหลังหักส่วนลด · ต้นทุน)",
+    };
+  }
+
+  /* ต้องเลือกรูปแบบ — **เฉพาะชนิดที่ใช้รูปแบบ**
+     สิทธิแลกซื้อไม่มีรายตัว/ชุด เงื่อนไขของมันคือ "ทุก ๆ X ได้หนึ่งรอบ" ฟอร์ม
+     จึงไม่ถาม และ patch ของมันส่ง `scope: ""` มาตามค่าในระเบียน ถ้าด่านนี้
+     ไม่แยกชนิด โปรแลกซื้อจะบันทึกไม่ได้เลยด้วยเหตุผลที่ไม่เกี่ยวกับมัน
+     — เจอตอนเขียนเทสต์ของชนิดที่สาม */
+  const nextKind = patch.kind ?? p.kind;
+  if (nextKind !== "redeem" && "scope" in patch && !patch.scope) {
+    return {
+      ok: false,
+      reason: "ต้องเลือกรูปแบบว่านับยอดแบบไหน — รายตัว หรือ ชุดที่กำหนด",
     };
   }
 

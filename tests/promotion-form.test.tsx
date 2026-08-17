@@ -166,7 +166,10 @@ describe("โครงฟอร์ม — §6b", () => {
   });
 
   it("ช่องบังคับที่แต่ละชนิดเห็น ไม่เกินเก้า และทุกช่องเป็นสิ่งที่ระบบเดาแทนไม่ได้", () => {
-    for (const kind of ["free-goods", "price-discount"]) {
+    /* สามชนิด และไม่มีชนิดไหนเกินเก้า — ชนิดแลกซื้อมีสองฝั่ง (เงื่อนไข + สิทธิ)
+       จึงเป็นชนิดที่บังคับมากที่สุดที่ 9 ช่อง พอดีเกณฑ์โดยไม่ต้องเดาค่าให้ใคร
+       เพราะรูปแบบรายตัว/ชุด กับคลังของแถม ไม่มีความหมายกับมันจึงไม่ถาม */
+    for (const kind of ["free-goods", "price-discount", "redeem"]) {
       const req = requiredFor(kind);
       expect(req.length, `${kind}: ${req.join(" ")}`).toBeLessThanOrEqual(9);
     }
@@ -177,6 +180,12 @@ describe("โครงฟอร์ม — §6b", () => {
     expect(requiredFor("free-goods")).not.toContain("discountTiers");
     expect(requiredFor("price-discount")).toContain("discountTiers");
     expect(requiredFor("price-discount")).not.toContain("tiers");
+    expect(requiredFor("redeem")).not.toContain("tiers");
+    expect(requiredFor("redeem")).not.toContain("discountTiers");
+
+    /* และแลกซื้อไม่ถูกขอรูปแบบรายตัว/ชุด หรือคลังของแถม ซึ่งไม่เกี่ยวกับมัน */
+    expect(requiredFor("redeem")).not.toContain("scope");
+    expect(requiredFor("redeem")).not.toContain("freeGoodsWarehouse");
 
     const req = PROMO_FORM.required.map((r) => r.path);
     /* สามช่องที่ตกลงกันว่าต้องบังคับและห้ามมีค่าเริ่มต้น */
@@ -1016,5 +1025,225 @@ describe("PR3c ตัวลองคำนวณบนฟอร์ม", () => {
     expect(String(grid.hint)).toContain("D-AD001-01");
     expect(String(tryField.hint)).toContain("D-AD001-01");
     expect(String(tryField.hint)).toContain("ตัวแทนเดียวกับตารางขั้น");
+  });
+});
+
+/* ============================================================
+   RD3 — ฟอร์มโปรสิทธิแลกซื้อ
+
+   ชนิดที่สามบนฟอร์มเดียวกัน ความต่างอยู่ใน `when` ทั้งหมด
+   ============================================================ */
+
+const redeemState = (): FormState => ({
+  ...PROMO_FORM.blank(),
+  kind: "redeem",
+  name: "ซื้อครบ 50,000 แลกซื้อ 3 ชิ้น",
+  from: "2026-10-01",
+  reason: "รักษาลูกค้ารายใหญ่",
+  items: g(["D-AD001-01"]),
+  commissionBase: "ยอดที่ลูกค้าจ่ายจริง",
+  redeemBasis: "amount",
+  redeemThreshold: 50_000,
+  redeemItems: g(["H-AD001-01"]),
+  redeemDiscPct: 30,
+  redeemPerRound: 3,
+});
+
+describe("ฟอร์มโปรสิทธิแลกซื้อ", () => {
+  it("ช่องของชนิดนี้โผล่เฉพาะชนิดนี้ และไม่ปนกับสองชนิดแรก", () => {
+    const r = paths({ ...PROMO_FORM.blank(), kind: "redeem" });
+    for (const k of ["redeemBasis", "redeemThreshold", "redeemPerRound", "redeemDiscPct", "redeemItems"]) {
+      expect(r, k).toContain(k);
+    }
+    expect(r).not.toContain("tiers");
+    expect(r).not.toContain("discountTiers");
+    expect(r).not.toContain("freeItems");
+
+    /* และช่องแลกซื้อไม่ไปโผล่ในสองชนิดแรก */
+    for (const kind of ["free-goods", "price-discount"]) {
+      expect(paths({ ...PROMO_FORM.blank(), kind }), kind).not.toContain("redeemBasis");
+    }
+  });
+
+  it("ไม่ถามรูปแบบรายตัว/ชุด และไม่ถามคลังของแถม", () => {
+    /* ทั้งคู่ไม่มีความหมายกับแลกซื้อ — รูปแบบเป็นขอบเขตการนับของแถม
+       และแลกซื้อเป็นการขาย ไม่ได้หักของแถมจากคลังไหน */
+    const r = paths({ ...PROMO_FORM.blank(), kind: "redeem" });
+    expect(r).not.toContain("scope");
+    expect(r).not.toContain("freeGoodsWarehouse");
+  });
+
+  it("ยอดสั่งซื้อขั้นต่ำถูกซ่อน เพราะซ้ำความหมายกับยอดต่อรอบสิทธิ", () => {
+    /* สองช่องที่ดูเหมือนกันในหน้าเดียวคือที่มาของโปรที่ตั้งผิดโดยไม่มีใครรู้
+       — minOrder เป็นเกณฑ์ผ่าน/ไม่ผ่านครั้งเดียว ยอดต่อรอบเป็นตัวหารทวีคูณ */
+    expect(paths({ ...PROMO_FORM.blank(), kind: "redeem" })).not.toContain("minOrder");
+    expect(paths({ ...PROMO_FORM.blank(), kind: "redeem", minOrder: 5000 })).not.toContain(
+      "minOrderBasis",
+    );
+    /* แต่ยังถามในชนิดอื่นตามปกติ */
+    expect(paths({ ...PROMO_FORM.blank(), kind: "free-goods" })).toContain("minOrder");
+  });
+
+  it("ยังไม่ได้เลือกว่านับจากอะไร — ค่าว่างจริง ไม่มีค่าเริ่มต้น", () => {
+    const b = PROMO_FORM.blank();
+    expect(b.redeemBasis).toBe("");
+    expect(b.redeemThreshold).toBe("");
+    expect(b.redeemPerRound).toBe("");
+  });
+
+  it("ป้ายของช่องยอดเปลี่ยนตามว่านับเงินหรือนับชิ้น", () => {
+    /* "ครบกี่บาท" กับ "ครบกี่ชิ้น" คือคำถามคนละข้อ ป้ายเดียวสำหรับทั้งสองแบบ
+       ทำให้คนกรอกใส่จำนวนชิ้นในช่องที่ระบบอ่านเป็นบาท */
+    const label = (basis: string) =>
+      String(
+        allFields({ ...redeemState(), redeemBasis: basis }).find((f) => f.path === "redeemThreshold")!
+          .label,
+      );
+    expect(label("amount")).toContain("บาท");
+    expect(label("qty")).toContain("ชิ้น");
+  });
+
+  it("บังคับสี่ช่องของชนิดนี้ รวมเพดานชิ้นต่อรอบ", () => {
+    const req = PROMO_FORM.required;
+    const at = (path: string) => req.find((r) => r.path === path)!;
+    const blank = { ...PROMO_FORM.blank(), kind: "redeem" };
+
+    for (const path of ["redeemBasis", "redeemThreshold", "redeemPerRound", "redeemItems"]) {
+      expect(at(path).test!(blank), `${path} ต้องบังคับ`).toBe(false);
+      expect(at(path).test!(redeemState()), `${path} กรอกแล้วต้องผ่าน`).toBe(true);
+      /* และไม่ไปบังคับชนิดอื่น */
+      expect(at(path).test!({ ...PROMO_FORM.blank(), kind: "free-goods" }), path).toBe(true);
+    }
+
+    /* เพดานชิ้นต่อรอบเป็นช่องบังคับ ไม่ใช่ rule — ค่าว่างที่แปลว่าหนึ่งชิ้น
+       คือการเดาแทนคนตั้งโปร และต่างกับ 3 ชิ้นคือเงินที่บริษัทจ่ายทุกใบ */
+    expect(req.map((r) => r.path)).toContain("redeemPerRound");
+  });
+
+  it("ส่วนลดเป็นกฎ ไม่ใช่ช่องบังคับ — สิทธิที่ไม่มีส่วนลดคือการซื้อราคาปกติ", () => {
+    const rule = PROMO_FORM.rules!.find((r) => String(r.label).includes("ต้องมีส่วนลด"))!;
+    expect(rule.test({ ...redeemState(), redeemDiscPct: "" })).toBe(false);
+    expect(rule.test(redeemState())).toBe(true);
+    expect(rule.test({ ...PROMO_FORM.blank(), kind: "free-goods" })).toBe(true);
+  });
+
+  it("สินค้าที่แลกซื้อได้ต้องไม่ใช่ตัวเดียวกับที่นับเข้าเงื่อนไข", () => {
+    /* ถ้าเป็นตัวเดียวกัน ลูกค้าซื้อตัวนั้นเพิ่มให้ครบเงื่อนไข แล้วเอาสิทธิไปซื้อ
+       ตัวเดิมในราคาลด ซึ่งเป็นวงที่กฎ "แลกซื้อไม่นับเข้ายอด" มีไว้กัน และกฎนั้น
+       ยังไม่ได้ทำ (PM-3) จึงต้องกันที่การตั้งโปรก่อน */
+    const rule = PROMO_FORM.rules!.find((r) => String(r.label).includes("ตัวเดียวกับสินค้าที่นับ"))!;
+    expect(rule.test(redeemState())).toBe(true);
+    expect(rule.test({ ...redeemState(), redeemItems: g(["D-AD001-01"]) })).toBe(false);
+  });
+
+  it("ข้อความบอกว่าสิทธิใช้ได้เฉพาะในใบเดียวกัน อยู่บนฟอร์มจริง", () => {
+    const notes = noteTexts(redeemState()).join(" ");
+    expect(notes).toContain("ใบเดียวกัน");
+    expect(notes).toContain("หายไป");
+    /* และไม่ไปขึ้นกับชนิดอื่นที่ไม่มีสิทธิ */
+    expect(noteTexts({ ...PROMO_FORM.blank(), kind: "free-goods" }).join(" ")).not.toContain(
+      "ใบเดียวกัน",
+    );
+  });
+
+  it("ตารางตัวอย่างบนฟอร์มมาจากตัวคำนวณ และเห็นกฎเศษทิ้ง", () => {
+    const notes = noteTexts(redeemState()).join(" ");
+    /* 49,999 → 0 รอบ · 50,000 → 1 รอบ 3 ชิ้น · 100,000 → 2 รอบ 6 ชิ้น
+       · 120,000 → 2 รอบ เศษ 20,000 ทิ้ง */
+    expect(notes).toContain("49,999");
+    expect(notes).toContain("1 รอบ · 3 ชิ้น");
+    expect(notes).toContain("2 รอบ · 6 ชิ้น");
+    expect(notes).toContain("เศษ 20,000 บาท ทิ้ง");
+  });
+
+  it("นับจากชิ้น — ตารางตัวอย่างเปลี่ยนหน่วยตาม", () => {
+    const notes = noteTexts({
+      ...redeemState(),
+      redeemBasis: "qty",
+      redeemThreshold: 20,
+      redeemPerRound: 1,
+    }).join(" ");
+    expect(notes).toContain("20 ชิ้น → 1 รอบ · 1 ชิ้น");
+    expect(notes).not.toContain("บาท ทิ้ง");
+  });
+
+  it("ยังไม่กรอกเกณฑ์ — ไม่มีตารางตัวอย่างปลอม", () => {
+    const notes = noteTexts({ ...PROMO_FORM.blank(), kind: "redeem" }).join(" ");
+    expect(notes).not.toContain("รอบ ·");
+  });
+
+  it("เตือนเมื่อราคาแลกซื้อหลุดราคาขั้นต่ำ — ตอนพิมพ์ ไม่ต้องบันทึก", () => {
+    /* H-AD001-01 ราคามาตรฐาน 1,750 ขั้นต่ำ 880 — ลด 55% = 787.50 */
+    const notes = noteTexts({ ...redeemState(), redeemDiscPct: 55 }).join(" ");
+    expect(notes).toContain("ต่ำกว่าราคาขั้นต่ำ");
+    expect(notes).toContain("787.50");
+
+    /* ลด 30% = 1,225 ยังสูงกว่าขั้นต่ำ ไม่ต้องเตือน */
+    expect(noteTexts(redeemState()).join(" ")).not.toContain("ต่ำกว่าราคาขั้นต่ำ");
+  });
+
+  it("บันทึกแล้วค่าอยู่ครบ และเปิดกลับมาแก้ยังอยู่", () => {
+    setCurrentUser(SALES_ADMIN);
+    const { ctx, toasts } = stubCtx();
+    PROMO_FORM.save(redeemState(), ctx);
+
+    expect(toasts[0]?.tone, toasts[0]?.body).not.toBe("danger");
+    const row = PROMOTIONS.find((p) => p.name === "ซื้อครบ 50,000 แลกซื้อ 3 ชิ้น")!;
+    expect(row.kind).toBe("redeem");
+    expect(row.redeemBasis).toBe("amount");
+    expect(row.redeemThreshold).toBe(50_000);
+    expect(row.redeemItems).toEqual(["H-AD001-01"]);
+    expect(row.redeemDiscPct).toBe(30);
+    expect(row.redeemPerRound).toBe(3);
+    /* ฝั่งเงื่อนไขไม่ถูกปนกับฝั่งสิทธิ และของสองชนิดแรกไม่ถูกเขียนอะไรใส่ */
+    expect(row.items).toEqual(["D-AD001-01"]);
+    expect(row.tiers).toEqual([]);
+    expect(row.discountTiers).toEqual([]);
+
+    /* รอบสอง — เปิดหน้าแก้ */
+    const back = PROMO_FORM.toState!(row);
+    expect(back.redeemBasis).toBe("amount");
+    expect(back.redeemThreshold).toBe(50_000);
+    expect(back.redeemItems).toEqual([{ code: "H-AD001-01" }]);
+    expect(back.redeemDiscPct).toBe(30);
+    expect(back.redeemPerRound).toBe(3);
+
+    /* แล้วเซฟทับ ค่าต้องไม่หาย */
+    PROMO_FORM.save({ ...back, name: "แก้ชื่อโปรแลกซื้อ" }, ctx);
+    const again = getPromotion(row.code)!;
+    expect(again.redeemThreshold).toBe(50_000);
+    expect(again.redeemPerRound).toBe(3);
+    expect(again.redeemItems).toEqual(["H-AD001-01"]);
+    expect(again.redeemBasis).toBe("amount");
+  });
+
+  it("แก้โปรแลกซื้อเดิมโดยไม่แตะช่องสิทธิ — ค่ายังอยู่ครบ", () => {
+    /* แบบเดียวกับที่ปักไว้ให้ขั้นบันไดใน PR3b — ฟิลด์ที่เพิ่งต่อสายเข้า
+       `toPatch` เขียนทับได้ ถ้า `toState` ลืมแมปช่องใดช่องหนึ่ง */
+    setCurrentUser(SALES_ADMIN);
+    const seeded = getPromotion("PM-0009")!;
+    expect(seeded.redeemThreshold).toBe(50_000);
+    /* โปรที่รออนุมัติแก้ไม่ได้ตามด่านเดิม — ถอนคำขอก่อนเหมือนคนจริง */
+    expect(seeded.status).toBe("Pending Approval");
+    seeded.status = "Draft";
+    const was = {
+      basis: seeded.redeemBasis,
+      threshold: seeded.redeemThreshold,
+      items: [...seeded.redeemItems],
+      pct: seeded.redeemDiscPct,
+      per: seeded.redeemPerRound,
+    };
+
+    const { ctx, toasts } = stubCtx();
+    PROMO_FORM.save({ ...PROMO_FORM.toState!(seeded), printName: "ชื่อใหม่บนเอกสาร" }, ctx);
+
+    expect(toasts[0]?.tone, toasts[0]?.body).not.toBe("danger");
+    const after = getPromotion("PM-0009")!;
+    expect(after.printName).toBe("ชื่อใหม่บนเอกสาร");
+    expect(after.redeemBasis).toBe(was.basis);
+    expect(after.redeemThreshold).toBe(was.threshold);
+    expect(after.redeemItems).toEqual(was.items);
+    expect(after.redeemDiscPct).toBe(was.pct);
+    expect(after.redeemPerRound).toBe(was.per);
   });
 });
