@@ -8,8 +8,11 @@ import {
   PROMOTIONS,
   PROMOTION_KINDS,
   applyPromotionPatch,
+  PRICE_SPREAD_LIMIT,
   ladderFloorBreaches,
   ladderFreeSide,
+  priceSpread,
+  setUnitPrice,
   worstTierAverage,
   createPromotion,
   getPromotion,
@@ -88,6 +91,12 @@ const scopeOf = (st: FormState) => String(st.scope ?? "");
 /** แบบที่ลูกค้าเลือกของแถมเองจากกลุ่มที่ระบุ — สองแบบนี้ถามช่องเดียวกัน */
 const picksFreeItems = (st: FormState) =>
   scopeOf(st) === "set" || scopeOf(st) === "same-price";
+
+/** แบบกลุ่ม — ระบบเลือกของแถมให้จากรายการที่นับ ไม่มีช่องให้ระบุ */
+const isGroupScope = (st: FormState) => scopeOf(st) === "group";
+
+/** แบบที่ราคาเฉลี่ยคิดจากราคาชุด จึงมีคำถามว่าชุดนั้นกระจายเกินไปไหม */
+const usesSetPrice = (st: FormState) => picksFreeItems(st) || isGroupScope(st);
 
 /** แบบราคาเดียวกัน — ทั้งกลุ่มที่นับและกลุ่มที่แถมต้องราคาเท่ากันในกลุ่มตัวเอง */
 const isSamePriceScope = (st: FormState) => scopeOf(st) === "same-price";
@@ -222,7 +231,6 @@ function toPatch(s: FormState): Partial<PromotionRow> {
 
     scope: (String(s.scope ?? "item") as PromotionRow["scope"]),
     freeItems: list("freeItems"),
-    freeGroup: String(s.freeGroup ?? ""),
     tiers: ladderTiersOf(s),
     discountTiers: discountTiersOf(s),
     discountMode: discountMode(s),
@@ -294,7 +302,6 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     scope: "",
     items: [],
     freeItems: [],
-    freeGroup: "",
     tiers: [],
     priceLists: [],
     discountTiers: [],
@@ -357,7 +364,6 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     scope: p.scope,
     items: p.items.map((code) => ({ code })),
     freeItems: p.freeItems.map((code) => ({ code })),
-    freeGroup: p.freeGroup,
     tiers: p.tiers.map((t) => ({ buy: t.buy, free: t.free })),
     discountTiers: p.discountTiers.map((t) => ({
       minQty: t.minQty,
@@ -826,12 +832,48 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
           }
           return out;
         })(),
-        /* แบบที่สี่ยังปิด บอกไว้ให้เห็นว่ามีอยู่และปิดเพราะอะไร ไม่ใช่หายไป */
-        isFreeGoods(s) && {
-          type: "note",
-          label: "ยังมีอีกแบบ — กลุ่ม (แถมตัวที่ถูกที่สุด) แต่ยังเลือกไม่ได้",
-          text: 'รอการตัดสินว่า "ถูกที่สุด" วัดจากราคาไหน — ราคาตั้ง · ราคาหลังหักส่วนลดของลูกค้ารายนั้น · หรือต้นทุน สามคำตอบให้ของแถมคนละชิ้น และถ้าวัดจากราคาหลังหักส่วนลด ของที่ถูกสุดจะเปลี่ยนไปตามลูกค้าแต่ละราย — แบบราคาเดียวกันข้างบนคือครึ่งที่ตอบได้ของคำถามนี้ เพราะเมื่อทุกตัวราคาเท่ากัน สามคำตอบนั้นให้ของชิ้นเดียวกันหมด',
-        },
+        /* ---------- แบบกลุ่ม — ระบบเลือกของแถมให้ ต้องเห็นว่าตัวไหน ----------
+
+           ของแถมของแบบนี้ไม่ได้ถูกระบุไว้ที่ไหน มันเปลี่ยนตามรายการที่กรอก
+           คนตั้งโปรจึงต้องเห็นคำตอบตอนนั้น ไม่ใช่รู้ตอนลูกค้าได้ของไปแล้ว
+           `blocks()` ถูกเรียกใหม่ทุกครั้งที่พิมพ์ บรรทัดนี้จึงเปลี่ยนทันที */
+        ...(() => {
+          if (!isFreeGoods(s) || !isGroupScope(s)) return [];
+          const free = ladderFreeSide(ladderInputOf(s));
+          const pick = free.codes[0];
+          return [
+            {
+              type: `note`,
+              label: pick
+                ? `ของแถมตอนนี้คือ ${pick} — ตัวที่ราคามาตรฐานต่ำที่สุดในรายการ`
+                : `ยังบอกไม่ได้ว่าจะแถมอะไร — รายการยังไม่มีสินค้าที่มีราคา`,
+              text: pick
+                ? `ราคามาตรฐาน ${money(catalogPrice(pick))} · เปลี่ยนทันทีเมื่อแก้รายการสินค้าข้างบน — ระบบเลือกให้ตอนขาย ไม่ใช่ล็อกไว้ตอนตั้งโปร`
+                : `แบบกลุ่มเลือกของแถมจากรายการที่นับเอง ใส่สินค้าที่มีราคาอย่างน้อยหนึ่งตัว`,
+            } as FormBlock,
+          ];
+        })(),
+        /* ---------- ราคาในรายการกระจายเกินไป — เตือน ไม่บล็อก ----------
+
+           §ฉ.1 ตัดสินให้เฉลี่ยรวมได้ โดยถือว่าสินค้าในชุดราคาใกล้เคียงกันตาม
+           การใช้งานจริง ชุดที่ราคาห่างกันมากทำให้ราคาเฉลี่ยไม่สะท้อนอะไรเลย —
+           แต่เป็นคำเตือน ไม่ใช่ด่าน เพราะอาจมีเคสที่ตั้งใจ */
+        ...(() => {
+          if (!isFreeGoods(s) || !usesSetPrice(s)) return [];
+          const spread = priceSpread(itemCodes(s));
+          if (!spread || !spread.over) return [];
+          return [
+            {
+              type: `note`,
+              label: `⚠ ราคาในรายการต่างกัน ${fmt(Math.round(spread.ratio))} เท่า — ราคาเฉลี่ยอาจไม่สะท้อนความจริง`,
+              text: `${spread.high.code} ${money(spread.high.price)} กับ ${spread.low.code} ${money(
+                spread.low.price,
+              )} — ราคาเฉลี่ยของชุดคิดจากราคาทุกตัวรวมกัน ชุดที่ราคาห่างกันเกิน ${fmt(
+                PRICE_SPREAD_LIMIT,
+              )} เท่าจะได้ตัวเลขที่ไม่ตรงกับของจริงสักตัว บันทึกได้ ถ้าตั้งใจแบบนี้`,
+            } as FormBlock,
+          ];
+        })(),
 
         /* ---------- ขั้นบันได — ซื้อเท่าไหร่ แถมเท่าไหร่ ---------- */
         ...(() => {
@@ -879,7 +921,9 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
                   ? codes.length === 1
                     ? `ราคาเฉลี่ยคิดจาก ${codes[0]} เทียบกับราคาขั้นต่ำของตัวมันเอง`
                     : `คิดจากสินค้าทุกตัวในโปร (${fmt(codes.length)} ตัว) — ช่องเฉลี่ยแสดงตัวที่ใกล้หลุดราคาขั้นต่ำที่สุด เพราะตัวนั้นคือตัวที่ตัดสินว่าทั้งใบต้องขึ้นผู้จัดการหรือไม่`
-                  : `ราคาชุดที่ซื้อ × จำนวนที่จ่าย ÷ จำนวนที่ได้รับ — ราคาเดียวนี้ลงบรรทัดของทั้งของที่ซื้อและของที่แถม (${fmt(covered)} ตัว) จึงต้องผ่านราคาขั้นต่ำของทุกตัว`,
+                  : `ราคาชุดที่ซื้อ ${money(
+                      setUnitPrice(codes) ?? 0,
+                    )} × จำนวนที่จ่าย ÷ จำนวนที่ได้รับ — ราคาเดียวนี้ลงบรรทัดของทั้งของที่ซื้อและของที่แถม (${fmt(covered)} ตัว) จึงต้องผ่านราคาขั้นต่ำของทุกตัว`,
             cols: [
               {
                 key: "buy",
@@ -1335,9 +1379,10 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       },
     },
     {
-      /* ด่านจริงอยู่ที่ `applyPromotionPatch` ตัวนี้คือการบอกก่อนกดบันทึก
-         ไม่ใช่ด่านที่สอง — ข้อความมาจากเรื่องเดียวกันแต่คนละจังหวะ */
-      label: "รูปแบบกลุ่มยังใช้ไม่ได้ — เลือกรายตัว หรือ ชุดที่กำหนด",
+      /* ยังกันรูปแบบที่ไม่มีในรายการอยู่ — `?scope=` ส่งอะไรมาก็ได้ และด่านจริง
+         อยู่ที่ `applyPromotionPatch` ตัวนี้คือการบอกก่อนกดบันทึก ตอนนี้เปิดครบ
+         สี่แบบแล้ว ข้อความจึงไม่ได้เอ่ยชื่อแบบไหนว่ายังไม่เปิด */
+      label: "รูปแบบที่เลือกไม่มีอยู่ในระบบ",
       step: "identity",
       test: (s) => OPEN_PROMOTION_SCOPES.includes(scopeOf(s) as PromotionRow["scope"]),
     },

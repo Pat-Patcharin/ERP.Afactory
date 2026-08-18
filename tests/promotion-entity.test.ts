@@ -26,6 +26,8 @@ import {
   nextPromotionCode,
   pausePromotion,
   promotionApprovalLevel,
+  PRICE_SPREAD_LIMIT,
+  priceSpread,
   productFloor,
   promotionFloorBreaches,
   ladderFloorBreaches,
@@ -590,10 +592,40 @@ describe("แบบราคาเดียวกัน", () => {
   /** คนละราคา (120) — ตัวที่ทำให้กลุ่มกลายเป็นสองราคา */
   const ODD = "AA-TH003-WL";
 
-  it("เลือกได้แล้ว แต่แบบกลุ่มยังไม่เปิดตาม", () => {
-    expect(OPEN_PROMOTION_SCOPES).toContain("same-price");
-    expect(OPEN_PROMOTION_SCOPES).not.toContain("group");
+  it("เปิดครบสี่แบบแล้ว รวมแบบกลุ่ม", () => {
+    /* แบบกลุ่มเคยปิดเพราะยังไม่ตัดสินว่า "ถูกที่สุด" วัดจากราคาไหน — ตัดสินแล้ว
+       ว่าราคามาตรฐาน จึงเปิด และด่านที่ทางเขียนถูกถอดพร้อมกัน ไม่ใช่เปิดรายการ
+       ตัวเลือกแล้วปล่อยให้ผู้ใช้ไปเจอการตีกลับ */
+    expect([...OPEN_PROMOTION_SCOPES]).toEqual(["item", "same-price", "set", "group"]);
     expect(PROMOTION_SCOPE_TH["same-price"]).toContain("ราคาเดียวกัน");
+    expect(PROMOTION_SCOPE_TH.group).toContain("ถูกที่สุด");
+  });
+
+  it("ทางเขียนรับแบบกลุ่มแล้ว", () => {
+    setCurrentUser(SALES_MANAGER);
+    const p = copy("PM-0003");
+    const guard = applyPromotionPatch(p, { scope: "group", items: ["D-AD001-01"] });
+    expect(guard.ok, guard.reason).toBe(true);
+    expect(p.scope).toBe("group");
+  });
+
+  it("เกณฑ์กระจายราคา — เกินเตือน ไม่เกินเงียบ และเลขเกณฑ์อยู่ที่เดียว", () => {
+    expect(PRICE_SPREAD_LIMIT).toBe(3);
+
+    const wide = priceSpread(["F-DC004-01", "B-GE006-01"])!;
+    expect(wide.high.code).toBe("F-DC004-01");
+    expect(wide.low.code).toBe("B-GE006-01");
+    expect(wide.ratio).toBeCloseTo(349_000 / 80, 2);
+    expect(wide.over).toBe(true);
+
+    /* 650 ÷ 500 = 1.3 เท่า */
+    expect(priceSpread(["D-AD001-01", "R-TI014-01"])!.over).toBe(false);
+    /* พอดีเกณฑ์ยังไม่เตือน — เกิน 3 เท่าถึงเตือน ไม่ใช่ครบ 3 */
+    expect(priceSpread(["R-TI001-01", "R-TI001-01"])!.over).toBe(false);
+
+    /* ตัวเดียว หรือยังไม่มีราคา = ยังไม่มีคำถาม ไม่ใช่ตอบว่าไม่กระจาย */
+    expect(priceSpread(["F-DC004-01"])).toBeNull();
+    expect(priceSpread(["ไม่มีรหัสนี้", "ไม่มีรหัสนั้น"])).toBeNull();
   });
 
   it("กลุ่มราคาเดียว = กองเดียว · กลุ่มสองราคา = สองกอง", () => {

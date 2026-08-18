@@ -1128,14 +1128,15 @@ describe("รูปแบบย่อย — บังคับเลือก �
     expect(PROMO_FORM.required.map((r) => r.path)).toContain("scope");
   });
 
-  it("ตัวเลือกมีสามแบบ ไม่มีแบบกลุ่มให้เลือก", () => {
+  it("ตัวเลือกครบสี่แบบ เรียงจากแน่นอนที่สุดไปหลวมที่สุด", () => {
+    /* แบบกลุ่มเคยถูกกันไว้ทั้งที่รายการตัวเลือกและที่ทางเขียน เพราะยังไม่มีใคร
+       ตัดสินว่า "ถูกที่สุด" วัดจากราคาไหน — ตัดสินแล้วว่าราคามาตรฐาน จึงเปิด
+       ทั้งสองที่พร้อมกัน ไม่ใช่เปิดรายการแล้วปล่อยให้ด่านตีกลับ */
     const field = allFields({ ...PROMO_FORM.blank(), kind: "free-goods" }).find(
       (f) => f.path === "scope",
     )!;
     const values = (field.options as { value: string }[]).map((o) => o.value);
-    /* เรียงจากแบบที่ตอบว่าลูกค้าได้อะไรแน่นอนที่สุด ไปหาแบบที่หลวมที่สุด */
-    expect(values).toEqual(["item", "same-price", "set"]);
-    expect(values).not.toContain("group");
+    expect(values).toEqual(["item", "same-price", "set", "group"]);
   });
 
   it("แบบราคาเดียวกันถามกลุ่มของแถมด้วย — รายตัวไม่ถาม", () => {
@@ -1236,25 +1237,114 @@ describe("รูปแบบย่อย — บังคับเลือก �
     expect(toasts[0].body).toContain("ราคาเท่ากันทั้งกลุ่ม");
   });
 
-  it("แบบกลุ่มถูกปฏิเสธที่ทางเขียน ไม่ใช่แค่ไม่อยู่ในรายการ", () => {
-    /* รายการที่ซ่อนยังส่งมาทาง ?scope=group ได้ และ disabled option ในหลาย
-       เบราว์เซอร์ยังโฟกัสได้ — ด่านจริงจึงอยู่ที่ applyPromotionPatch */
+  it("แบบกลุ่มบันทึกได้แล้ว และเปิดกลับมาแก้ค่ายังอยู่", () => {
     setCurrentUser(SALES_ADMIN);
     const before = PROMOTIONS.length;
     const { ctx, toasts } = stubCtx();
 
-    PROMO_FORM.save({ ...freeGoodsState(), scope: "group", name: "โปรแบบกลุ่ม" }, ctx);
+    PROMO_FORM.save(
+      {
+        ...freeGoodsState(),
+        scope: "group",
+        name: "โปรแบบกลุ่ม",
+        items: g(["D-AD001-01", "B-GE006-01"]),
+      },
+      ctx,
+    );
 
-    expect(PROMOTIONS).toHaveLength(before);
-    expect(toasts[0].tone).toBe("danger");
-    expect(toasts[0].body).toContain("แบบกลุ่มยังใช้ไม่ได้");
+    expect(toasts[0]?.tone, toasts[0]?.body).not.toBe("danger");
+    expect(PROMOTIONS).toHaveLength(before + 1);
+    const row = PROMOTIONS.find((p) => p.name === "โปรแบบกลุ่ม")!;
+    expect(row.scope).toBe("group");
+    expect(row.items).toEqual(["D-AD001-01", "B-GE006-01"]);
+
+    /* รอบสอง — เปิดกลับมาแก้แล้วค่ายังอยู่ ไม่ใช่หายเงียบตอนกดแก้ */
+    const back = PROMO_FORM.toState!(row);
+    expect(back.scope).toBe("group");
+    expect(back.items).toEqual([{ code: "D-AD001-01" }, { code: "B-GE006-01" }]);
+    PROMO_FORM.save({ ...back, name: "โปรแบบกลุ่ม แก้ชื่อ" }, ctx);
+    expect(getPromotion(row.code)!.scope).toBe("group");
+    expect(getPromotion(row.code)!.items).toEqual(["D-AD001-01", "B-GE006-01"]);
   });
 
-  it("มีโน้ตบอกว่ามีแบบที่สามและปิดเพราะอะไร", () => {
-    /* ตัวเลือกที่หายไปเงียบ ๆ ทำให้คนตั้งโปรคิดว่าระบบทำไม่ได้ ไม่ใช่ยังไม่ตัดสิน */
-    const notes = noteTexts({ ...PROMO_FORM.blank(), kind: "free-goods" }).join(" ");
-    expect(notes).toContain("กลุ่ม");
-    expect(notes).toContain("ถูกที่สุด");
+  it("freeGroup ถูกลบทิ้ง ไม่ได้แค่ซ่อน", () => {
+    /* เตรียมไว้ให้แบบกลุ่มชี้ไปที่ "กลุ่มสินค้า" สักอย่าง แต่ไม่เคยมีใครเขียน
+       หรืออ่านเลยสามรอบ และตอนตัดสินแบบกลุ่มก็ไม่ได้ใช้ — แบบกลุ่มใช้ `items`
+       ที่คนตั้งโปรเลือกเอง ไม่ใช่หมวดสินค้า */
+    expect(blankPromotion()).not.toHaveProperty("freeGroup");
+    for (const p of PROMOTIONS) expect(p, p.code).not.toHaveProperty("freeGroup");
+    expect(PROMO_FORM.blank()).not.toHaveProperty("freeGroup");
+  });
+
+  it("แบบกลุ่มบอกว่าตอนนี้จะแถมอะไร และเปลี่ยนทันทีเมื่อแก้รายการ", () => {
+    /* ของแถมของแบบนี้ไม่ได้ถูกระบุไว้ที่ไหน มันเปลี่ยนตามรายการที่กรอก
+       คนตั้งโปรต้องเห็นคำตอบตอนพิมพ์ ไม่ใช่รู้ตอนลูกค้าได้ของไปแล้ว */
+    const group = (codes: string[]) => ({ ...freeGoodsState(), scope: "group", items: g(codes) });
+
+    const two = noteTexts(group(["D-AD001-01", "B-GE006-01"])).join(" ");
+    expect(two, "ของแถมคือตัวถูกที่สุด").toContain("ของแถมตอนนี้คือ B-GE006-01");
+    expect(two).toContain("80.00");
+
+    /* เอาตัวถูกออก — คำตอบต้องเปลี่ยนทันที ไม่ต้องกดบันทึก */
+    const one = noteTexts(group(["D-AD001-01"])).join(" ");
+    expect(one).toContain("ของแถมตอนนี้คือ D-AD001-01");
+    expect(one).not.toContain("B-GE006-01");
+
+    /* ยังไม่มีสินค้าเลย — บอกว่ายังตอบไม่ได้ ไม่ใช่เงียบ */
+    expect(noteTexts(group([])).join(" ")).toContain("ยังบอกไม่ได้ว่าจะแถมอะไร");
+
+    /* แบบอื่นไม่เห็นโน้ตนี้ เพราะของแถมถูกระบุไว้แล้ว */
+    expect(noteTexts(freeGoodsState()).join(" ")).not.toContain("ของแถมตอนนี้คือ");
+  });
+
+  it("แบบกลุ่มคิดจากราคาชุด และตัวเลขที่ใช้คิดโผล่บนหน้าจอ", () => {
+    /* ราคาชุด = (650 + 80) ÷ 2 = 365 · 365 × 10 ÷ 14 = 260.71
+       ทั้งสองเลขต้องอยู่บนหน้าจอ ไม่ใช่โผล่แค่ผลลัพธ์แล้วให้เดาว่ามาจากไหน */
+    const T104 = { buy: 10, free: 4 };
+    const st: FormState = {
+      ...freeGoodsState(),
+      scope: "group",
+      items: g(["D-AD001-01", "B-GE006-01"]),
+      tiers: [T104] as unknown as GridRow[],
+    };
+
+    const grid = allFields(st).find((f) => f.path === "tiers")!;
+    expect(String(grid.hint), "ราคาชุดต้องอยู่ในคำอธิบาย").toContain("365.00");
+
+    const cell = computed(st, "tiers", "avg", T104 as unknown as GridRow);
+    expect(cell.value).toContain("260.71");
+    /* 260.71 ต่ำกว่าขั้นต่ำ 280 ของ D-AD001-01 — ตัวแพงในกลุ่มหลุดก่อน */
+    expect(cell.cls).toContain("text-danger");
+    expect(noteTexts(st).join(" ")).toContain("D-AD001-01");
+  });
+
+  it("เตือนเมื่อราคาในรายการกระจายเกินเกณฑ์ และเงียบเมื่อไม่เกิน", () => {
+    /* เตือนทุกใบ = ไม่มีใครอ่าน ข้อนี้จึงปักทั้งสองด้าน */
+    const setOf = (codes: string[]) => ({
+      ...freeGoodsState(),
+      scope: "set",
+      items: g(codes),
+      freeItems: g(["B-GE006-01"]),
+    });
+
+    /* 349,000 ÷ 80 = 4,362 เท่า */
+    const wide = noteTexts(setOf(["F-DC004-01", "B-GE006-01"])).join(" ");
+    expect(wide).toContain("ราคาในรายการต่างกัน");
+    expect(wide).toContain("F-DC004-01");
+
+    /* 650 กับ 500 = 1.3 เท่า — ต้องเงียบ */
+    expect(catalogPrice("D-AD001-01")).toBe(650);
+    expect(catalogPrice("R-TI014-01")).toBe(500);
+    const near = noteTexts(setOf(["D-AD001-01", "R-TI014-01"])).join(" ");
+    expect(near, "ราคาใกล้กันต้องไม่เตือน").not.toContain("ราคาในรายการต่างกัน");
+
+    /* สินค้าตัวเดียวไม่มีคำว่ากระจาย */
+    expect(noteTexts(setOf(["F-DC004-01"])).join(" ")).not.toContain("ราคาในรายการต่างกัน");
+
+    /* แบบรายตัวไม่ใช้ราคาชุด จึงไม่มีคำถามนี้ */
+    expect(
+      noteTexts({ ...freeGoodsState(), scope: "item", items: g(["F-DC004-01", "B-GE006-01"]) }).join(" "),
+    ).not.toContain("ราคาในรายการต่างกัน");
   });
 
   it("โปรส่วนลดไม่เห็นโน้ตของฝั่งของแถม", () => {

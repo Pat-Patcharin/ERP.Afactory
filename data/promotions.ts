@@ -33,7 +33,6 @@ export const PROMOTIONS: PromotionRow[] = [
     items: ["D-AD001-01"],
     /* แบบรายตัว — ของแถมคือสินค้าตัวเดียวกันกับที่นับ ไม่ต้องระบุซ้ำ */
     freeItems: [],
-    freeGroup: "",
     priceLists: [],
     minOrder: null,
     minOrderBasis: "ยอดก่อนภาษี",
@@ -106,7 +105,6 @@ export const PROMOTIONS: PromotionRow[] = [
     items: ["H-AD001-01"],
     /* แบบรายตัว — ของแถมคือสินค้าตัวเดียวกันกับที่นับ ไม่ต้องระบุซ้ำ */
     freeItems: [],
-    freeGroup: "",
     priceLists: [],
     minOrder: null,
     minOrderBasis: "ยอดก่อนภาษี",
@@ -173,7 +171,6 @@ export const PROMOTIONS: PromotionRow[] = [
     items: [],
     /* แบบกลุ่มยังไม่เปิด — กลุ่มของแถมจึงยังว่าง ดู OPEN_PROMOTION_SCOPES */
     freeItems: [],
-    freeGroup: "",
     priceLists: [],
     minOrder: 20_000,
     minOrderBasis: "ยอดก่อนภาษี",
@@ -242,7 +239,6 @@ export const PROMOTIONS: PromotionRow[] = [
     items: ["D-AD004-01"],
     /* แบบรายตัว — ของแถมคือสินค้าตัวเดียวกันกับที่นับ ไม่ต้องระบุซ้ำ */
     freeItems: [],
-    freeGroup: "",
     priceLists: [],
     minOrder: null,
     minOrderBasis: "ยอดก่อนภาษี",
@@ -311,7 +307,6 @@ export const PROMOTIONS: PromotionRow[] = [
     items: ["H-AD002-01"],
     /* แบบรายตัว — ของแถมคือสินค้าตัวเดียวกันกับที่นับ ไม่ต้องระบุซ้ำ */
     freeItems: [],
-    freeGroup: "",
     priceLists: ["PL-DEALER-2026"],
     minOrder: null,
     minOrderBasis: "ยอดก่อนภาษี",
@@ -382,7 +377,6 @@ export const PROMOTIONS: PromotionRow[] = [
     items: ["D-AD004-01"],
     /* แบบรายตัว — ของแถมคือสินค้าตัวเดียวกันกับที่นับ ไม่ต้องระบุซ้ำ */
     freeItems: [],
-    freeGroup: "",
     priceLists: [],
     minOrder: null,
     minOrderBasis: "ยอดก่อนภาษี",
@@ -453,7 +447,6 @@ export const PROMOTIONS: PromotionRow[] = [
     items: ["D-AD001-01"],
     /* แบบรายตัว — ของแถมคือสินค้าตัวเดียวกันกับที่นับ ไม่ต้องระบุซ้ำ */
     freeItems: [],
-    freeGroup: "",
     priceLists: [],
     minOrder: null,
     minOrderBasis: "ยอดก่อนภาษี",
@@ -528,7 +521,6 @@ export const PROMOTIONS: PromotionRow[] = [
     items: ["D-AD001-01"],
     /* แบบรายตัว — ของแถมคือสินค้าตัวเดียวกันกับที่นับ ไม่ต้องระบุซ้ำ */
     freeItems: [],
-    freeGroup: "",
     priceLists: [],
     minOrder: null,
     minOrderBasis: "ยอดก่อนภาษี",
@@ -603,7 +595,6 @@ export const PROMOTIONS: PromotionRow[] = [
     scope: "",
     items: ["D-AD001-01", "D-AD004-01"],
     freeItems: [],
-    freeGroup: "",
     priceLists: [],
     /* ยอดขั้นต่ำไม่ใช้กับชนิดนี้ — ยอดต่อรอบสิทธิทำหน้าที่นั้นแล้ว */
     minOrder: null,
@@ -673,7 +664,6 @@ export const PROMOTIONS: PromotionRow[] = [
     scope: "",
     items: ["D-AD004-01"],
     freeItems: [],
-    freeGroup: "",
     priceLists: [],
     minOrder: null,
     minOrderBasis: "ยอดก่อนภาษี",
