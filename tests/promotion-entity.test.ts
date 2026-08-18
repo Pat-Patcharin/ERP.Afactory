@@ -2,10 +2,15 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { COMPANY } from "@/data/admin";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 import {
+  OPEN_PROMOTION_SCOPES,
   PROMOTIONS,
   PROMOTION_KINDS,
+  PROMOTION_SCOPE_TH,
   PROMOTION_STATUSES,
   COMMISSION_BASES,
+  isSamePriceGroup,
+  priceClusterText,
+  priceClusters,
   applyPromotionPatch,
   approvePromotion,
   averageUnitPrice,
@@ -432,6 +437,102 @@ describe("§6g — หยุดชั่วคราวและเปิดก�
 /* ============================================================
    §6h — สร้างโปรใหม่
    ============================================================ */
+
+/* ============================================================
+   แบบราคาเดียวกัน — เปิดได้เพราะ "ถูกที่สุด" ไม่ใช่คำถามอีกต่อไป
+
+   ทั้งกลุ่มราคาเท่ากัน สามคำตอบของ §2 (ราคาตั้ง · ราคาหลังหักส่วนลด ·
+   ต้นทุน) จึงชี้ไปที่ของชิ้นเดียวกันหมด เงื่อนไขราคาเท่ากันไม่ใช่ข้อจำกัด
+   ที่แถมมา มันคือสิ่งเดียวที่ทำให้แบบนี้ต่างจากแบบกลุ่มที่ยังปิดอยู่
+   ============================================================ */
+
+describe("แบบราคาเดียวกัน", () => {
+  /** ปลายขูดหินปูนกลุ่มราคา 315 — ราคาเท่ากันทุกตัวในข้อมูลจริง */
+  const TIPS = ["R-TI001-01", "R-TI002-01", "R-TI003-01"];
+  /** คนละราคา (120) — ตัวที่ทำให้กลุ่มกลายเป็นสองราคา */
+  const ODD = "AA-TH003-WL";
+
+  it("เลือกได้แล้ว แต่แบบกลุ่มยังไม่เปิดตาม", () => {
+    expect(OPEN_PROMOTION_SCOPES).toContain("same-price");
+    expect(OPEN_PROMOTION_SCOPES).not.toContain("group");
+    expect(PROMOTION_SCOPE_TH["same-price"]).toContain("ราคาเดียวกัน");
+  });
+
+  it("กลุ่มราคาเดียว = กองเดียว · กลุ่มสองราคา = สองกอง", () => {
+    expect(priceClusters(TIPS)).toHaveLength(1);
+    expect(isSamePriceGroup(TIPS)).toBe(true);
+
+    const mixed = priceClusters([...TIPS, ODD]);
+    expect(mixed).toHaveLength(2);
+    expect(isSamePriceGroup([...TIPS, ODD])).toBe(false);
+
+    /* ข้อความบอกทั้งราคาและตัวที่อยู่ในกอง — ไม่ใช่แค่ว่า "ไม่เท่ากัน"
+       คนกรอกต้องรู้ว่าต้องเอาตัวไหนออก */
+    expect(priceClusterText(mixed)).toContain(ODD);
+    expect(priceClusterText(mixed)).toContain("315");
+  });
+
+  it("ยังไม่มีราคา ไม่นับว่าราคาเดียวกัน", () => {
+    /* "ไม่มีราคา" กับ "ราคา 0" ไม่ใช่เรื่องเดียวกัน และกลุ่มที่ตอบไม่ได้ว่า
+       ราคาเท่าไหร่ จะสัญญากับลูกค้าว่าเลือกตัวไหนก็เท่ากันไม่ได้ */
+    expect(isSamePriceGroup(["ไม่มีรหัสนี้จริง"])).toBe(false);
+    expect(isSamePriceGroup([])).toBe(false);
+  });
+
+  it("ด่านเขียนปฏิเสธกลุ่มสองราคา และบอกว่าราคาไหนบ้าง", () => {
+    setCurrentUser(SALES_MANAGER);
+    const p = copy("PM-0003");
+    const guard = applyPromotionPatch(p, {
+      scope: "same-price",
+      items: [...TIPS, ODD],
+    });
+
+    expect(guard.ok).toBe(false);
+    expect(guard.reason).toContain("ราคาเท่ากันทั้งกลุ่ม");
+    expect(guard.reason).toContain(ODD);
+    /* ปฏิเสธแล้วต้องไม่มีอะไรลงระเบียน ไม่ใช่ลงครึ่งเดียว */
+    expect(p.scope).not.toBe("same-price");
+  });
+
+  it("ฝั่งของแถมโดนตรวจด้วย ไม่ใช่แค่ฝั่งที่นับ", () => {
+    setCurrentUser(SALES_MANAGER);
+    const p = copy("PM-0003");
+    const guard = applyPromotionPatch(p, {
+      scope: "same-price",
+      items: TIPS,
+      freeItems: [...TIPS, ODD],
+    });
+    expect(guard.ok).toBe(false);
+    expect(guard.reason).toContain("ของแถม");
+  });
+
+  it("สองกลุ่มราคาเดียวคนละราคากันได้ — ที่ต้องเท่ากันคือภายในกลุ่มเดียวกัน", () => {
+    setCurrentUser(SALES_MANAGER);
+    const p = copy("PM-0003");
+    const guard = applyPromotionPatch(p, {
+      scope: "same-price",
+      items: TIPS,
+      freeItems: [ODD, "AA-TH003-GR"],
+    });
+    expect(guard.ok, guard.reason).toBe(true);
+    expect(p.scope).toBe("same-price");
+  });
+
+  it("ราคาต้นทางเปลี่ยนทีหลัง ไม่ล็อกโปรเดิมไว้ทั้งใบ", () => {
+    /* ระเบียนที่กลายเป็นสองราคาโดยไม่มีใครแตะ — การแก้ชื่อของมันไม่ควรถูก
+       ปฏิเสธด้วยเรื่องที่คนแก้ไม่ได้ทำ ด่านจึงตรวจเฉพาะตอน patch แตะกลุ่มนั้น
+       (บทเรียนเดียวกับแบบกลุ่มที่ค้างอยู่ในข้อมูลตัวอย่าง) */
+    setCurrentUser(SALES_MANAGER);
+    const p = copy("PM-0003");
+    p.scope = "same-price";
+    p.items = [...TIPS, ODD];
+
+    expect(applyPromotionPatch(p, { name: "ชื่อใหม่" }).ok).toBe(true);
+    expect(p.name).toBe("ชื่อใหม่");
+    /* แต่พอแตะกลุ่มนั้นจริง ด่านกลับมาทันที */
+    expect(applyPromotionPatch(p, { items: [...TIPS, ODD] }).ok).toBe(false);
+  });
+});
 
 describe("createPromotion", () => {
   /** ค่าครบทุกกลุ่ม ใช้พิสูจน์ว่าไม่มีกลุ่มไหนหายตอนเขียน */

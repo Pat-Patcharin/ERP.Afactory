@@ -182,6 +182,31 @@ export function MasterForm<T extends RecordBase>({
     [ctx, mutate, schema, state],
   );
 
+  /**
+   * Several rows at once — the multi-add picker's write.
+   *
+   * Not a loop over `gridAdd`: each call reads `state` from the render it
+   * was made in, so fourteen calls in one tick all append to the same list
+   * and thirteen of them are lost. One write, one list.
+   */
+  const gridAddMany = useCallback(
+    (path: string, rows: GridRow[]) => {
+      if (!rows.length) return;
+      const list = (getPath(state, path) ?? []) as GridRow[];
+      const base = schema.newRow ? schema.newRow(path, list.length === 0) : {};
+      if (!base) {
+        ctx.toast("เพิ่มรายการไม่ได้", "รายการในเอกสารนี้มาจากเอกสารต้นทาง", "warning");
+        return;
+      }
+      mutate((d) => {
+        const cur = (getPath(d, path) ?? []) as GridRow[];
+        setPath(d, path, [...cur, ...rows.map((r) => ({ ...base, ...r }))]);
+        schema.onGridChange?.(path, d);
+      });
+    },
+    [ctx, mutate, schema, state],
+  );
+
   const gridRemove = useCallback(
     (path: string, index: number) =>
       mutate((d) => {
@@ -378,6 +403,7 @@ export function MasterForm<T extends RecordBase>({
     gridRadio,
     gridSetColumn,
     gridAdd,
+    gridAddMany,
     gridRemove,
     lookup,
     lookupPick,
@@ -434,6 +460,7 @@ export function MasterForm<T extends RecordBase>({
     : "";
   const statusValue = String(getPath(state, "status") ?? "");
   const statusTone = schema.statusBadge?.[statusValue];
+  const kindBadge = schema.headerBadge?.(state) ?? null;
 
   return (
     <div>
@@ -458,6 +485,7 @@ export function MasterForm<T extends RecordBase>({
               {statusValue && statusTone && (
                 <Badge tone={statusTone}>{statusValue}</Badge>
               )}
+              {kindBadge && <Badge tone={kindBadge.tone}>{kindBadge.text}</Badge>}
             </div>
             <p className="mt-1 truncate text-[13px] text-ink-2">
               {mode === "edit" ? (

@@ -114,7 +114,7 @@ export const PROMO_LIST: ListSchema<PromotionRow> = {
   emptyTitle: "ไม่พบโปรโมชั่นที่ตรงกับเงื่อนไข",
 
   source: () => PROMOTIONS,
-  searchFields: ["code", "name", "printName", "reason", "owner"],
+  searchFields: ["code", "name", "printName", "reason"],
 
   /* เลือกประเภทก่อนเสมอ — สี่ประเภทถามข้อมูลคนละชุดและคิดคนละแบบ
      จึงไม่มีทาง "สร้างเปล่า" ที่ข้ามคำถามนั้นไป */
@@ -141,12 +141,6 @@ export const PROMO_LIST: ListSchema<PromotionRow> = {
       label: "เหตุผลที่สร้าง",
       options: () => [...new Set(PROMOTIONS.map((p) => p.reason).filter(Boolean))],
       test: (p, v) => p.reason === v,
-    },
-    {
-      id: "owner",
-      label: "เจ้าของโปร",
-      options: () => [...new Set(PROMOTIONS.map((p) => p.owner).filter(Boolean))],
-      test: (p, v) => p.owner === v,
     },
     {
       id: "floor",
@@ -513,7 +507,7 @@ export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
       { text: PROMOTION_STATUS_TH[p.status], tone: tone(PROMO_TONE, p.status) },
       { text: kindLabel(p), tone: "info" },
     ],
-    tags: [PROMOTION_SCOPE_TH[p.scope], p.reason || "ยังไม่ระบุเหตุผล", p.owner],
+    tags: [PROMOTION_SCOPE_TH[p.scope], p.reason || "ยังไม่ระบุเหตุผล"],
   }),
 
   kpis: (p) => [
@@ -570,12 +564,10 @@ export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
             { label: "ประเภท", value: kindLabel(p) },
             { label: "วันเริ่ม", value: p.from || DASH },
             { label: "วันสิ้นสุด", value: p.to || "ไม่มีกำหนด" },
-            { label: "ลำดับความสำคัญ", value: fmt(p.priority) },
             {
               label: "เหตุผลที่สร้างโปร",
               value: p.reason || <span className="text-danger">ยังไม่ได้ระบุ</span>,
             },
-            { label: "เจ้าของโปร", value: p.owner },
           ],
         },
         {
@@ -584,7 +576,19 @@ export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
           cols: 2,
           items: [
             { label: "ขอบเขต", value: PROMOTION_SCOPE_TH[p.scope] },
-            { label: "สินค้า", value: p.items.length ? p.items.join(", ") : DASH, span: true },
+            {
+              label: p.scope === "same-price" ? "กลุ่มที่นับเข้าโปร" : "สินค้า",
+              value: p.items.length ? p.items.join(", ") : DASH,
+              span: true,
+            },
+            (p.freeItems.length > 0 || p.scope === "set" || p.scope === "same-price") && {
+              /* ฝั่งของแถมไม่เคยขึ้นหน้านี้เลย ทั้งที่แบบชุดกับแบบราคาเดียวกัน
+                 ตอบคำถาม "แถมอะไร" ด้วยช่องนี้ช่องเดียว — คนเปิดดูระเบียนจึง
+                 เห็นแต่ฝั่งที่นับ แล้วเข้าใจว่าแถมสินค้าตัวเดียวกัน */
+              label: "ของแถมเลือกได้จาก",
+              value: p.freeItems.length ? p.freeItems.join(", ") : DASH,
+              span: true,
+            },
             { label: "ตารางราคาที่ใช้ได้", value: p.priceLists.length ? p.priceLists.join(", ") : "ทุกตาราง" },
             { label: "ยอดขั้นต่ำ", value: p.minOrder === null ? "ไม่กำหนด" : `${money0(p.minOrder)} (${p.minOrderBasis})` },
             {

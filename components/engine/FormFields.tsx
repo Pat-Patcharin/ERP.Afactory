@@ -6,11 +6,13 @@ import { esc, dmyToIso } from "@/lib/format";
 import { Icon } from "@/lib/icons";
 import { checkPermission } from "@/lib/permissions";
 import {
+  Button,
   CellInput,
   CellSelect,
   Checkbox,
   FieldShell,
   Input,
+  Modal,
   Radio,
   Select,
   Switch,
@@ -44,6 +46,8 @@ export interface FormApi {
   /** Every row in one tick column — see the header checkbox on a grid. */
   gridSetColumn: (path: string, key: string, value: boolean) => void;
   gridAdd: (path: string) => void;
+  /** Several rows in one write — what the multi-add picker hands back. */
+  gridAddMany: (path: string, rows: GridRow[]) => void;
   gridRemove: (path: string, index: number) => void;
   lookup: (source: string, q: string) => LookupHit[];
   lookupPick: (source: string, path: string, index: number, hit: LookupHit) => void;
@@ -193,6 +197,52 @@ export function FieldView({ field: f, api }: { field: FormField; api: FormApi })
                   />
                   {optLabel(o)}
                 </label>
+              );
+            })}
+          </div>
+        );
+
+      /**
+       * The same single value as `select`, drawn open.
+       *
+       * Every option is on the page and one press answers it. Reached for
+       * when the answer decides what the rest of the form means — that
+       * question should not look like the ten ordinary fields under it.
+       */
+      case "choice":
+        return (
+          <div className="flex flex-wrap gap-2">
+            {(f.options ?? []).map((o) => {
+              const val = optValue(o);
+              const on = String(value ?? "") === val;
+              return (
+                <button
+                  key={val}
+                  type="button"
+                  aria-pressed={on}
+                  disabled={f.readonly}
+                  onClick={() => api.set(path, val)}
+                  className={cn(
+                    "inline-flex items-center gap-2.5 rounded-btn border px-4 py-2.5 text-[13px] font-medium transition-colors duration-fast",
+                    on
+                      ? "border-primary bg-primary-soft text-primary-active"
+                      : "border-line bg-card text-ink-2 hover:border-line-strong hover:bg-surface",
+                    /* The unanswered question is ringed as a whole — not one
+                       option of it, because none of them is the missing one. */
+                    isBlank && !on && "border-danger",
+                    f.readonly && "cursor-not-allowed opacity-60",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "grid h-[18px] w-[18px] flex-shrink-0 place-items-center rounded-full border-[1.5px]",
+                      on ? "border-primary bg-primary text-white" : "border-line-strong",
+                    )}
+                  >
+                    {on && <Icon name="check" size={11} strokeWidth={3} />}
+                  </span>
+                  {optLabel(o)}
+                </button>
               );
             })}
           </div>
@@ -554,10 +604,18 @@ function TreeField({ field: f, api }: { field: FormField; api: FormApi }) {
 /* ---------- grid — every document's line-item table ---------- */
 
 function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
+  const [picking, setPicking] = useState(false);
   const path = f.path ?? "";
   const rows = (getPath(api.state, path) ?? []) as GridRow[];
   const cols = f.cols ?? [];
   const invalid = api.showErrors && api.blank.has(path);
+
+  /* The column the picker fills — the first one that offers a fixed list.
+     A grid whose first column is free text has nothing to pick FROM, so it
+     gets no second button however the schema is written. */
+  const pickCol = f.multiAdd
+    ? (cols.find((c) => c.type === "select" && (c.options?.length ?? 0) > 0) ?? null)
+    : null;
 
   if (f.layout === "stacked") {
     return <StackedGrid field={f} api={api} />;
@@ -677,6 +735,16 @@ function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
             {f.addLabel ?? "เพิ่มรายการ"}
           </button>
         )}
+        {!f.readonly && pickCol && (
+          <button
+            type="button"
+            onClick={() => setPicking(true)}
+            className="inline-flex items-center gap-1.5 rounded-btn border border-dashed border-line-strong px-3 py-2 text-[13px] font-medium text-ink-2 transition-colors duration-fast hover:border-primary hover:bg-primary-soft hover:text-primary-active"
+          >
+            <Icon name="rows" size={15} strokeWidth={2.2} />
+            เลือกหลายรายการ
+          </button>
+        )}
         {invalid && (
           <span className="text-cap font-medium text-danger">
             ต้องมีอย่างน้อย 1 รายการ
@@ -686,7 +754,134 @@ function GridField({ field: f, api }: { field: FormField; api: FormApi }) {
           <span className="text-cap text-ink-3">{f.hint}</span>
         )}
       </div>
+
+      {picking && pickCol && (
+        <MultiAddPicker
+          title={f.label}
+          col={pickCol}
+          taken={rows.map((r) => String(r[pickCol.key] ?? "").trim()).filter(Boolean)}
+          onClose={() => setPicking(false)}
+          onAdd={(codes) => {
+            api.gridAddMany(
+              path,
+              codes.map((code) => ({ [pickCol.key]: code })),
+            );
+            setPicking(false);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/* ---------- multi-add — the same list, open, ticked in one pass ---------- */
+
+/**
+ * Adding fourteen products one press at a time is fourteen presses, each
+ * opening a dropdown that covers the rows already chosen. So the list is
+ * shown open instead: search it, tick what belongs, add them together.
+ *
+ * What is already on the grid is listed too, ticked and unpressable. Hiding
+ * it would answer "did I already add this?" by making the row disappear —
+ * which reads as "not in the list" and invites adding it twice somewhere
+ * further down.
+ */
+function MultiAddPicker({
+  title,
+  col,
+  taken,
+  onClose,
+  onAdd,
+}: {
+  title: string;
+  col: GridCol;
+  taken: string[];
+  onClose: () => void;
+  onAdd: (codes: string[]) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
+
+  const has = new Set(taken);
+  const query = q.trim().toLowerCase();
+  const hits = (col.options ?? []).filter(
+    (o) => !query || o.toLowerCase().includes(query),
+  );
+  /* "ทั้งหมด" means everything the search found and the grid does not have —
+     ticking a row that is already on the grid would add nothing. */
+  const free = hits.filter((o) => !has.has(o));
+  const allOn = free.length > 0 && free.every((o) => picked.includes(o));
+
+  const toggle = (o: string) =>
+    setPicked((cur) => (cur.includes(o) ? cur.filter((x) => x !== o) : [...cur, o]));
+
+  return (
+    <Modal open onClose={onClose} width="wide" label={title}>
+      <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+        <h2 className="text-h3 font-semibold">{title}</h2>
+        <span className="text-cap text-ink-3">เลือกได้หลายรายการพร้อมกัน</span>
+      </div>
+
+      <div className="flex flex-col gap-3 px-5 py-4">
+        <Input
+          value={q}
+          autoFocus
+          placeholder={`ค้นหา${col.label}...`}
+          onChange={(e) => setQ(e.target.value)}
+        />
+
+        <div className="flex items-center justify-between gap-3 text-cap text-ink-3">
+          <span>
+            พบ {hits.length} รายการ
+            {taken.length > 0 && ` · อยู่ในตารางแล้ว ${taken.length}`}
+          </span>
+          {free.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                setPicked((cur) =>
+                  allOn ? cur.filter((o) => !free.includes(o)) : [...new Set([...cur, ...free])],
+                )
+              }
+              className="font-medium text-primary hover:text-primary-active"
+            >
+              {allOn ? "ไม่เอาทั้งหมด" : `เลือกทั้งหมด ${free.length} รายการ`}
+            </button>
+          )}
+        </div>
+
+        <div className="max-h-[46vh] overflow-y-auto rounded-btn border border-line">
+          {hits.length === 0 ? (
+            <p className="px-3 py-8 text-center text-ink-3">ไม่พบรายการที่ค้นหา</p>
+          ) : (
+            hits.map((o) => {
+              const already = has.has(o);
+              const on = already || picked.includes(o);
+              return (
+                <label
+                  key={o}
+                  className={cn(
+                    "flex items-center gap-3 border-b border-line px-3 py-2 last:border-b-0",
+                    already ? "cursor-not-allowed bg-surface text-ink-3" : "cursor-pointer hover:bg-surface",
+                  )}
+                >
+                  <Checkbox checked={on} disabled={already} onChange={() => toggle(o)} />
+                  <span className="min-w-0 flex-1 truncate text-[13px] tnum">{o}</span>
+                  {already && <span className="flex-shrink-0 text-cap">อยู่ในตารางแล้ว</span>}
+                </label>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 border-t border-line px-5 py-4">
+        <Button onClick={onClose}>ยกเลิก</Button>
+        <Button variant="primary" disabled={picked.length === 0} onClick={() => onAdd(picked)}>
+          เพิ่ม {picked.length} รายการ
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

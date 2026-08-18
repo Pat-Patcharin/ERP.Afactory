@@ -145,12 +145,13 @@ export const PROMOTION_STATUS_TH: Record<PromotionStatus, string> = {
  * `""` คือยังไม่ได้เลือก และเป็นค่าเริ่มต้นโดยตั้งใจ แบบเดียวกับ `BudgetBasis`
  * — สามแบบนี้ให้ของแถมคนละอย่าง เดาให้แบบหนึ่งคือเดาว่าลูกค้าจะได้อะไร
  */
-export type PromotionScope = "" | "item" | "set" | "group";
+export type PromotionScope = "" | "item" | "set" | "same-price" | "group";
 
 export const PROMOTION_SCOPE_TH: Record<PromotionScope, string> = {
   "": "— ยังไม่ได้เลือก —",
   item: "รายตัว — แถมสินค้าตัวเดียวกัน",
   set: "ชุดที่กำหนด — แถมจากชุดที่ระบุ",
+  "same-price": "ราคาเดียวกัน — เลือกได้ทั้งกลุ่มที่ซื้อและกลุ่มที่แถม",
   group: "กลุ่ม — แถมตัวที่ถูกที่สุด",
 };
 
@@ -161,10 +162,19 @@ export const PROMOTION_SCOPE_TH: Record<PromotionScope, string> = {
  * ราคาตั้ง · ราคาหลังหักส่วนลดของลูกค้ารายนั้น · หรือต้นทุน สามคำตอบให้ของแถม
  * คนละชิ้น และถ้าวัดจากราคาหลังหักส่วนลด ของที่ถูกสุดจะเปลี่ยนไปตามลูกค้าแต่ละราย
  *
+ * **แบบราคาเดียวกันเปิดได้** ทั้งที่หน้าตาใกล้กัน เพราะมันคือครึ่งที่ตอบได้ของ
+ * คำถามเดียวกัน: ถ้าทุกตัวในกลุ่มราคาเท่ากัน "ตัวที่ถูกที่สุด" ก็ไม่ใช่คำถาม
+ * อีกต่อไป — สามคำตอบข้างบนให้ของชิ้นเดียวกันหมด เงื่อนไขราคาเท่ากันจึงไม่ใช่
+ * ข้อจำกัดที่แถมมา มันคือสิ่งเดียวที่ทำให้ "ลูกค้าเลือกตัวไหนก็ได้" มีคำตอบเดียว
+ *
  * ปิดที่ **ทางเขียน** ไม่ใช่แค่ไม่ใส่ในรายการตัวเลือก — ตัวเลือกที่ซ่อนยังส่งมา
  * ทาง `?scope=group` ได้ และ disabled option ในหลายเบราว์เซอร์ยังโฟกัสได้
  */
-export const OPEN_PROMOTION_SCOPES: readonly PromotionScope[] = ["item", "set"];
+export const OPEN_PROMOTION_SCOPES: readonly PromotionScope[] = [
+  "item",
+  "set",
+  "same-price",
+];
 
 /** §6c — ตัวเลือกตายตัว ไม่ใช่ช่องพิมพ์อิสระ เพราะต้องเอาไปจัดกลุ่มเทียบผล */
 export const PROMOTION_REASONS = [
@@ -211,9 +221,16 @@ export interface PromotionRow extends RecordBase {
   from: string;
   /** ว่าง = ไม่มีกำหนดสิ้นสุด */
   to: string;
+  /**
+   * §6b เขียนไว้ว่าใช้ตัดสินเมื่อโปรหลายตัวเข้าเงื่อนไขพร้อมกัน — แต่กติกา
+   * การซ้อนโปรยังไม่ตัดสิน จึงยังไม่มีตัวคำนวณไหนอ่านค่านี้ ฟอร์มไม่ถามแล้ว
+   * และไม่มีหน้าไหนแสดง ทุกใบใหม่จึงได้ค่าจาก `blankPromotion()` ตัวเดียว
+   * ถ้าวันหนึ่งกลไกซ้อนโปรมาถึง ที่กรอกต้องกลับมาพร้อมกัน
+   */
   priority: number;
   reason: string;
   reasonNote: string;
+  /** ฟอร์มไม่ถามแล้ว และไม่มีหน้าไหนแสดง — เหมือน `priority` */
   owner: string;
 
   /* ---------- กลุ่ม 2 · ใช้กับอะไร ---------- */
@@ -560,6 +577,61 @@ export function productFloor(code: string): number | null {
   return row?.price_last ?? null;
 }
 
+/* ============================================================
+   กลุ่มราคาเดียวกัน — ตัวตรวจของแบบ `same-price`
+
+   ทั้งฟอร์มและด่านเขียนอ่านตัวเดียวกันนี้ ไม่ใช่ต่างคนต่างวนราคาเอง
+   ถ้ามีสองสำเนา วันหนึ่งฟอร์มจะบอกว่าผ่านแล้วด่านตีกลับ โดยที่ข้อความ
+   ทั้งสองที่บอกคนละเรื่อง
+   ============================================================ */
+
+/** สินค้าที่ราคาแคตตาล็อกเท่ากันหนึ่งกอง — ราคา 0 คือกองของ "ยังไม่มีราคา" */
+export interface PriceCluster {
+  price: number;
+  codes: string[];
+}
+
+/**
+ * แยกรหัสออกเป็นกองตามราคาแคตตาล็อก
+ *
+ * มากกว่าหนึ่งกอง = กลุ่มนี้ไม่ใช่ราคาเดียวกัน และ "ลูกค้าเลือกตัวไหนก็ได้"
+ * จะกลายเป็นคำถามว่าเลือกตัวไหนแล้วบริษัทเสียเท่าไหร่ ซึ่งเป็นคำถามเดียวกับ
+ * ที่ทำให้แบบกลุ่มยังเปิดไม่ได้
+ *
+ * ราคาที่ใช้คือ `catalogPrice` ตัวเดียวกับที่ `promotionFloorBreaches` ใช้
+ * ตัดสินว่าใครอนุมัติได้ — ถ้าตรงนี้ใช้ราคาคนละตัว กลุ่มที่ผ่านตรงนี้จะไปหลุด
+ * ราคาขั้นต่ำที่ตรงนั้นด้วยตัวเลขที่คนกรอกไม่เคยเห็น
+ */
+export function priceClusters(codes: string[]): PriceCluster[] {
+  const by = new Map<number, string[]>();
+  for (const raw of codes) {
+    const code = String(raw ?? "").trim();
+    if (!code) continue;
+    by.set(catalogPrice(code), [...(by.get(catalogPrice(code)) ?? []), code]);
+  }
+  return [...by.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([price, list]) => ({ price, codes: list }));
+}
+
+/** กลุ่มที่ใช้กับแบบราคาเดียวกันได้ — ราคาเดียว และเป็นราคาที่มีอยู่จริง */
+export const isSamePriceGroup = (codes: string[]): boolean => {
+  const cl = priceClusters(codes);
+  return cl.length === 1 && cl[0].price > 0;
+};
+
+/**
+ * กองราคาที่เจอ เขียนเป็นข้อความ — ที่เดียวสำหรับทั้งกล่องเตือนบนฟอร์มและ
+ * เหตุผลที่ด่านเขียนตอบกลับ ห้ามมีสองสำนวนสำหรับข้อเท็จจริงเดียวกัน
+ */
+export const priceClusterText = (clusters: PriceCluster[]): string =>
+  clusters
+    .map(
+      (c) =>
+        `${c.price > 0 ? c.price.toLocaleString("en-US") : "ยังไม่มีราคา"} (${c.codes.join(" · ")})`,
+    )
+    .join(" · ");
+
 export interface FloorBreach {
   code: string;
   name: string;
@@ -817,6 +889,27 @@ export function applyPromotionPatch(
       ok: false,
       reason: "ต้องเลือกรูปแบบว่านับยอดแบบไหน — รายตัว หรือ ชุดที่กำหนด",
     };
+  }
+
+  /* แบบราคาเดียวกัน — ตรวจ **เฉพาะตอนที่ patch แตะกลุ่มนั้นจริง**
+     ราคาแคตตาล็อกเปลี่ยนได้ทีหลัง โปรที่เคยถูกต้องจะกลายเป็นกลุ่มสองราคา
+     โดยที่ไม่มีใครแตะมัน ถ้าด่านนี้ตรวจทุกครั้ง การแก้ชื่อโปรตัวนั้นจะถูก
+     ปฏิเสธด้วยเรื่องที่คนแก้ไม่ได้ทำ — บทเรียนเดียวกับแบบกลุ่มข้างบน */
+  if ((patch.scope ?? p.scope) === "same-price") {
+    for (const [key, label] of [
+      ["items", "สินค้าที่เข้าโปร"],
+      ["freeItems", "ของแถม"],
+    ] as const) {
+      if (!("scope" in patch) && !(key in patch)) continue;
+      const codes = patch[key] ?? p[key];
+      const clusters = priceClusters(codes);
+      if (clusters.length > 1) {
+        return {
+          ok: false,
+          reason: `แบบราคาเดียวกันต้องราคาเท่ากันทั้งกลุ่ม — ${label}มี ${clusters.length} ราคา: ${priceClusterText(clusters)}`,
+        };
+      }
+    }
   }
 
   const touchedCondition = PROMOTION_CONDITION_FIELDS.some(

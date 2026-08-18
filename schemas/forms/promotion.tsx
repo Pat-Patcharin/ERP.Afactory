@@ -14,6 +14,8 @@ import {
   productFloor,
   createPromotion,
   getPromotion,
+  priceClusters,
+  priceClusterText,
   tryLadder,
   type PromotionRow,
 } from "@/lib/domain/promotion";
@@ -76,6 +78,17 @@ const numOrNull = (v: unknown): number | null =>
 
 const scopeOf = (st: FormState) => String(st.scope ?? "");
 
+/** แบบที่ลูกค้าเลือกของแถมเองจากกลุ่มที่ระบุ — สองแบบนี้ถามช่องเดียวกัน */
+const picksFreeItems = (st: FormState) =>
+  scopeOf(st) === "set" || scopeOf(st) === "same-price";
+
+/** แบบราคาเดียวกัน — ทั้งกลุ่มที่นับและกลุ่มที่แถมต้องราคาเท่ากันในกลุ่มตัวเอง */
+const isSamePriceScope = (st: FormState) => scopeOf(st) === "same-price";
+
+/** รหัสในกริดหนึ่ง — ใช้ตรวจราคาของกลุ่มนั้น */
+const codesIn = (st: FormState, path: string): string[] =>
+  ((st[path] ?? []) as GridRow[]).map((r) => String(r.code ?? "").trim()).filter(Boolean);
+
 /** ขั้นของแถมจากกริด — แถวที่ยังไม่กรอกจำนวนซื้อถูกทิ้ง ไม่ใช่นับเป็นขั้น 0 */
 const ladderTiersOf = (st: FormState): LadderTier[] =>
   ((st.tiers ?? []) as GridRow[])
@@ -89,7 +102,9 @@ const ladderTiersOf = (st: FormState): LadderTier[] =>
  * อนุมัติได้ — ถ้าหน้าจอใช้ราคาคนละตัวกับตัวที่ตัดสิน คนกรอกจะเห็นเขียวแล้ว
  * ถูกตีกลับตอนขออนุมัติ
  *
- * สินค้าหลายตัวในโปรใช้ตัวแรกเป็นตัวแทน และบอกไว้ในหัวคอลัมน์
+ * สินค้าหลายตัวในโปรใช้ตัวแรกเป็นตัวแทน และบอกไว้ในหัวคอลัมน์ — ยกเว้นแบบ
+ * ราคาเดียวกัน ที่ทุกตัวในกลุ่มราคาเท่ากันอยู่แล้ว ตัวแรกจึงไม่ใช่ตัวแทนของ
+ * ใคร มันคือราคาของทั้งกลุ่ม และคำตอบไม่เปลี่ยนไม่ว่าลูกค้าหยิบตัวไหน
  */
 const unitPriceOf = (st: FormState): { code: string; price: number; floor: number | null } | null => {
   const [code] = itemCodes(st);
@@ -151,10 +166,12 @@ function toPatch(s: FormState): Partial<PromotionRow> {
     printName: String(s.printName ?? "").trim(),
     from: isoToDmy(s.from),
     to: isoToDmy(s.to),
-    priority: num(s.priority),
+    /* ลำดับความสำคัญกับเจ้าของโปรไม่อยู่ใน patch เลย ไม่ใช่ส่งค่าว่างมา —
+       `applyPromotionPatch` เขียนด้วย Object.assign ช่องที่ไม่ได้ส่งจึงคงค่าเดิม
+       ของแถวที่มีอยู่ ส่วนแถวใหม่ได้ค่าจาก `blankPromotion()` ถ้าส่ง "" หรือ 0
+       มาแทน การแก้ชื่อโปรเก่าหนึ่งครั้งจะล้างสองช่องนั้นทิ้งโดยไม่มีใครสั่ง */
     reason: String(s.reason ?? ""),
     reasonNote: String(s.reasonNote ?? ""),
-    owner: String(s.owner ?? ""),
 
     scope: (String(s.scope ?? "item") as PromotionRow["scope"]),
     freeItems: list("freeItems"),
@@ -223,11 +240,9 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     printName: "",
     from: "",
     to: "",
-    priority: 5,
     /* ห้ามมีค่าเริ่มต้น — §6c ต้องเลือกทุกครั้ง */
     reason: "",
     reasonNote: "",
-    owner: "",
 
     /* ห้ามมีค่าเริ่มต้น — สามรูปแบบให้ของแถมคนละอย่าง */
     scope: "",
@@ -274,6 +289,19 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     freeGoodsWarehouse: "",
   }),
 
+  /**
+   * ชนิดของโปรอยู่บนหัวหน้า ไม่ใช่ช่องกรอก
+   *
+   * เลือกไปแล้วที่หน้าเลือกประเภท และแก้ที่นี่ไม่ได้เพราะแต่ละชนิดถามคนละชุด
+   * — แต่ฟอร์มเดียวรับสามชนิด ถ้าไม่บอกไว้ตรงไหนเลย คนที่เปิดหน้าค้างไว้แล้ว
+   * กลับมากรอกต่อจะไม่รู้ว่ากำลังตั้งโปรแบบไหนอยู่ จนกว่าจะเลื่อนลงไปเจอ
+   * ช่องที่โผล่เฉพาะชนิดนั้น
+   */
+  headerBadge: (s) => {
+    const k = PROMOTION_KINDS.find((x) => x.key === String(s.kind ?? ""));
+    return k ? { text: `โปร${k.label}`, tone: "primary" } : null;
+  },
+
   toState: (p) => ({
     _mode: "edit",
     code: p.code,
@@ -282,10 +310,8 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     printName: p.printName,
     from: dmyToIso(p.from),
     to: dmyToIso(p.to),
-    priority: p.priority,
     reason: p.reason,
     reasonNote: p.reasonNote,
-    owner: p.owner,
 
     scope: p.scope,
     items: p.items.map((code) => ({ code })),
@@ -336,8 +362,42 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       key: "identity",
       label: "ข้อมูลโปร",
       railLabel: "ข้อมูลโปร",
-      labelTh: "ชื่อ ช่วงเวลา และเหตุผลที่สร้าง",
+      labelTh: "รูปแบบ ชื่อ ช่วงเวลา และเหตุผลที่สร้าง",
       blocks: (s) => [
+        /* ---------- คำถามแรกของฟอร์ม — รูปแบบ ----------
+
+           อยู่บนสุดเพราะคำตอบของมันเปลี่ยนความหมายของทุกอย่างที่อยู่ใต้มัน:
+           รายตัวไม่ต้องเลือกของแถม ชุดที่กำหนดต้องเลือก คนกรอกที่ตอบข้อนี้
+           ทีหลังจะกรอกไปหลายช่องก่อนรู้ว่ากรอกผิดกล่อง
+
+           และเป็นปุ่ม ไม่ใช่ dropdown — สองแบบที่ต้องชั่งน้ำหนักเทียบกัน
+           ถ้าซ่อนไว้หลังลูกศร คนกรอกต้องกดเปิดก่อนจึงจะรู้ว่ามีให้เลือกอะไร */
+        {
+          type: "card",
+          title: "รูปแบบของโปร",
+          cols: "2",
+          fields: [
+            {
+              type: "choice",
+              path: "scope",
+              label: "นับยอดแบบไหน แถมอะไร",
+              required: true,
+              /* รายตัว/ชุด ไม่มีความหมายกับแลกซื้อ — เงื่อนไขของมันคือ
+                 "ทุก ๆ X ได้หนึ่งรอบ" ไม่ใช่ขอบเขตการนับของแถม
+                 การ์ดทั้งใบหายไปเองเมื่อไม่มีช่องไหนโผล่ (CardBlock) */
+              when: (st) => !isRedeem(st),
+              /* เฉพาะแบบที่เปิดแล้ว แบบกลุ่มไม่อยู่ในรายการ และถูกปฏิเสธที่
+                 ทางเขียนด้วย (`applyPromotionPatch`) เพราะรายการที่ซ่อนยังส่ง
+                 มาทาง `?scope=group` ได้ */
+              options: OPEN_PROMOTION_SCOPES.map((value) => ({
+                value,
+                label: PROMOTION_SCOPE_TH[value],
+              })),
+              span: true,
+              hint: "ไม่มีค่าเริ่มต้น — สามรูปแบบให้ของแถมคนละอย่าง",
+            },
+          ],
+        },
         {
           type: "card",
           title: "ชื่อและช่วงเวลา",
@@ -364,23 +424,37 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
               label: "สิ้นสุด",
               hint: "ว่างไว้ = ไม่มีกำหนดสิ้นสุด",
             },
+          ],
+        },
+        /* ---------- ยอดขั้นต่ำ — ย้ายมาจากกลุ่ม "ใช้กับอะไร" ----------
+
+           เกณฑ์ผ่าน/ไม่ผ่านของทั้งใบ ไม่ใช่คุณสมบัติของสินค้าตัวไหน จึงอยู่กับ
+           ช่วงเวลาและเหตุผล ซึ่งเป็นเงื่อนไขระดับใบเหมือนกัน ไม่ใช่อยู่เหนือ
+           ตารางสินค้าจนอ่านเหมือนยอดขั้นต่ำต่อสินค้าหนึ่งตัว */
+        {
+          type: "card",
+          title: "ยอดสั่งซื้อขั้นต่ำ",
+          cols: "2",
+          fields: [
             {
               type: "number",
-              path: "priority",
-              label: "ลำดับความสำคัญ",
-              min: 1,
-              max: 9,
-              hint: "เลขน้อยมาก่อน ใช้ตัดสินเมื่อโปรหลายตัวเข้าเงื่อนไขพร้อมกัน",
+              path: "minOrder",
+              label: "ยอดสั่งซื้อขั้นต่ำ (บาท)",
+              min: 0,
+              hint: "ว่างไว้ = ไม่กำหนดยอดขั้นต่ำ",
+              /* ซ่อนจากชนิดแลกซื้อ และห้ามเปิดคืนโดยไม่คิดให้จบ:
+                 ช่องนี้เป็นเกณฑ์ผ่าน/ไม่ผ่านครั้งเดียว (บิลถึงยอดนี้โปรจึงใช้ได้)
+                 ส่วน "ครบกี่บาทต่อหนึ่งรอบ" ของแลกซื้อเป็นตัวหารที่ทวีคูณ
+                 สองช่องนี้หน้าตาเหมือนกันบนหน้าจอ ต่างกันที่ความหมาย และการวาง
+                 ไว้ในหน้าเดียวกันคือที่มาของโปรที่ตั้งผิดโดยไม่มีใครรู้ */
+              when: (st) => !isRedeem(st),
             },
-            { type: "text", path: "owner", label: "เจ้าของโปร", placeholder: "ชื่อผู้ดูแล" },
             {
-              /* เลือกไปแล้วที่หน้าเลือกประเภท แสดงไว้ให้รู้ว่ากำลังสร้างอะไร
-                 แต่แก้ที่นี่ไม่ได้ เพราะแต่ละประเภทมีเงื่อนไขไม่เหมือนกัน */
-              type: "static",
-              path: "kind",
-              label: "ประเภทโปร",
-              value: (st: FormState) =>
-                PROMOTION_KINDS.find((k) => k.key === String(st.kind ?? ""))?.label ?? DASH,
+              type: "select",
+              path: "minOrderBasis",
+              label: "ยอดขั้นต่ำคิดจาก",
+              options: opts(["ยอดก่อนภาษี", "ยอดรวมภาษี"]),
+              when: (st) => !isRedeem(st) && String(st.minOrder ?? "").trim() !== "",
             },
           ],
         },
@@ -419,58 +493,17 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       key: "what",
       label: "ใช้กับอะไร",
       railLabel: "ใช้กับอะไร",
-      labelTh: "สินค้า ตารางราคา และยอดขั้นต่ำ",
+      labelTh: "สินค้า ของแถม และตารางราคา",
       blocks: (s) => [
-        {
-          type: "card",
-          title: "ขอบเขต",
-          cols: "2",
-          fields: [
-            {
-              type: "select",
-              path: "scope",
-              label: "รูปแบบ — นับยอดแบบไหน แถมอะไร",
-              required: true,
-              /* รายตัว/ชุด ไม่มีความหมายกับแลกซื้อ — เงื่อนไขของมันคือ
-                 "ทุก ๆ X ได้หนึ่งรอบ" ไม่ใช่ขอบเขตการนับของแถม */
-              when: (st) => !isRedeem(st),
-              /* เฉพาะแบบที่เปิดแล้ว แบบกลุ่มไม่อยู่ในรายการ และถูกปฏิเสธที่
-                 ทางเขียนด้วย (`applyPromotionPatch`) เพราะรายการที่ซ่อนยังส่ง
-                 มาทาง `?scope=group` ได้ */
-              options: OPEN_PROMOTION_SCOPES.map((value) => ({
-                value,
-                label: PROMOTION_SCOPE_TH[value],
-              })),
-              span: true,
-              hint: "ไม่มีค่าเริ่มต้น — สามรูปแบบให้ของแถมคนละอย่าง",
-            },
-            {
-              type: "select",
-              path: "minOrderBasis",
-              label: "ยอดขั้นต่ำคิดจาก",
-              options: opts(["ยอดก่อนภาษี", "ยอดรวมภาษี"]),
-              when: (st) => !isRedeem(st) && String(st.minOrder ?? "").trim() !== "",
-            },
-            {
-              type: "number",
-              path: "minOrder",
-              label: "ยอดสั่งซื้อขั้นต่ำ (บาท)",
-              min: 0,
-              hint: "ว่างไว้ = ไม่กำหนดยอดขั้นต่ำ",
-              /* ซ่อนจากชนิดแลกซื้อ และห้ามเปิดคืนโดยไม่คิดให้จบ:
-                 ช่องนี้เป็นเกณฑ์ผ่าน/ไม่ผ่านครั้งเดียว (บิลถึงยอดนี้โปรจึงใช้ได้)
-                 ส่วน "ครบกี่บาทต่อหนึ่งรอบ" ของแลกซื้อเป็นตัวหารที่ทวีคูณ
-                 สองช่องนี้หน้าตาเหมือนกันบนหน้าจอ ต่างกันที่ความหมาย และการวาง
-                 ไว้ในหน้าเดียวกันคือที่มาของโปรที่ตั้งผิดโดยไม่มีใครรู้ */
-              when: (st) => !isRedeem(st),
-            },
-          ],
-        },
         {
           type: "grid",
           path: "items",
           label: "สินค้าที่เข้าโปร",
           addLabel: "เพิ่มสินค้า",
+          /* โปรหนึ่งใบครอบสินค้าทั้งตระกูล — H-CS006-01 ถึง -06 คือหกรอบของ
+             "กดเพิ่ม แล้วเปิด dropdown ไล่หาในรายการเดิมซ้ำ" ปุ่มที่สองเปิด
+             รายการเดียวกันแบบกางออก ติ๊กทีเดียวได้ทั้งตระกูล */
+          multiAdd: true,
           empty: "ยังไม่ได้เลือกสินค้า — โปรจะยังใช้กับอะไรไม่ได้",
           cols: [
             {
@@ -501,14 +534,29 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
             label: "ของแถมคือสินค้าตัวเดียวกัน",
             text: "แบบรายตัวแถมสินค้าตัวเดียวกันกับที่นับ จึงไม่ต้องเลือกของแถมซ้ำ — ถ้าต้องแถมของอีกตัว ให้เปลี่ยนรูปแบบเป็นชุดที่กำหนด",
           },
+        /* แบบราคาเดียวกันบอกกติกาของมันก่อนถึงกริด — เงื่อนไขราคาเท่ากันไม่ใช่
+           ข้อจำกัดที่แถมมา มันคือสิ่งเดียวที่ทำให้ "เลือกตัวไหนก็ได้" มีคำตอบเดียว */
         isFreeGoods(s) &&
-          scopeOf(s) === "set" && {
+          isSamePriceScope(s) && {
+            type: "note",
+            label: "แบบราคาเดียวกัน — ลูกค้าเลือกเองได้ทั้งสองฝั่ง",
+            text: "นับรวมกันทั้งกลุ่มที่ซื้อ (ลูกค้าผสมรุ่นไหนก็ได้) แล้วเลือกของแถมจากกลุ่มที่แถมได้เอง — ใช้ได้เพราะทุกตัวในกลุ่มเดียวกันราคาเท่ากัน ราคาเฉลี่ยกับราคาขั้นต่ำจึงมีคำตอบเดียวไม่ว่าลูกค้าหยิบตัวไหน ถ้าในกลุ่มมีสองราคา คำถามว่า \"เลือกตัวไหนแล้วบริษัทเสียเท่าไหร่\" จะกลับมาทันที และโปรจะบันทึกไม่ได้",
+          },
+        isFreeGoods(s) &&
+          picksFreeItems(s) && {
             type: "grid",
             path: "freeItems",
-            label: "ของแถม — สินค้าที่แถมได้",
+            label: isSamePriceScope(s)
+              ? "ของแถม — กลุ่มที่ลูกค้าเลือกได้ (ต้องราคาเท่ากันทั้งกลุ่ม)"
+              : "ของแถม — สินค้าที่แถมได้",
             addLabel: "เพิ่มของแถม",
-            empty: "ยังไม่ได้เลือกของแถม — แบบชุดต้องระบุว่าแถมอะไร",
-            hint: "คนละฝั่งกับสินค้าที่เข้าโปร ชุดที่นับกับชุดที่แถมไม่จำเป็นต้องเป็นชุดเดียวกัน",
+            multiAdd: true,
+            empty: isSamePriceScope(s)
+              ? "ยังไม่ได้เลือกของแถม — แบบราคาเดียวกันต้องระบุว่ากลุ่มที่แถมได้มีอะไรบ้าง"
+              : "ยังไม่ได้เลือกของแถม — แบบชุดต้องระบุว่าแถมอะไร",
+            hint: isSamePriceScope(s)
+              ? "คนละกลุ่มกับสินค้าที่เข้าโปร และคนละราคากันได้ — ที่ต้องเท่ากันคือราคาภายในกลุ่มเดียวกัน"
+              : "คนละฝั่งกับสินค้าที่เข้าโปร ชุดที่นับกับชุดที่แถมไม่จำเป็นต้องเป็นชุดเดียวกัน",
             cols: [
               {
                 key: "code",
@@ -517,13 +565,44 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
                 options: productOptions(),
                 required: true,
               },
+              {
+                key: "price",
+                label: "ราคาแคตตาล็อก",
+                type: "computed",
+                align: "right",
+                muted: true,
+                get: (r) =>
+                  String(r.code ?? "").trim() ? money(catalogPrice(String(r.code))) : DASH,
+              },
             ],
           },
-        /* แบบที่สามยังปิด บอกไว้ให้เห็นว่ามีอยู่และปิดเพราะอะไร ไม่ใช่หายไป */
+        /* ---------- กลุ่มที่มีมากกว่าหนึ่งราคา — เตือนตอนพิมพ์ ----------
+
+           ข้อความมาจาก `priceClusterText` ตัวเดียวกับที่ด่านเขียนใช้ตอบกลับ
+           ถ้าเขียนสำนวนใหม่ที่นี่ คนกรอกจะได้ยินสองเรื่องสำหรับข้อเท็จจริงเดียว */
+        ...(() => {
+          if (!isFreeGoods(s) || !isSamePriceScope(s)) return [];
+          const out: FormBlock[] = [];
+          for (const [path, label] of [
+            ["items", "สินค้าที่เข้าโปร"],
+            ["freeItems", "ของแถม"],
+          ] as const) {
+            const clusters = priceClusters(codesIn(s, path));
+            if (clusters.length > 1) {
+              out.push({
+                type: "note",
+                label: `⚠ ${label}มี ${clusters.length} ราคาในกลุ่มเดียว — บันทึกไม่ได้`,
+                text: `${priceClusterText(clusters)} — เอาตัวที่ราคาต่างออก หรือเปลี่ยนรูปแบบเป็นชุดที่กำหนด ซึ่งไม่ได้สัญญากับลูกค้าว่าเลือกตัวไหนก็ราคาเท่ากัน`,
+              });
+            }
+          }
+          return out;
+        })(),
+        /* แบบที่สี่ยังปิด บอกไว้ให้เห็นว่ามีอยู่และปิดเพราะอะไร ไม่ใช่หายไป */
         isFreeGoods(s) && {
           type: "note",
-          label: "ยังมีรูปแบบที่สาม — กลุ่ม (แถมตัวที่ถูกที่สุด) แต่ยังเลือกไม่ได้",
-          text: 'รอการตัดสินว่า "ถูกที่สุด" วัดจากราคาไหน — ราคาตั้ง · ราคาหลังหักส่วนลดของลูกค้ารายนั้น · หรือต้นทุน สามคำตอบให้ของแถมคนละชิ้น และถ้าวัดจากราคาหลังหักส่วนลด ของที่ถูกสุดจะเปลี่ยนไปตามลูกค้าแต่ละราย',
+          label: "ยังมีอีกแบบ — กลุ่ม (แถมตัวที่ถูกที่สุด) แต่ยังเลือกไม่ได้",
+          text: 'รอการตัดสินว่า "ถูกที่สุด" วัดจากราคาไหน — ราคาตั้ง · ราคาหลังหักส่วนลดของลูกค้ารายนั้น · หรือต้นทุน สามคำตอบให้ของแถมคนละชิ้น และถ้าวัดจากราคาหลังหักส่วนลด ของที่ถูกสุดจะเปลี่ยนไปตามลูกค้าแต่ละราย — แบบราคาเดียวกันข้างบนคือครึ่งที่ตอบได้ของคำถามนี้ เพราะเมื่อทุกตัวราคาเท่ากัน สามคำตอบนั้นให้ของชิ้นเดียวกันหมด',
         },
 
         /* ---------- ขั้นบันได — ซื้อเท่าไหร่ แถมเท่าไหร่ ---------- */
@@ -553,9 +632,9 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
             addLabel: "เพิ่มขั้น",
             empty: "ยังไม่ได้ตั้งขั้น — โปรแถมสินค้าที่ไม่มีขั้นจะไม่แถมอะไรเลย",
             hint: base
-              ? `ราคาเฉลี่ยคิดจาก ${base.code} ราคา ${money(base.price)}${
-                  base.floor !== null ? ` · ราคาขั้นต่ำ ${money(base.floor)}` : ""
-                }`
+              ? `ราคาเฉลี่ยคิดจาก ${isSamePriceScope(s) ? "ราคาของทั้งกลุ่ม" : base.code} ${money(
+                  base.price,
+                )}${base.floor !== null ? ` · ราคาขั้นต่ำ ${money(base.floor)}` : ""}`
               : "เลือกสินค้าที่เข้าโปรก่อน แล้วราคาเฉลี่ยจะคำนวณให้",
             cols: [
               {
@@ -1222,7 +1301,9 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     {
       path: "scope",
       label: "นับยอดแบบไหน",
-      step: "what",
+      /* ตามช่องไป ไม่ใช่ค้างไว้ที่ชื่อกลุ่มเดิม — ปุ่มที่พาไปช่องที่ยังไม่ได้
+         กรอกอ่านค่านี้ ถ้าไม่ย้ายตาม มันจะพาไปกลุ่มที่ไม่มีช่องนั้นแล้ว */
+      step: "identity",
       test: (s) => isRedeem(s) || Boolean(String(s.scope ?? "").trim()),
     },
     {
@@ -1310,16 +1391,28 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       /* ด่านจริงอยู่ที่ `applyPromotionPatch` ตัวนี้คือการบอกก่อนกดบันทึก
          ไม่ใช่ด่านที่สอง — ข้อความมาจากเรื่องเดียวกันแต่คนละจังหวะ */
       label: "รูปแบบกลุ่มยังใช้ไม่ได้ — เลือกรายตัว หรือ ชุดที่กำหนด",
-      step: "what",
+      step: "identity",
       test: (s) => OPEN_PROMOTION_SCOPES.includes(scopeOf(s) as PromotionRow["scope"]),
     },
     {
-      label: "แบบชุดที่กำหนดต้องระบุว่าแถมอะไร",
+      label: "แบบที่ให้ลูกค้าเลือกของแถม ต้องระบุว่าแถมอะไรได้บ้าง",
       step: "what",
       test: (s) =>
-        !isFreeGoods(s) ||
-        scopeOf(s) !== "set" ||
-        ((s.freeItems ?? []) as GridRow[]).some((r) => String(r.code ?? "").trim()),
+        !isFreeGoods(s) || !picksFreeItems(s) || codesIn(s, "freeItems").length > 0,
+    },
+    {
+      /* ด่านจริงอยู่ที่ `applyPromotionPatch` ตัวนี้คือการบอกก่อนกดบันทึก
+         และทั้งสองที่อ่าน `priceClusters` ตัวเดียวกัน */
+      label: "แบบราคาเดียวกัน — สินค้าที่เข้าโปรต้องราคาเท่ากันทุกตัว",
+      step: "what",
+      test: (s) =>
+        !isSamePriceScope(s) || priceClusters(codesIn(s, "items")).length <= 1,
+    },
+    {
+      label: "แบบราคาเดียวกัน — ของแถมต้องราคาเท่ากันทุกตัว",
+      step: "what",
+      test: (s) =>
+        !isSamePriceScope(s) || priceClusters(codesIn(s, "freeItems")).length <= 1,
     },
     {
       label: "ทุกขั้นของแถมต้องมีจำนวนแถมมากกว่าศูนย์",

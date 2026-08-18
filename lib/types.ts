@@ -565,6 +565,13 @@ export type FieldType =
    * against each other, where a dropdown would hide the alternative.
    */
   | "radio"
+  /**
+   * The same one-of-N answer as `radio`, pressed rather than ticked — the
+   * option IS the button. For the question that decides what the rest of the
+   * form means: it earns the top of the page, and a dropdown there hides the
+   * fact that there was a question at all until somebody opens it.
+   */
+  | "choice"
   /** Emoji stand-in picker plus upload — masters that only need a marker. */
   | "image"
   /** Upload only. A real photograph, no icon to fall back on. */
@@ -664,6 +671,18 @@ export interface FormField {
   layout?: "table" | "stacked";
   /** Heading on a stacked row: "ผู้ติดต่อ 1", "ที่อยู่ 2". */
   rowLabel?: string;
+  /**
+   * A second Add that takes several at once.
+   *
+   * The single Add is one row per press with a dropdown inside it, and the
+   * dropdown covers the rows already chosen. Fourteen products is fourteen of
+   * those, chosen blind. This opens the same list instead, with what is
+   * already on the grid marked as taken.
+   *
+   * Fills the grid's first `select` column; the rest of each row is built by
+   * `newRow`, exactly as the single Add builds it.
+   */
+  multiAdd?: boolean;
   /** cards (multi-select role picker) */
   cardOptions?: { key: string; label: string; desc?: string; tone?: BadgeTone }[];
   /** tree field levels */
@@ -786,6 +805,14 @@ export interface FormSchema<T extends RecordBase = RecordBase> {
     rec: LookupHit,
     state: FormState,
   ) => void;
+
+  /**
+   * A badge beside the title saying WHAT is being made, when one form makes
+   * more than one thing — a promotion form is a free-goods form or a discount
+   * form, and they ask different questions of the same page. The answer was
+   * given before the form opened, so it is a label here and not a field.
+   */
+  headerBadge?: (state: FormState) => { text: string; tone: BadgeTone } | null;
 
   findDuplicates?: (state: FormState) => DuplicateHit[];
   openDuplicate?: (code: string, ctx: ActionCtx) => void;
