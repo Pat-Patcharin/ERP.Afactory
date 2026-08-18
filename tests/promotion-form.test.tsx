@@ -8,8 +8,14 @@ import {
   PROMOTION_SCOPE_TH,
   blankPromotion,
   getPromotion,
+  productFloor,
+  promotionFloorBreaches,
+  worstTierAverage,
   type PromotionRow,
 } from "@/lib/domain/promotion";
+import type { LadderTier } from "@/lib/domain/promotion-ladder";
+import { catalogPrice } from "@/lib/domain/pricing";
+import { money } from "@/lib/format";
 import { resetCurrentUser, setCurrentUser } from "@/lib/domain/admin";
 import { SALES_AREAS } from "@/data/sales-areas";
 import { BUSINESS_PARTNERS, isCustomerRole } from "@/lib/domain/partner";
@@ -1337,6 +1343,125 @@ describe("ตารางขั้นบันได", () => {
 
     /* ขั้นที่ปลอดภัยไม่ทำให้ขึ้นคำเตือน */
     expect(noteTexts(freeGoodsState()).join(" ")).not.toContain("ต่ำกว่าราคาขั้นต่ำ");
+  });
+
+  /* ============================================================
+     สินค้าหลายตัวคนละราคา — ฟอร์มต้องพูดตรงกับด่านที่ตัดสินระดับอนุมัติ
+
+     ก่อนหน้านี้ฟอร์มคิดราคาเฉลี่ยเองจาก **สินค้าตัวแรกในตารางตัวเดียว**
+     ส่วน `promotionFloorBreaches` วนทุกตัว ⇒ โปรที่มีสินค้าคนละราคาจะเห็น
+     เขียวบนฟอร์ม แล้วโดนตีกลับตอนขออนุมัติ
+
+     ตัวเลขทุกตัวข้างล่างอ้างราคากลางจริง และถูกยืนยันก่อนใช้ — ถ้าราคาต้นทาง
+     เปลี่ยน ข้อนี้ต้องแดงให้เห็น ไม่ใช่เงียบแล้วทดสอบสิ่งที่ไม่มีความหมายอีกต่อไป
+     ============================================================ */
+  describe("สินค้าหลายตัวคนละราคา", () => {
+    /** ราคาแพง GP ดี — 3 แถม 1 แล้วยังไม่หลุดขั้นต่ำ */
+    const DEAR = "F-DC004-01";
+    /** ราคาถูก GP บาง — 3 แถม 1 แล้วหลุดขั้นต่ำ */
+    const CHEAP = "B-GE006-01";
+    /** ตัวกลางที่ fixture เดิมใช้อยู่ */
+    const MID = "D-AD001-01";
+    const T31: LadderTier = { buy: 3, free: 1 };
+
+    const withItems = (codes: string[], tiers: LadderTier[] = [T31]): FormState => ({
+      ...freeGoodsState(),
+      items: g(codes),
+      tiers: tiers as unknown as GridRow[],
+    });
+
+    const asRow = (codes: string[], tiers: LadderTier[] = [T31]): PromotionRow => ({
+      ...blankPromotion(),
+      kind: "free-goods",
+      items: codes,
+      tiers,
+    });
+
+    it("ราคากลางที่เทสต์ชุดนี้ยืนอยู่บน", () => {
+      expect(catalogPrice(DEAR)).toBe(349_000);
+      expect(productFloor(DEAR)).toBe(201_000);
+      expect(catalogPrice(CHEAP)).toBe(80);
+      expect(productFloor(CHEAP)).toBe(70);
+      /* 349,000 × 3 ÷ 4 = 261,750 ผ่าน · 80 × 3 ÷ 4 = 60 หลุด 70 */
+    });
+
+    it("ช่องเฉลี่ยแสดงตัวที่แย่ที่สุด ไม่ใช่ตัวแรกในตาราง", () => {
+      const cell = computed(withItems([DEAR, CHEAP]), "tiers", "avg", T31);
+
+      expect(cell.value).toContain("60.00");
+      expect(cell.cls, "ต้องขึ้นสีเตือน").toContain("text-danger");
+      expect(cell.value, "บอกด้วยว่ายังมีตัวอื่น").toContain("อีก 1 ตัว");
+
+      /* ทริปไวร์ — ถ้าใครเอา items[0] กลับมาเป็นตัวแทน ช่องนี้จะกลายเป็น
+         261,750.00 และไม่มีสีเตือน ซึ่งคือสภาพก่อนแก้ */
+      expect(cell.value, "ห้ามกลับไปคิดจากสินค้าตัวแรกตัวเดียว").not.toContain("261,750");
+    });
+
+    it("กล่องเตือนบนฟอร์มบอกเรื่องเดียวกับที่ด่านอนุมัติตอบ", () => {
+      const breaches = promotionFloorBreaches(asRow([DEAR, CHEAP]));
+      expect(breaches).toHaveLength(1);
+      expect(breaches[0].code).toBe(CHEAP);
+
+      const notes = noteTexts(withItems([DEAR, CHEAP])).join(" ");
+      expect(notes).toContain("ต่ำกว่าราคาขั้นต่ำ");
+      expect(notes, "บอกว่าตัวไหน").toContain(CHEAP);
+      expect(notes).toContain("60.00");
+      /* ตัวที่ไม่หลุดไม่ถูกฟ้อง */
+      expect(notes).not.toContain("261,750");
+    });
+
+    it("สลับลำดับแถวสินค้า ผลไม่เปลี่ยน — เลขเป็นของโปร ไม่ใช่ของแถวแรก", () => {
+      const a = withItems([DEAR, CHEAP]);
+      const b = withItems([CHEAP, DEAR]);
+      expect(computed(a, "tiers", "avg", T31).value).toBe(computed(b, "tiers", "avg", T31).value);
+      expect(computed(a, "tiers", "avg", T31).cls).toBe(computed(b, "tiers", "avg", T31).cls);
+      expect(noteTexts(a).join(" ")).toBe(noteTexts(b).join(" "));
+    });
+
+    it("ฟอร์มกับด่านอนุมัติตอบตรงกันทุกคู่และทุกขั้น ไม่ใช่ถูกเฉพาะเคสเดียว", () => {
+      const CASES = [[DEAR], [CHEAP], [MID], [DEAR, CHEAP], [CHEAP, DEAR], [MID, CHEAP], [DEAR, MID]];
+      const TIERS: LadderTier[] = [
+        { buy: 3, free: 1 },
+        { buy: 3, free: 5 },
+        { buy: 10, free: 4 },
+        { buy: 5, free: 1 },
+        { buy: 12, free: 5 },
+      ];
+
+      let red = 0;
+      let green = 0;
+      for (const codes of CASES) {
+        for (const tier of TIERS) {
+          const tag = codes.join("+") + " @ " + tier.buy + "/" + tier.free;
+          const st = withItems(codes, [tier]);
+          const domainSaysBreach = promotionFloorBreaches(asRow(codes, [tier])).length > 0;
+          const cell = computed(st, "tiers", "avg", tier as unknown as GridRow);
+
+          expect(cell.cls.includes("text-danger"), "สี: " + tag).toBe(domainSaysBreach);
+          expect(
+            noteTexts(st).join(" ").includes("ต่ำกว่าราคาขั้นต่ำ"),
+            "กล่องเตือน: " + tag,
+          ).toBe(domainSaysBreach);
+
+          /* และเลขในช่องคือค่าเฉลี่ยของตัวที่แย่ที่สุดจริง ไม่ใช่ตัวใดตัวหนึ่ง */
+          const worst = worstTierAverage(codes, tier)!;
+          expect(cell.value, "เลข: " + tag).toContain(money(worst.average));
+
+          if (domainSaysBreach) red++;
+          else green++;
+        }
+      }
+
+      /* เมทริกซ์ต้องมีทั้งสองฝั่ง ไม่งั้นข้อนี้ผ่านเพราะไม่มีอะไรให้ผิด */
+      expect(red, "ต้องมีเคสที่หลุดขั้นต่ำ").toBeGreaterThan(0);
+      expect(green, "ต้องมีเคสที่ผ่าน").toBeGreaterThan(0);
+    });
+
+    it("สินค้าตัวเดียวยังอ่านเหมือนเดิม ไม่มี 'อีก N ตัว' มาเกะกะ", () => {
+      const cell = computed(withItems([MID]), "tiers", "avg", T31);
+      expect(cell.value).toBe("487.50");
+      expect(cell.cls).toBe("");
+    });
   });
 
   it("ยังไม่เลือกสินค้า — ราคาเฉลี่ยเป็นขีด ไม่ใช่ศูนย์", () => {

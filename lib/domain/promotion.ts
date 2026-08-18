@@ -698,6 +698,84 @@ export const priceClusterText = (clusters: PriceCluster[]): string =>
     )
     .join(" · ");
 
+/** ราคาเฉลี่ยของสินค้าตัวหนึ่งที่ขั้นหนึ่ง พร้อมระยะห่างจากราคาขั้นต่ำของตัวมันเอง */
+export interface ItemTierAverage {
+  code: string;
+  name: string;
+  /** ราคาแคตตาล็อกของตัวนี้ */
+  price: number;
+  average: number;
+  /** ราคาขั้นต่ำของตัวนี้ · null = ไม่มีราคาขั้นต่ำ จึงหลุดไม่ได้ */
+  floor: number | null;
+  below: boolean;
+  /**
+   * เฉลี่ย − ขั้นต่ำ · null เมื่อไม่มีขั้นต่ำ
+   *
+   * ติดลบมากที่สุด = ตัวที่แย่ที่สุด และเป็นตัวที่ตัดสินว่าโปรนี้ต้องขึ้นผู้จัดการ
+   * — ไม่ใช่ตัวที่ราคาต่ำที่สุด สินค้าราคา 349,000 กับ 80 หลุดขั้นต่ำได้พอกัน
+   */
+  gap: number | null;
+}
+
+/**
+ * ราคาเฉลี่ยของสินค้าหนึ่งตัวที่ขั้นหนึ่ง — **ที่เดียวของทั้งระบบ**
+ *
+ * ทั้งด่านที่ตัดสินว่าใครอนุมัติได้ (`ladderFloorBreaches`) และช่องบนฟอร์มที่
+ * คนตั้งโปรอ่าน เรียกตัวนี้ตัวเดียวกัน ก่อนหน้านี้ฟอร์มคิดเอง จาก **สินค้า
+ * ตัวแรกในตารางตัวเดียว** แล้วบอกว่าปลอดภัย ในขณะที่ด่านตอบว่าต้องขึ้น
+ * ผู้จัดการ — คนตั้งโปรเห็นเขียวแล้วโปรถูกตีกลับ
+ *
+ * คืน null เมื่อสินค้านั้นยังไม่มีราคา (0) — "ไม่มีราคา" ไม่ใช่ "ฟรี" และ
+ * การคิดเฉลี่ยจากศูนย์คือการรายงานว่าทุกขั้นหลุดขั้นต่ำ
+ */
+export function itemTierAverage(code: string, tier: LadderTier): ItemTierAverage | null {
+  const price = catalogPrice(code);
+  if (!(price > 0)) return null;
+  if (!(tier.buy > 0)) return null;
+
+  const average = tierAveragePrice(price, tier);
+  const floor = productFloor(code);
+  return {
+    code,
+    name: PRODUCTS.find((x) => x.code === code)?.name ?? code,
+    price,
+    average,
+    floor,
+    below: floor !== null && average < floor,
+    gap: floor === null ? null : average - floor,
+  };
+}
+
+/**
+ * ราคาเฉลี่ยของทุกสินค้าที่ขั้นนั้น เรียงจากตัวที่แย่ที่สุดก่อน
+ *
+ * โปรใบเดียวมีสินค้าหลายตัวคนละราคาได้ ราคาเฉลี่ยจึงไม่ใช่ตัวเลขเดียว —
+ * ช่องบนหน้าจอที่มีที่ว่างให้เลขเดียวต้องแสดงตัวที่แย่ที่สุด เพราะนั่นคือตัวที่
+ * ตัดสินว่าทั้งใบต้องขึ้นผู้จัดการหรือไม่ ตัวที่เหลือบอกเป็นจำนวนได้
+ */
+export function tierAverages(
+  items: readonly string[],
+  tier: LadderTier,
+): ItemTierAverage[] {
+  return items
+    .map((code) => itemTierAverage(code, tier))
+    .filter((a): a is ItemTierAverage => a !== null)
+    .sort((a, b) => {
+      /* ตัวที่หลุดมาก่อนเสมอ แล้วเรียงตามระยะที่หลุดลึกที่สุด
+         ตัวที่ไม่มีขั้นต่ำหลุดไม่ได้ จึงไปท้ายแถวและไม่มีวันเป็น "แย่ที่สุด" */
+      if (a.below !== b.below) return a.below ? -1 : 1;
+      if (a.gap === null) return 1;
+      if (b.gap === null) return -1;
+      return a.gap - b.gap;
+    });
+}
+
+/** ตัวที่ตัดสินว่าขั้นนี้ต้องขึ้นผู้จัดการหรือไม่ · null เมื่อยังไม่มีสินค้าที่มีราคา */
+export const worstTierAverage = (
+  items: readonly string[],
+  tier: LadderTier,
+): ItemTierAverage | null => tierAverages(items, tier)[0] ?? null;
+
 export interface FloorBreach {
   code: string;
   name: string;
@@ -705,6 +783,29 @@ export interface FloorBreach {
   /** ราคาเฉลี่ยที่ขั้นนี้ทำให้เกิด */
   average: number;
   floor: number;
+}
+
+/**
+ * ขั้นไหนของสินค้าตัวไหนหลุดราคาขั้นต่ำ — รับรายการตรง ๆ ไม่ต้องมีระเบียน
+ *
+ * ฟอร์มเรียกตัวนี้ระหว่างพิมพ์ (ยังไม่มีระเบียน) และ `promotionFloorBreaches`
+ * เรียกตัวนี้ตอนตัดสินระดับอนุมัติ ทั้งสองทางจึงตอบเหมือนกันเสมอโดยโครงสร้าง
+ * ไม่ใช่โดยบังเอิญ
+ */
+export function ladderFloorBreaches(
+  items: readonly string[],
+  tiers: readonly LadderTier[],
+): FloorBreach[] {
+  const out: FloorBreach[] = [];
+  /* วนสินค้าเป็นวงนอกเหมือนเดิม ลำดับผลลัพธ์จึงไม่เปลี่ยนจากของเดิม */
+  for (const code of items) {
+    for (const tier of tiers) {
+      const a = itemTierAverage(code, tier);
+      if (!a || a.floor === null || !a.below) continue;
+      out.push({ code, name: a.name, tier, average: a.average, floor: a.floor });
+    }
+  }
+  return out;
 }
 
 /**
@@ -727,20 +828,10 @@ export function promotionFloorBreaches(p: PromotionRow): FloorBreach[] {
      ฟิลด์จะว่าง — ราคาหลังลดของโปรส่วนลดใช้ `promotionDiscountBreaches` */
   if (p.kind !== "free-goods") return [];
 
-  const out: FloorBreach[] = [];
-  for (const code of p.items) {
-    const floor = productFloor(code);
-    if (floor === null) continue;
-    const unit = catalogPrice(code);
-    if (!(unit > 0)) continue;
-    const name = PRODUCTS.find((x) => x.code === code)?.name ?? code;
-
-    for (const tier of p.tiers) {
-      const average = tierAveragePrice(unit, tier);
-      if (average < floor) out.push({ code, name, tier, average, floor });
-    }
-  }
-  return out;
+  /* สูตรอยู่ที่ `ladderFloorBreaches` ตัวเดียว ตรงนี้เหลือแค่ด่านชนิด —
+     ฟอร์มเรียกตัวนั้นตรง ๆ ระหว่างพิมพ์ ถ้าที่นี่ยังคิดเองอีกชุด วันหนึ่ง
+     สองที่จะตอบไม่ตรงกัน แล้วคนตั้งโปรจะเชื่อที่ที่ผิด */
+  return ladderFloorBreaches(p.items, p.tiers);
 }
 
 /* ============================================================

@@ -8,13 +8,14 @@ import {
   PROMOTIONS,
   PROMOTION_KINDS,
   applyPromotionPatch,
-  averageUnitPrice,
-  productFloor,
+  ladderFloorBreaches,
+  worstTierAverage,
   createPromotion,
   getPromotion,
   nextPromotionCode,
   priceClusters,
   priceClusterText,
+  type ItemTierAverage,
   type PromotionRow,
 } from "@/lib/domain/promotion";
 import {
@@ -98,23 +99,6 @@ const ladderTiersOf = (st: FormState): LadderTier[] =>
   ((st.tiers ?? []) as GridRow[])
     .filter((r) => num(r.buy) > 0)
     .map((r) => ({ buy: num(r.buy), free: num(r.free) }));
-
-/**
- * ราคาต่อชิ้นที่ใช้คิดราคาเฉลี่ยในตารางขั้น
- *
- * อ่าน `catalogPrice` ตัวเดียวกับที่ `promotionFloorBreaches` ใช้ตัดสินว่าใคร
- * อนุมัติได้ — ถ้าหน้าจอใช้ราคาคนละตัวกับตัวที่ตัดสิน คนกรอกจะเห็นเขียวแล้ว
- * ถูกตีกลับตอนขออนุมัติ
- *
- * สินค้าหลายตัวในโปรใช้ตัวแรกเป็นตัวแทน และบอกไว้ในหัวคอลัมน์ — ยกเว้นแบบ
- * ราคาเดียวกัน ที่ทุกตัวในกลุ่มราคาเท่ากันอยู่แล้ว ตัวแรกจึงไม่ใช่ตัวแทนของ
- * ใคร มันคือราคาของทั้งกลุ่ม และคำตอบไม่เปลี่ยนไม่ว่าลูกค้าหยิบตัวไหน
- */
-const unitPriceOf = (st: FormState): { code: string; price: number; floor: number | null } | null => {
-  const [code] = itemCodes(st);
-  if (!code) return null;
-  return { code, price: catalogPrice(code), floor: productFloor(code) };
-};
 
 const discountMode = (st: FormState): DiscountMode =>
   String(st.discountMode ?? "price") === "percent" ? "percent" : "price";
@@ -837,21 +821,26 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
         /* ---------- ขั้นบันได — ซื้อเท่าไหร่ แถมเท่าไหร่ ---------- */
         ...(() => {
           if (!isFreeGoods(s)) return [];
-          const base = unitPriceOf(s);
+          const codes = itemCodes(s);
 
-          /* คอลัมน์ถูกสร้างข้างใน blocks() เพื่อให้ closure ปิดทับ state ได้ —
-             `GridCol.get` รับแค่ row จึงไม่เห็นราคาสินค้า ซึ่งอยู่ในอีกกริด
+          /* ---------- ฟอร์มไม่คิดราคาเฉลี่ยเอง ----------
+
+             เคยคิดเองจาก **สินค้าตัวแรกในตารางตัวเดียว** ผลคือโปรที่มีสินค้า
+             หลายตัวคนละราคา จะเห็นเลขของตัวแรกและไม่มีคำเตือน ในขณะที่ด่าน
+             ที่ตัดสินระดับอนุมัติ (`promotionFloorBreaches`) วนทุกตัวและตอบว่า
+             ต้องขึ้นผู้จัดการ — คนตั้งโปรเห็นเขียวแล้วใบถูกตีกลับ
+
+             ตอนนี้ถาม `worstTierAverage` ซึ่งเป็นสูตรตัวเดียวกับด่านนั้น
+             คอลัมน์เดียวแสดงหลายราคาไม่ได้ จึงแสดงตัวที่แย่ที่สุด เพราะตัวนั้น
+             คือตัวที่ตัดสินว่าทั้งใบต้องขึ้นผู้จัดการหรือไม่ ที่เหลือบอกเป็นจำนวน
+
+             คอลัมน์ถูกสร้างข้างใน blocks() เพื่อให้ closure ปิดทับ state ได้ —
+             `GridCol.get` รับแค่ row จึงไม่เห็นรายการสินค้า ซึ่งอยู่ในอีกกริด
              blocks() ถูกเรียกใหม่ทุกครั้งที่พิมพ์ คำเตือนจึงขึ้นทันทีโดยไม่ต้องบันทึก */
-          const avgOf = (r: GridRow): number | null => {
-            if (!base || !(base.price > 0)) return null;
+          const worstOf = (r: GridRow): ItemTierAverage | null => {
             const buy = num(r.buy);
-            if (buy <= 0) return null;
-            return averageUnitPrice(base.price, buy, num(r.free));
-          };
-
-          const below = (r: GridRow): boolean => {
-            const avg = avgOf(r);
-            return avg !== null && base?.floor !== null && base !== null && avg < base.floor!;
+            if (buy <= 0 || !codes.length) return null;
+            return worstTierAverage(codes, { buy, free: num(r.free) });
           };
 
           const grid: FormBlock = {
@@ -860,11 +849,12 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
             label: "ขั้นบันได — ซื้อเท่าไหร่ แถมเท่าไหร่",
             addLabel: "เพิ่มขั้น",
             empty: "ยังไม่ได้ตั้งขั้น — โปรแถมสินค้าที่ไม่มีขั้นจะไม่แถมอะไรเลย",
-            hint: base
-              ? `ราคาเฉลี่ยคิดจาก ${isSamePriceScope(s) ? "ราคาของทั้งกลุ่ม" : base.code} ${money(
-                  base.price,
-                )}${base.floor !== null ? ` · ราคาขั้นต่ำ ${money(base.floor)}` : ""}`
-              : "เลือกสินค้าที่เข้าโปรก่อน แล้วราคาเฉลี่ยจะคำนวณให้",
+            hint:
+              codes.length === 0
+                ? "เลือกสินค้าที่เข้าโปรก่อน แล้วราคาเฉลี่ยจะคำนวณให้"
+                : codes.length === 1
+                  ? `ราคาเฉลี่ยคิดจาก ${codes[0]} เทียบกับราคาขั้นต่ำของตัวมันเอง`
+                  : `คิดจากสินค้าทุกตัวในโปร (${fmt(codes.length)} ตัว) — ช่องเฉลี่ยแสดงตัวที่ใกล้หลุดราคาขั้นต่ำที่สุด เพราะตัวนั้นคือตัวที่ตัดสินว่าทั้งใบต้องขึ้นผู้จัดการหรือไม่`,
             cols: [
               {
                 key: "buy",
@@ -885,16 +875,20 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
               },
               {
                 key: "avg",
-                label: "ราคาเฉลี่ยต่อชิ้น",
+                /* หัวคอลัมน์บอกตรง ๆ ว่าเลขในช่องเป็นของตัวไหน เมื่อมีหลายตัว —
+                   "ราคาเฉลี่ยต่อชิ้น" เฉย ๆ อ่านว่าเป็นเลขของทั้งโปร ซึ่งไม่มี
+                   อยู่จริงเมื่อสินค้าคนละราคา */
+                label: codes.length > 1 ? "ราคาเฉลี่ย — ตัวที่แย่ที่สุด" : "ราคาเฉลี่ยต่อชิ้น",
                 type: "computed",
                 align: "right",
                 get: (r) => {
-                  const avg = avgOf(r);
-                  if (avg === null) return DASH;
-                  return below(r) ? `${money(avg)} ⚠` : money(avg);
+                  const w = worstOf(r);
+                  if (!w) return DASH;
+                  const more = codes.length > 1 ? ` · อีก ${fmt(codes.length - 1)} ตัว` : "";
+                  return `${money(w.average)}${w.below ? " ⚠" : ""}${more}`;
                 },
                 /* สีเตือนใช้ token เดิมของระบบ ไม่ได้ตั้งสีใหม่ */
-                cls: (r) => (below(r) ? "font-semibold text-danger" : ""),
+                cls: (r) => (worstOf(r)?.below ? "font-semibold text-danger" : ""),
               },
             ],
           };
@@ -903,26 +897,23 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
         /* สรุปเป็นข้อความด้วย เพราะสีในตารางอ่านไม่ออกถ้าตารางเลื่อนออกนอกจอ */
         ...(() => {
           if (!isFreeGoods(s)) return [];
-          const base = unitPriceOf(s);
-          if (!base || !(base.price > 0) || base.floor === null) return [];
-          const bad = ladderTiersOf(s).filter(
-            (t) => averageUnitPrice(base.price, t.buy, t.free) < base.floor!,
-          );
-          if (!bad.length) return [];
+          /* ตัวเดียวกับที่ `promotionFloorBreaches` เรียก — กล่องนี้จึงบอกสิ่ง
+             เดียวกับที่ด่านอนุมัติจะตอบ ไม่ใช่ข้อสรุปคู่ขนานที่คิดจากสินค้าตัวเดียว */
+          const breaches = ladderFloorBreaches(itemCodes(s), ladderTiersOf(s));
+          if (!breaches.length) return [];
           return [
             {
               type: "note",
-              label: `⚠ มี ${bad.length} ขั้นที่ราคาเฉลี่ยต่ำกว่าราคาขั้นต่ำ`,
+              label: `⚠ มี ${breaches.length} รายการที่ราคาเฉลี่ยต่ำกว่าราคาขั้นต่ำ`,
               text:
-                bad
+                breaches
                   .map(
-                    (t) =>
-                      `ซื้อ ${fmt(t.buy)} แถม ${fmt(t.free)} → เฉลี่ย ${money(
-                        averageUnitPrice(base.price, t.buy, t.free),
-                      )}`,
+                    (b) =>
+                      `${b.code} ซื้อ ${fmt(b.tier.buy)} แถม ${fmt(b.tier.free)} → เฉลี่ย ${money(
+                        b.average,
+                      )} ต่ำกว่าราคาขั้นต่ำ ${money(b.floor)}`,
                   )
-                  .join(" · ") +
-                ` — ต่ำกว่าราคาขั้นต่ำ ${money(base.floor)} ของ ${base.code} โปรนี้ต้องให้ผู้จัดการฝ่ายขายอนุมัติ`,
+                  .join(" · ") + " — โปรนี้ต้องให้ผู้จัดการฝ่ายขายอนุมัติ",
             } as FormBlock,
           ];
         })(),
