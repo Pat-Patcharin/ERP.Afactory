@@ -1,22 +1,20 @@
 import {
-  BUDGET_BASIS_TH,
   COMMISSION_BASES,
+  DEPOSIT_TERM,
   OPEN_PROMOTION_SCOPES,
+  PAYMENT_TERMS,
   PROMOTION_REASONS,
   PROMOTION_SCOPE_TH,
   PROMOTIONS,
   PROMOTION_KINDS,
-  TRY_QTY_MAX,
   applyPromotionPatch,
   averageUnitPrice,
-  clampTryQty,
-  ladderUsesText,
   productFloor,
   createPromotion,
   getPromotion,
+  nextPromotionCode,
   priceClusters,
   priceClusterText,
-  tryLadder,
   type PromotionRow,
 } from "@/lib/domain/promotion";
 import {
@@ -38,18 +36,27 @@ import { SR_CHANNELS } from "@/data/sales-requests";
 import { SALES_AREAS } from "@/data/sales-areas";
 import { SR_CUST_GROUPS } from "@/data/sales-reps";
 import { PRODUCTS } from "@/lib/domain/product";
-import { WAREHOUSES } from "@/lib/domain/warehouse";
+import { BUSINESS_PARTNERS, isCustomerRole } from "@/lib/domain/partner";
 import { DASH, fmt, isoToDmy, dmyToIso, money } from "@/lib/format";
 import type { LadderTier } from "@/lib/domain/promotion-ladder";
-import type { FormBlock, FormSchema, FormState, GridRow } from "@/lib/types";
-import { opts, saved } from "./common";
+import type {
+  FormBlock,
+  FormSchema,
+  FormState,
+  GridRow,
+  SelectOption,
+} from "@/lib/types";
+import { isCreate, opts, saved } from "./common";
 
 /* ============================================================
    ฟอร์มโปรโมชั่น — §6b ห้ากลุ่ม
 
-   สี่กลุ่มแรกเป็นเงื่อนไข "ใช้เมื่อไหร่ กับอะไร กับใคร ได้กี่ครั้ง"
-   กลุ่มที่ห้าเป็นเรื่องเงินกับสต๊อก — คนละธรรมชาติ จึงอยู่แท็บของตัวเอง
-   ไม่ใช่ต่อท้ายกลุ่มสี่
+   §6b บอกว่ามีห้ากลุ่มอะไรบ้าง ไม่ได้บอกว่าต้องเรียงยังไง ลำดับบนหน้าจอ
+   จึงเรียงตามงานของคนกรอก: กลุ่มที่ตอบได้จากตัวแคมเปญเอง (ข้อมูลโปรโมชั่น ·
+   กลุ่มลูกค้าที่ใช้งาน · เงื่อนไขการใช้งาน) ขึ้นก่อน แล้วปิดท้ายด้วยตารางสินค้า
+   และของแถม ซึ่งเป็นงานที่ยาวที่สุดของฟอร์ม — เลือกสินค้า แล้วตั้งขั้นบันได
+
+   วางงานยาวไว้กลางทาง คำถามสั้นที่เหลือจะถูกอ่านตอนคนกรอกล้าไปแล้ว
 
    ฟอร์มนี้ไม่มีกฎอยู่ในตัวเอง — ทุกการเขียนไปที่ `createPromotion`
    (สร้าง) และ `applyPromotionPatch` (แก้) ซึ่งเป็นที่ที่ด่านสิทธิ์
@@ -62,9 +69,6 @@ import { opts, saved } from "./common";
    ============================================================ */
 
 const num = (v: unknown) => Number(v) || 0;
-
-/** ชนิดที่หักของแถมออกจากคลังจริง — ส่วนลดราคาไม่หักสต๊อก */
-const givesGoods = (st: FormState) => String(st.kind ?? "free-goods") === "free-goods";
 
 const isDiscount = (st: FormState) => String(st.kind ?? "") === "price-discount";
 
@@ -142,15 +146,56 @@ export const itemsWithoutLotTracking = (items: unknown): string[] =>
     .filter(Boolean)
     .filter((code) => !lotTracked(code));
 
-const productOptions = () => PRODUCTS.filter((p) => p.status === "Active").map((p) => p.code);
-const warehouseOptions = () =>
-  WAREHOUSES.filter((w) => w.status === "Active").map((w) => `${w.code} ${w.name}`);
+/**
+ * สินค้าที่เลือกได้ — เก็บรหัส แสดงรหัสกับชื่อ
+ *
+ * ค่าที่เก็บต้องเป็นรหัสเปล่า เพราะทุกตัวคำนวณในระบบค้นด้วยรหัส (`catalogPrice`
+ * · `productFloor` · `lotTracked`) แต่ "H-CS006-08" ตัวเดียวไม่ได้บอกใครว่า
+ * นั่นคืออะไร คนเลือกสินค้าผิดตัวจากรายการที่มีแต่รหัสคือความผิดพลาดที่ไม่มี
+ * ใครเห็นจนกว่าของจะถูกส่ง
+ */
+const productOptions = (): SelectOption[] =>
+  PRODUCTS.filter((p) => p.status === "Active").map((p) => ({
+    value: p.code,
+    label: `${p.code} — ${p.name}`,
+  }));
 const areaOptions = () => SALES_AREAS.map((a) => a.name);
+
+/**
+ * ลูกค้าที่เจาะจงได้ — เก็บรหัส แสดงรหัสกับชื่อ แบบเดียวกับสินค้า
+ *
+ * เคยเป็นช่องพิมพ์รหัสเปล่า ซึ่งแปลว่าพิมพ์ BP000112 แทน BP000121 แล้วโปรจะไป
+ * ตกกับลูกค้าคนอื่นโดยที่ฟอร์มไม่มีทางรู้ — และคนกรอกต้องเปิดหน้า Business
+ * Partner อีกจอเพื่อหารหัสก่อนทุกครั้ง
+ *
+ * ตัวแทนจำหน่ายนับเป็นลูกค้าด้วย ตาม `isCustomerRole` ที่ทั้งระบบใช้ร่วมกัน
+ */
+const customerOptions = (): SelectOption[] =>
+  BUSINESS_PARTNERS.filter((bp) => bp.status === "Active" && isCustomerRole(bp)).map((bp) => ({
+    value: bp.code,
+    label: `${bp.code} — ${bp.nameTh || bp.nameEn || bp.trade}`,
+  }));
+
+/** โปรตัวอื่นในทะเบียน — ตัวเองไม่อยู่ในรายการ เพราะซ้อนกับตัวเองไม่ใช่คำถาม */
+const otherPromotionOptions = (st: FormState): SelectOption[] =>
+  PROMOTIONS.filter((p) => p.code !== String(st.code ?? "").trim()).map((p) => ({
+    value: p.code,
+    label: `${p.code} — ${p.name}`,
+  }));
 
 /** ค่าจากฟอร์ม → patch ที่โดเมนรับ ที่เดียว ใช้ทั้งตอนสร้างและตอนแก้ */
 function toPatch(s: FormState): Partial<PromotionRow> {
   const list = (path: string) =>
     ((s[path] ?? []) as GridRow[]).map((r) => String(r.code ?? "").trim()).filter(Boolean);
+
+  /* ช่องแบบ `picks` ถือรายการข้อความตรง ๆ ไม่ใช่แถวของกริด — ค่าที่ไม่ใช่
+     ข้อความคือของค้างจากรูปเดิมของช่องนี้ (ร่างที่กู้กลับมา) ทิ้งไปดีกว่า
+     เขียนกลับลงระเบียน */
+  const picked = (path: string) =>
+    ((s[path] ?? []) as unknown[])
+      .filter((v): v is string => typeof v === "string")
+      .map((v) => v.trim())
+      .filter(Boolean);
 
   /* ประเภทมาจากหน้าเลือกประเภทเป็น `?kind=` ซึ่ง route แปลงเป็น seed ให้แล้ว
      ถ้าไม่ส่งต่อ ทุกโปรจะกลายเป็น "แถมสินค้า" เพราะนั่นคือค่าเริ่มต้นของ
@@ -161,6 +206,9 @@ function toPatch(s: FormState): Partial<PromotionRow> {
     : "free-goods";
 
   return {
+    /* ตอนสร้าง: รหัสที่พิมพ์เอง ว่างไว้ = ให้ `createPromotion` ออกให้
+       ตอนแก้: `applyPromotionPatch` ตัดทิ้งเสมอ รหัสไม่เคยเปลี่ยนหลังสร้าง */
+    code: String(s.code ?? "").trim(),
     kind,
     name: String(s.name ?? "").trim(),
     printName: String(s.printName ?? "").trim(),
@@ -191,25 +239,24 @@ function toPatch(s: FormState): Partial<PromotionRow> {
     nearExpiryOnly: Boolean(s.nearExpiryOnly),
     nearExpiryDays: nullNum(s.nearExpiryDays),
 
-    customerGroups: list("customerGroups"),
+    customerGroups: picked("customerGroups"),
     customers: list("customers"),
-    areas: list("areas"),
-    channels: list("channels"),
-    allowDraftPartner: Boolean(s.allowDraftPartner),
+    areas: picked("areas"),
+    channels: picked("channels"),
 
     usePerCustomer: nullNum(s.usePerCustomer),
+    usePerArea: nullNum(s.usePerArea),
     useTotal: nullNum(s.useTotal),
+    freeQtyCap: nullNum(s.freeQtyCap),
     stackWithPromo: Boolean(s.stackWithPromo),
+    stackWithPromos: picked("stackWithPromos"),
     stackWithCustomerDiscount: Boolean(s.stackWithCustomerDiscount),
-    recordUsage: Boolean(s.recordUsage),
-    needsApproval: Boolean(s.needsApproval),
     commissionBase: String(s.commissionBase ?? ""),
+    paymentTerm: String(s.paymentTerm ?? ""),
+    /* % มัดจำมีความหมายเฉพาะกับเทอมมัดจำ — เลือกเทอมอื่นแล้วเลขเก่าค้างอยู่
+       คือตัวเลขที่ไม่มีใครตั้งใจ และวันหนึ่งจะมีคนอ่านมันเป็นเงื่อนไขจริง */
+    depositPct: String(s.paymentTerm ?? "") === DEPOSIT_TERM ? nullNum(s.depositPct) : null,
 
-    budget: nullNum(s.budget),
-    budgetBasis: (String(s.budgetBasis ?? "") as PromotionRow["budgetBasis"]),
-    budgetOver: (String(s.budgetOver ?? "warn") as PromotionRow["budgetOver"]),
-    budgetWarnAt: num(s.budgetWarnAt),
-    freeGoodsWarehouse: String(s.freeGoodsWarehouse ?? ""),
   };
 }
 
@@ -269,24 +316,19 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     customers: [],
     areas: [],
     channels: [],
-    allowDraftPartner: false,
 
     usePerCustomer: "",
+    usePerArea: "",
     useTotal: "",
+    freeQtyCap: "",
     stackWithPromo: false,
+    stackWithPromos: [],
     stackWithCustomerDiscount: false,
-    recordUsage: true,
-    needsApproval: true,
     /* ห้ามมีค่าเริ่มต้น — กระทบรายได้พนักงาน */
     commissionBase: "",
+    paymentTerm: "",
+    depositPct: "",
 
-    budget: "",
-    /* ห้ามมีค่าเริ่มต้น — งบ 100,000 คิดจากต้นทุนหรือราคาขายต่างกันเป็นเท่าตัว */
-    budgetBasis: "",
-    budgetOver: "warn",
-    budgetWarnAt: 80,
-    /* ห้ามมีค่าเริ่มต้น — ของแถมหักจากคลังไหนคือของจริงที่หายไปจากที่นั้น */
-    freeGoodsWarehouse: "",
   }),
 
   /**
@@ -335,33 +377,30 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     nearExpiryOnly: p.nearExpiryOnly,
     nearExpiryDays: p.nearExpiryDays ?? "",
 
-    customerGroups: p.customerGroups.map((code) => ({ code })),
+    customerGroups: [...p.customerGroups],
     customers: p.customers.map((code) => ({ code })),
-    areas: p.areas.map((code) => ({ code })),
-    channels: p.channels.map((code) => ({ code })),
-    allowDraftPartner: p.allowDraftPartner,
+    areas: [...p.areas],
+    channels: [...p.channels],
 
     usePerCustomer: p.usePerCustomer ?? "",
+    usePerArea: p.usePerArea ?? "",
     useTotal: p.useTotal ?? "",
+    freeQtyCap: p.freeQtyCap ?? "",
     stackWithPromo: p.stackWithPromo,
+    stackWithPromos: [...p.stackWithPromos],
     stackWithCustomerDiscount: p.stackWithCustomerDiscount,
-    recordUsage: p.recordUsage,
-    needsApproval: p.needsApproval,
     commissionBase: p.commissionBase,
+    paymentTerm: p.paymentTerm,
+    depositPct: p.depositPct ?? "",
 
-    budget: p.budget ?? "",
-    budgetBasis: p.budgetBasis,
-    budgetOver: p.budgetOver,
-    budgetWarnAt: p.budgetWarnAt,
-    freeGoodsWarehouse: p.freeGoodsWarehouse,
   }),
 
   steps: [
     /* ---------- กลุ่ม 1 · ข้อมูลระบุตัวโปร ---------- */
     {
       key: "identity",
-      label: "ข้อมูลโปร",
-      railLabel: "ข้อมูลโปร",
+      label: "ข้อมูลโปรโมชั่น",
+      railLabel: "ข้อมูลโปรโมชั่น",
       labelTh: "รูปแบบ ชื่อ ช่วงเวลา และเหตุผลที่สร้าง",
       blocks: (s) => [
         /* ---------- คำถามแรกของฟอร์ม — รูปแบบ ----------
@@ -398,11 +437,37 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
             },
           ],
         },
+/* ---------- กรอบเดียว — รหัส ชื่อ ช่วงเวลา ยอดขั้นต่ำ เหตุผล ----------
+
+           เคยเป็นสามกรอบซ้อนกัน ทั้งที่ทุกช่องในนั้นเป็นเรื่องเดียวกัน: เงื่อนไข
+           ระดับ "ใบนี้" ที่ไม่ขึ้นกับสินค้าตัวไหน — สามหัวข้อเล็ก ๆ กับเส้นขอบ
+           สามชั้นทำให้ต้องกวาดตาสามรอบเพื่ออ่านสิ่งที่อ่านรอบเดียวได้
+
+           ยอดขั้นต่ำอยู่ในนี้ด้วยเพราะเป็นเกณฑ์ผ่าน/ไม่ผ่านของทั้งใบ ไม่ใช่
+           คุณสมบัติของสินค้าตัวไหน วางไว้เหนือตารางสินค้าแล้วอ่านเหมือนยอด
+           ขั้นต่ำต่อสินค้าหนึ่งตัว */
         {
           type: "card",
-          title: "ชื่อและช่วงเวลา",
+          title: "รายละเอียดโปร",
           cols: "2",
           fields: [
+            {
+              /* รหัสพิมพ์เองได้ตอนสร้าง ว่างไว้ = ระบบออกให้ตามลำดับเดิม
+                 หลังบันทึกแล้วอ่านอย่างเดียว — เอกสารที่อ้างรหัสนี้ไปแล้วจะ
+                 กลายเป็นเอกสารที่อ้างถึงของที่ไม่มีอยู่ ถ้ารหัสเปลี่ยนได้ */
+              type: "text",
+              path: "code",
+              label: "รหัสโปร",
+              placeholder: nextPromotionCode(),
+              hint: `ว่างไว้ = ออกให้อัตโนมัติ (${nextPromotionCode()}) · แก้ไม่ได้หลังบันทึก`,
+              when: isCreate,
+            },
+            {
+              type: "static",
+              path: "code",
+              label: "รหัสโปร",
+              when: (st) => !isCreate(st),
+            },
             {
               type: "text",
               path: "name",
@@ -416,6 +481,7 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
               label: "ชื่อที่ลูกค้าเห็นบนเอกสาร",
               placeholder: "ว่างไว้ = ใช้ชื่อภายใน",
               hint: "ชื่อภายในกับชื่อที่ลูกค้าเห็นมักไม่เหมือนกัน",
+              span: true,
             },
             { type: "date", path: "from", label: "เริ่มใช้", required: true },
             {
@@ -424,18 +490,6 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
               label: "สิ้นสุด",
               hint: "ว่างไว้ = ไม่มีกำหนดสิ้นสุด",
             },
-          ],
-        },
-        /* ---------- ยอดขั้นต่ำ — ย้ายมาจากกลุ่ม "ใช้กับอะไร" ----------
-
-           เกณฑ์ผ่าน/ไม่ผ่านของทั้งใบ ไม่ใช่คุณสมบัติของสินค้าตัวไหน จึงอยู่กับ
-           ช่วงเวลาและเหตุผล ซึ่งเป็นเงื่อนไขระดับใบเหมือนกัน ไม่ใช่อยู่เหนือ
-           ตารางสินค้าจนอ่านเหมือนยอดขั้นต่ำต่อสินค้าหนึ่งตัว */
-        {
-          type: "card",
-          title: "ยอดสั่งซื้อขั้นต่ำ",
-          cols: "2",
-          fields: [
             {
               type: "number",
               path: "minOrder",
@@ -456,22 +510,17 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
               options: opts(["ยอดก่อนภาษี", "ยอดรวมภาษี"]),
               when: (st) => !isRedeem(st) && String(st.minOrder ?? "").trim() !== "",
             },
-          ],
-        },
-        {
-          type: "card",
-          title: "เหตุผลที่สร้างโปรนี้",
-          cols: "2",
-          fields: [
             {
               type: "select",
               path: "reason",
-              label: "เหตุผล",
-              required: true,
+              label: "เหตุผลที่สร้างโปรนี้",
               /* ตัวเลือกตายตัว ไม่ใช่ช่องพิมพ์อิสระ — §6c ต้องเอาไปจัดกลุ่ม
-                 เทียบผลได้ ถ้าพิมพ์เองจะได้ 40 คำสำหรับเหตุผลเดียวกัน */
+                 เทียบผลได้ ถ้าพิมพ์เองจะได้ 40 คำสำหรับเหตุผลเดียวกัน
+                 ไม่บังคับแล้ว: §6c ขอไว้เพื่อให้รายงานสรุปได้ว่าโปรแบบไหนคุ้ม
+                 แต่โปรที่บันทึกไม่ได้เพราะยังไม่รู้จะเลือกเหตุผลไหน คือโปรที่
+                 ไม่ได้เข้ารายงานนั้นเลย — เลือกทีหลังได้ */
               options: opts(PROMOTION_REASONS),
-              hint: "ไม่มีค่าเริ่มต้น — เลือกเองทุกครั้ง",
+              hint: "ว่างไว้ได้ — ใส่ไว้เพื่อสรุปทีหลังว่าโปรแบบไหนคุ้ม",
             },
             {
               type: "textarea",
@@ -488,11 +537,191 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       ],
     },
 
-    /* ---------- กลุ่ม 2 · ใช้กับอะไร ---------- */
+    /* ---------- กลุ่ม 2 · ใช้กับใคร ----------
+
+       ทั้งสามช่องเป็นแบบเดียวกัน: ว่าง = ทุกอัน ซึ่งเป็นคำตอบของเกือบทุกโปร
+       และเป็นคำตอบที่ตารางว่างเปล่ากับปุ่ม "เพิ่ม" สื่อได้แย่ที่สุด — มันอ่าน
+       เหมือนฟอร์มที่ยังกรอกไม่เสร็จ */
+    {
+      key: "who",
+      label: "กลุ่มลูกค้าที่ใช้งาน",
+      railLabel: "กลุ่มลูกค้าที่ใช้งาน",
+      labelTh: "กลุ่มลูกค้า เขตขาย และช่องทาง",
+      blocks: () => [
+        {
+          type: "picks",
+          path: "customerGroups",
+          label: "กลุ่มลูกค้า",
+          allLabel: "ทุกกลุ่มลูกค้า",
+          options: [...SR_CUST_GROUPS],
+        },
+        {
+          type: "picks",
+          path: "areas",
+          label: "เขตขาย",
+          allLabel: "ทุกเขต",
+          options: areaOptions(),
+        },
+        {
+          type: "picks",
+          path: "channels",
+          label: "ช่องทางขาย",
+          allLabel: "ทุกช่องทาง",
+          options: [...SR_CHANNELS],
+        },
+        {
+          /* ยังเป็นตาราง ไม่ใช่ช่องติ๊กแบบสามช่องข้างบน — กลุ่ม/เขต/ช่องทางมี
+             ห้าถึงยี่สิบตัวเลือกและ "ทุกอัน" เป็นคำตอบปกติ ส่วนลูกค้ามีเป็นพัน
+             และ "ทุกราย" คือปล่อยว่าง ไม่ใช่ติ๊กทั้งพัน */
+          type: "grid",
+          path: "customers",
+          label: "เจาะจงลูกค้ารายราย",
+          addLabel: "เพิ่มลูกค้า",
+          multiAdd: true,
+          empty: "ว่างไว้ = ไม่เจาะจงราย",
+          hint: "ใส่เมื่อโปรนี้ทำให้ลูกค้าเฉพาะราย ไม่ใช่ทั้งกลุ่ม",
+          cols: [
+            {
+              key: "code",
+              label: "ลูกค้า",
+              type: "select",
+              options: customerOptions(),
+              required: true,
+            },
+          ],
+        },
+      ],
+    },
+
+    /* ---------- กลุ่ม 3 · ข้อจำกัดและผลกระทบ ---------- */
+    {
+      key: "limits",
+      label: "เงื่อนไขการใช้งาน",
+      railLabel: "เงื่อนไขการใช้งาน",
+      labelTh: "เพดานการใช้ การซ้อนโปร การชำระเงิน และค่าคอม",
+      blocks: (s) => [
+        {
+          /* กรอบเดียว สามคอลัมน์ — ทุกช่องในนี้ตอบคำถามเดียวกันว่า "ใบที่ใช้
+             โปรนี้ถูกจำกัดอะไรบ้าง" ทั้งเพดานจำนวน การซ้อนกับส่วนลดอื่น และ
+             เงื่อนไขการจ่ายเงิน สามกรอบซ้อนกันทำให้ต้องกวาดตาสามรอบเพื่ออ่าน
+             สิ่งที่อ่านรอบเดียวได้ และแต่ละกรอบมีของอยู่ไม่กี่ช่อง
+
+             ฐานคิดค่าคอมไม่ได้รวมมาด้วย — §6b สั่งไว้ว่าต้องเป็นกล่องเตือน
+             ไม่ใช่ช่องธรรมดาในกรอบรวม เพราะเลือกผิดแล้วกระทบเงินของพนักงาน */
+          type: "card",
+          title: "ข้อจำกัดและเงื่อนไขการใช้",
+          cols: "3",
+          fields: [
+            {
+              type: "number",
+              path: "usePerCustomer",
+              label: "ต่อลูกค้าหนึ่งราย (ครั้ง)",
+              min: 1,
+              hint: "ว่างไว้ = ไม่จำกัด",
+            },
+            {
+              type: "number",
+              path: "usePerArea",
+              label: "ต่อหนึ่งเขตขาย (ครั้ง)",
+              min: 1,
+              hint: "ว่างไว้ = ไม่จำกัด · เพดานเดียวกันทุกเขต",
+            },
+            {
+              type: "number",
+              path: "useTotal",
+              label: "รวมทั้งโปร (ครั้ง)",
+              min: 1,
+              hint: "ว่างไว้ = ไม่จำกัด",
+            },
+            {
+              type: "number",
+              path: "freeQtyCap",
+              label: "ของแถมรวมทั้งโปร (ชิ้น)",
+              min: 1,
+              /* คนละเรื่องกับจำนวนครั้ง — 100 ครั้งที่แถมครั้งละ 15 คือของ 1,500
+                 ชิ้น และเพดานที่คนตั้งโปรคิดไว้มักเป็นจำนวนของ ไม่ใช่จำนวนครั้ง */
+              hint: "ว่างไว้ = ไม่จำกัด · คนละตัวกับจำนวนครั้ง",
+              when: (st) => isFreeGoods(st),
+            },
+            {
+              type: "toggle",
+              path: "stackWithPromo",
+              label: "ซ้อนกับโปรตัวอื่นได้",
+              onText: "ซ้อนได้",
+              offText: "ซ้อนไม่ได้",
+            },
+            {
+              type: "toggle",
+              path: "stackWithCustomerDiscount",
+              label: "ซ้อนกับส่วนลดประจำของลูกค้าได้",
+              onText: "ซ้อนได้",
+              offText: "ซ้อนไม่ได้",
+            },
+            {
+              /* กินเต็มแถวเพราะเป็นรายการติ๊ก ไม่ใช่ช่องเดียว — และโผล่มาเฉพาะ
+                 ตอนเปิดซ้อน เพราะรายการโปรที่ซ้อนได้ไม่มีความหมายเมื่อซ้อนไม่ได้ */
+              type: "picks",
+              path: "stackWithPromos",
+              label: "ซ้อนได้กับโปรตัวไหนบ้าง",
+              allLabel: "ซ้อนได้กับทุกโปร",
+              options: otherPromotionOptions(s),
+              when: (st) => Boolean(st.stackWithPromo),
+            },
+            {
+              type: "select",
+              path: "paymentTerm",
+              label: "ใบที่ใช้โปรนี้ต้องจ่ายยังไง",
+              options: opts(PAYMENT_TERMS),
+              /* ว่างไว้ได้ และเป็นคำตอบของเกือบทุกโปร — โปรไม่ควรเปลี่ยนเทอม
+                 การจ่ายเงินของใครโดยที่ไม่มีใครสั่ง */
+              placeholder: "ไม่กำหนดเพิ่ม — ใช้เงื่อนไขปกติ",
+              hint: "ใส่เมื่อโปรลดลึกจนไม่ควรปล่อยเครดิต",
+            },
+            {
+              type: "number",
+              path: "depositPct",
+              label: "มัดจำก่อนส่งของ (%)",
+              min: 1,
+              max: 100,
+              required: true,
+              when: (st) => String(st.paymentTerm ?? "") === DEPOSIT_TERM,
+            },
+          ],
+        },
+        {
+          /* กล่องเตือน ไม่ใช่ dropdown ธรรมดา — §6b กลุ่ม 4 เลือกผิดแล้ว
+             ค่าคอมของพนักงานเปลี่ยน และไม่มีใครเห็นจนถึงรอบจ่ายเงิน */
+          type: "card",
+          title: "⚠ ฐานคิดค่าคอมมิชชัน — กระทบรายได้พนักงาน",
+          cols: "2",
+          fields: [
+            {
+              type: "select",
+              path: "commissionBase",
+              /* คำถามรวม "จ่ายไหม" กับ "จ่ายจากอะไร" ไว้ในช่องเดียว เพราะสอง
+                 ช่องที่ต้องตรงกันเองคือสองช่องที่วันหนึ่งจะไม่ตรงกัน — ติ๊กว่า
+                 ไม่จ่ายแล้วยังมีฐานค้างอยู่ในระเบียน ใครอ่านทีหลังก็ตอบไม่ได้
+                 ว่าอันไหนคือของจริง */
+              label: "ค่าคอมของใบที่ใช้โปรนี้",
+              required: true,
+              options: opts(COMMISSION_BASES),
+              span: true,
+              hint: "ไม่มีค่าเริ่มต้น — ต่างกันเป็นเงินของพนักงานขาย และ \"ไม่จ่าย\" ก็เป็นคำตอบที่ต้องเลือกเอง",
+            },
+          ],
+        },
+      ],
+    },
+
+    /* ---------- กลุ่ม 4 · ใช้กับอะไร — งานยาวที่สุด จึงอยู่ท้ายสุด ----------
+
+       เลือกสินค้า ตั้งขั้นบันได ลองคำนวณ แล้วอ่านคำเตือนราคาขั้นต่ำ เป็นงาน
+       ที่กินเวลามากกว่าสี่กลุ่มก่อนหน้ารวมกัน และเป็นงานที่ต้องรู้คำตอบของ
+       กลุ่มก่อน ๆ ก่อน (รูปแบบไหน · ให้ใคร) จึงจะกรอกได้ถูก */
     {
       key: "what",
-      label: "ใช้กับอะไร",
-      railLabel: "ใช้กับอะไร",
+      label: "ตารางสินค้า และของแถม",
+      railLabel: "ตารางสินค้า และของแถม",
       labelTh: "สินค้า ของแถม และตารางราคา",
       blocks: (s) => [
         {
@@ -696,83 +925,6 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
                 ` — ต่ำกว่าราคาขั้นต่ำ ${money(base.floor)} ของ ${base.code} โปรนี้ต้องให้ผู้จัดการฝ่ายขายอนุมัติ`,
             } as FormBlock,
           ];
-        })(),
-        /* ---------- ตัวลองคำนวณ — §3.4 ---------- */
-        ...(() => {
-          if (!isFreeGoods(s)) return [];
-          const tiers = ladderTiersOf(s);
-          if (!tiers.length) return [];
-
-          const base = unitPriceOf(s);
-          const card: FormBlock = {
-            type: "card",
-            title: "ลองคำนวณ",
-            cols: "2",
-            fields: [
-              {
-                type: "number",
-                /* ขึ้นต้นด้วย _ เพราะไม่ใช่ฟิลด์ของโปร เป็นช่องทดลองบนหน้าจอ
-                   `toPatch` ไม่ได้อ่านมัน จึงไม่มีทางถูกบันทึกลงระเบียน */
-                path: "_tryQty",
-                label: "ลองจำนวนที่ลูกค้าจ่ายจริง",
-                min: 1,
-                max: TRY_QTY_MAX,
-                span: true,
-                hint: base
-                  ? `คิดจาก ${base.code} ราคา ${money(base.price)} — ตัวแทนเดียวกับตารางขั้นข้างบน`
-                  : "เลือกสินค้าที่เข้าโปรก่อน แล้วราคาเฉลี่ยจะคำนวณให้",
-              },
-            ],
-          };
-
-          const typed = String(s._tryQty ?? "").trim();
-          if (!typed) return [card];
-
-          /* จำนวนถูกคุมเพดานที่ `clampTryQty` ตรงจุดรับค่านี้ ไม่ได้คุมข้างใน
-             `bestLadder` — ใครพิมพ์เก้าหลักจึงได้คำตอบของหนึ่งแสน ไม่ใช่จอค้าง */
-          const r = tryLadder(tiers, s._tryQty, base?.price ?? 0);
-          const capped = clampTryQty(s._tryQty) !== Number(s._tryQty);
-
-          const lines = [
-            `จ่ายจริง ${fmt(r.qty)} → แถม ${fmt(r.free)} · รวมที่ได้รับ ${fmt(r.total)}`,
-            r.average !== null ? `ราคาเฉลี่ยต่อชิ้น ${money(r.average)}` : "",
-            r.uses.length ? `ใช้ขั้น ${ladderUsesText(r.uses)}` : "ยังไม่ถึงขั้นไหนเลย",
-            r.unmatched ? `เศษที่จับคู่ไม่ได้ ${fmt(r.unmatched)} — ทิ้งตามกติกา ไม่ปัดขึ้น` : "",
-            capped ? `จำนวนถูกจำกัดไว้ที่ ${fmt(TRY_QTY_MAX)} ซึ่งเป็นเพดานของช่องทดลอง` : "",
-          ].filter(Boolean);
-
-          const result: FormBlock = {
-            type: "note",
-            label: `ผลที่จ่ายจริง ${fmt(r.qty)} ชิ้น`,
-            text: lines.join(" · "),
-          };
-
-          const blocks: FormBlock[] = [card, result];
-
-          /* ข้อเสนอเพิ่มจำนวนขึ้นเฉพาะเมื่อระยะที่เหลือน้อยกว่าครึ่งของขั้นนั้น
-             — ตรรกะอยู่ที่ `ladderSuggestion` ในโดเมน ไม่ได้ตัดสินที่นี่ */
-          if (r.suggestion) {
-            const { addQty, tier, extraFree } = r.suggestion;
-            blocks.push({
-              type: "note",
-              label: `เพิ่มอีก ${fmt(addQty)} ชิ้น ได้ของแถมเพิ่ม ${fmt(extraFree)}`,
-              text: `จ่ายจริง ${fmt(tier.buy)} เข้าขั้น ${fmt(tier.buy)} แถม ${fmt(
-                tier.free,
-              )} — บอกลูกค้าได้ว่าเติมอีกเท่านี้แล้วคุ้มกว่า`,
-            });
-          }
-
-          if (base && base.floor !== null && r.average !== null && r.average < base.floor) {
-            blocks.push({
-              type: "note",
-              label: "⚠ ราคาเฉลี่ยที่จำนวนนี้ต่ำกว่าราคาขั้นต่ำ",
-              text: `เฉลี่ย ${money(r.average)} ต่ำกว่าราคาขั้นต่ำ ${money(base.floor)} ของ ${
-                base.code
-              } — ใบที่ใช้โปรนี้จะถูกส่งขออนุมัติราคา`,
-            });
-          }
-
-          return blocks;
         })(),
         /* ---------- สิทธิแลกซื้อ — เงื่อนไข และสิทธิที่ได้ ---------- */
         isRedeem(s) && {
@@ -1038,245 +1190,6 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       ],
     },
 
-    /* ---------- กลุ่ม 3 · ใช้กับใคร ---------- */
-    {
-      key: "who",
-      label: "ใช้กับใคร",
-      railLabel: "ใช้กับใคร",
-      labelTh: "กลุ่มลูกค้า เขตขาย และช่องทาง",
-      blocks: () => [
-        {
-          type: "card",
-          title: "ขอบเขตลูกค้า",
-          cols: "2",
-          fields: [
-            {
-              type: "toggle",
-              path: "allowDraftPartner",
-              label: "ให้ลูกค้าที่ยังไม่ยืนยันใช้ได้",
-              onText: "ใช้ได้",
-              offText: "ต้องยืนยันตัวตนก่อน",
-              hint: "ลูกค้าที่ผู้แทนขายเพิ่งเปิดไว้ ยังไม่ผ่านฝ่ายขาย",
-            },
-          ],
-        },
-        {
-          type: "grid",
-          path: "customerGroups",
-          label: "กลุ่มลูกค้า",
-          addLabel: "เพิ่มกลุ่ม",
-          empty: "ว่างไว้ = ทุกกลุ่มลูกค้า",
-          cols: [
-            { key: "code", label: "กลุ่ม", type: "select", options: [...SR_CUST_GROUPS], required: true },
-          ],
-        },
-        {
-          type: "grid",
-          path: "areas",
-          label: "เขตขาย",
-          addLabel: "เพิ่มเขต",
-          empty: "ว่างไว้ = ทุกเขต",
-          cols: [
-            { key: "code", label: "เขต", type: "select", options: areaOptions(), required: true },
-          ],
-        },
-        {
-          type: "grid",
-          path: "channels",
-          label: "ช่องทางขาย",
-          addLabel: "เพิ่มช่องทาง",
-          empty: "ว่างไว้ = ทุกช่องทาง",
-          cols: [
-            {
-              key: "code",
-              label: "ช่องทาง",
-              type: "select",
-              options: [...SR_CHANNELS],
-              required: true,
-            },
-          ],
-        },
-        {
-          type: "grid",
-          path: "customers",
-          label: "เจาะจงลูกค้ารายราย",
-          addLabel: "เพิ่มลูกค้า",
-          empty: "ว่างไว้ = ไม่เจาะจงราย",
-          hint: "ใส่เมื่อโปรนี้ทำให้ลูกค้าเฉพาะราย ไม่ใช่ทั้งกลุ่ม",
-          cols: [{ key: "code", label: "รหัสลูกค้า", type: "text", required: true }],
-        },
-      ],
-    },
-
-    /* ---------- กลุ่ม 4 · ข้อจำกัดและผลกระทบ ---------- */
-    {
-      key: "limits",
-      label: "ข้อจำกัด",
-      railLabel: "ข้อจำกัด",
-      labelTh: "จำนวนครั้ง การซ้อนโปร และค่าคอม",
-      blocks: () => [
-        {
-          type: "card",
-          title: "ใช้ได้กี่ครั้ง",
-          cols: "2",
-          fields: [
-            {
-              type: "number",
-              path: "usePerCustomer",
-              label: "ต่อลูกค้าหนึ่งราย",
-              min: 1,
-              hint: "ว่างไว้ = ไม่จำกัด",
-            },
-            {
-              type: "number",
-              path: "useTotal",
-              label: "รวมทั้งโปร",
-              min: 1,
-              hint: "ว่างไว้ = ไม่จำกัด",
-            },
-            {
-              type: "toggle",
-              path: "recordUsage",
-              label: "บันทึกการใช้ทุกครั้ง",
-              onText: "บันทึก",
-              offText: "ไม่บันทึก",
-            },
-          ],
-        },
-        {
-          type: "card",
-          title: "ซ้อนกับส่วนลดอื่น",
-          cols: "2",
-          fields: [
-            {
-              type: "toggle",
-              path: "stackWithPromo",
-              label: "ซ้อนกับโปรตัวอื่นได้",
-              onText: "ซ้อนได้",
-              offText: "ซ้อนไม่ได้",
-            },
-            {
-              type: "toggle",
-              path: "stackWithCustomerDiscount",
-              label: "ซ้อนกับส่วนลดประจำของลูกค้าได้",
-              onText: "ซ้อนได้",
-              offText: "ซ้อนไม่ได้",
-            },
-            {
-              type: "toggle",
-              path: "needsApproval",
-              label: "ต้องผ่านการอนุมัติก่อนใช้",
-              onText: "ต้องอนุมัติ",
-              offText: "ใช้ได้ทันที",
-            },
-          ],
-        },
-        {
-          /* กล่องเตือน ไม่ใช่ dropdown ธรรมดา — §6b กลุ่ม 4 เลือกผิดแล้ว
-             ค่าคอมของพนักงานเปลี่ยน และไม่มีใครเห็นจนถึงรอบจ่ายเงิน */
-          type: "card",
-          title: "⚠ ฐานคิดค่าคอมมิชชัน — กระทบรายได้พนักงาน",
-          cols: "2",
-          fields: [
-            {
-              type: "select",
-              path: "commissionBase",
-              label: "คิดค่าคอมจาก",
-              required: true,
-              options: opts(COMMISSION_BASES),
-              span: true,
-              hint: "ไม่มีค่าเริ่มต้น — สองแบบนี้ให้ตัวเลขต่างกัน และเป็นเงินของพนักงานขาย",
-            },
-          ],
-        },
-      ],
-    },
-
-    /* ---------- กลุ่ม 5 · งบประมาณและคลัง — แท็บของตัวเอง ---------- */
-    {
-      key: "budget",
-      label: "งบประมาณและคลัง",
-      railLabel: "งบและคลัง",
-      labelTh: "งบที่ตั้งไว้ และของแถมหักจากคลังไหน",
-      blocks: (s) => [
-        {
-          type: "card",
-          title: "งบประมาณ",
-          cols: "2",
-          fields: [
-            {
-              type: "number",
-              path: "budget",
-              label: "งบที่ตั้งไว้ (บาท)",
-              min: 0,
-              hint: "ว่างไว้ = ไม่จำกัดงบ",
-            },
-            {
-              type: "select",
-              path: "budgetBasis",
-              label: "คิดงบจาก",
-              /* ห้ามมีค่าเริ่มต้น และบังคับเมื่อมีงบ — งบ 100,000 คิดจาก
-                 ต้นทุนหรือราคาขายต่างกันเป็นเท่าตัว */
-              options: Object.entries(BUDGET_BASIS_TH)
-                .filter(([value]) => value !== "")
-                .map(([value, label]) => ({ value, label })),
-              when: (st) => String(st.budget ?? "").trim() !== "",
-              required: true,
-              hint: "ไม่มีค่าเริ่มต้น — ต้นทุนกับราคาขายต่างกันเป็นเท่าตัว",
-            },
-            {
-              type: "select",
-              path: "budgetOver",
-              label: "งบหมดแล้วทำอย่างไร",
-              options: [
-                { value: "warn", label: "เตือน แต่ยังใช้โปรได้" },
-                { value: "stop", label: "หยุดโปรทันที" },
-              ],
-              when: (st) => String(st.budget ?? "").trim() !== "",
-            },
-            {
-              type: "number",
-              path: "budgetWarnAt",
-              label: "เตือนเมื่อใช้งบถึง (%)",
-              min: 1,
-              max: 100,
-              when: (st) => String(st.budget ?? "").trim() !== "",
-            },
-          ],
-        },
-        /* ส่วนลดราคาไม่หักของแถมจากคลังไหน จึงไม่ถามและไม่บังคับ
-           การบังคับช่องที่ไม่เกี่ยวกับชนิดนี้ คือการสอนให้คนกรอกอะไรก็ได้ให้ผ่าน */
-        givesGoods(s) && {
-          type: "card",
-          title: "ของแถมหักจากคลังไหน",
-          cols: "2",
-          fields: [
-            {
-              type: "select",
-              path: "freeGoodsWarehouse",
-              label: "คลังที่หักของแถม",
-              required: true,
-              options: warehouseOptions(),
-              span: true,
-              /* ห้ามมีค่าเริ่มต้น — ของแถมคือของจริงที่หายไปจากคลังนั้น
-                 เดาให้แล้วสต๊อกคลังที่ไม่มีใครเลือกจะขาดโดยไม่มีใครรู้ */
-              hint: "ไม่มีค่าเริ่มต้น — ของแถมคือของจริงที่หายไปจากคลังนี้",
-            },
-          ],
-        },
-        Boolean(String(s.budget ?? "").trim()) && {
-          type: "note",
-          label: "งบนี้คิดยังไง",
-          text:
-            String(s.budgetBasis ?? "") === "cost"
-              ? "คิดจากต้นทุนของแถม — งบเท่าเดิมจะแถมได้มากกว่าแบบคิดจากราคาขาย"
-              : String(s.budgetBasis ?? "") === "price"
-                ? "คิดจากราคาขายของแถม — งบเท่าเดิมจะแถมได้น้อยกว่าแบบคิดจากต้นทุน"
-                : "ยังไม่ได้เลือกว่าคิดจากต้นทุนหรือราคาขาย — สองแบบนี้ต่างกันเป็นเท่าตัว",
-        },
-      ],
-    },
-
     {
       key: "review",
       label: "ตรวจทาน",
@@ -1291,7 +1204,6 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
   required: [
     { path: "name", label: "ชื่อโปร", step: "identity" },
     { path: "from", label: "วันเริ่มใช้", step: "identity" },
-    { path: "reason", label: "เหตุผลที่สร้างโปร", step: "identity" },
     {
       path: "reasonNote",
       label: "รายละเอียดเหตุผล",
@@ -1314,11 +1226,13 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
     },
     { path: "commissionBase", label: "ฐานคิดค่าคอมมิชชัน", step: "limits" },
     {
-      path: "freeGoodsWarehouse",
-      label: "คลังที่หักของแถม",
-      step: "budget",
-      /* บังคับเฉพาะชนิดที่ให้ของ — ส่วนลดราคาไม่แตะสต๊อก */
-      test: (s) => !givesGoods(s) || Boolean(String(s.freeGoodsWarehouse ?? "").trim()),
+      /* "มัดจำก่อนส่งของ" ที่ไม่บอกว่ากี่ % คือเงื่อนไขที่ฝ่ายขายตอบลูกค้าไม่ได้
+         และแต่ละคนจะไปตกลงกันเองคนละตัวเลข */
+      path: "depositPct",
+      label: "มัดจำกี่เปอร์เซ็นต์",
+      step: "limits",
+      test: (s) =>
+        String(s.paymentTerm ?? "") !== DEPOSIT_TERM || (numOrNull(s.depositPct) ?? 0) > 0,
     },
     {
       path: "discountTiers",
@@ -1451,9 +1365,20 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
       },
     },
     {
-      label: "มีงบแล้วต้องบอกว่าคิดจากต้นทุนหรือราคาขาย",
-      step: "budget",
-      test: (s) => String(s.budget ?? "").trim() === "" || Boolean(String(s.budgetBasis ?? "").trim()),
+      /* ด่านจริงอยู่ที่ `createPromotion` ตัวนี้บอกก่อนกดบันทึก — และบอก
+         ตั้งแต่ตอนพิมพ์ ไม่ใช่ให้พิมพ์ครบทั้งใบแล้วค่อยรู้ว่ารหัสชนกับใคร */
+      label: "รหัสโปรซ้ำกับที่มีอยู่แล้ว",
+      step: "identity",
+      test: (s) => {
+        if (!isCreate(s)) return true;
+        const code = String(s.code ?? "").trim().toUpperCase();
+        return !code || !PROMOTIONS.some((p) => p.code.toUpperCase() === code);
+      },
+    },
+    {
+      label: "รหัสโปรห้ามมีช่องว่าง",
+      step: "identity",
+      test: (s) => !/\s/.test(String(s.code ?? "").trim()),
     },
     {
       label: "วันสิ้นสุดต้องไม่มาก่อนวันเริ่มใช้",
@@ -1497,7 +1422,10 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
    */
   save: (s, ctx) => {
     const patch = toPatch(s);
-    const editing = String(s.code ?? "").trim();
+    /* โหมดเป็นตัวตัดสิน ไม่ใช่ "มีรหัสอยู่ในฟอร์มไหม" — ตั้งแต่มีช่องให้พิมพ์
+       รหัสเอง การอ่านจากช่องนั้นแปลว่าคนที่พิมพ์รหัสซ้ำกับของเดิมจะไปแก้ทับ
+       ระเบียนของคนอื่นเงียบ ๆ แทนที่จะถูกบอกว่ารหัสซ้ำ */
+    const editing = isCreate(s) ? "" : String(s.code ?? "").trim();
 
     if (editing) {
       const row = getPromotion(editing);

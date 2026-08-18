@@ -8,6 +8,8 @@ import {
   PROMOTION_SCOPE_TH,
   PROMOTION_STATUSES,
   COMMISSION_BASES,
+  NO_COMMISSION,
+  paysCommission,
   isSamePriceGroup,
   priceClusterText,
   priceClusters,
@@ -82,9 +84,9 @@ describe("ลงทะเบียนเป็น entity", () => {
     expect(form!.key).toBe("promotion");
 
     const keys = form!.steps.map((st) => st.key);
-    expect(keys.slice(0, 5)).toEqual(["identity", "what", "who", "limits", "budget"]);
-    /* งบกับคลังอยู่แท็บของตัวเอง ไม่ต่อท้ายกลุ่มสี่ */
-    expect(keys.indexOf("budget")).toBeGreaterThan(keys.indexOf("limits"));
+    /* กลุ่มงบและคลังถูกตัดออกจากฟอร์มทั้งกลุ่ม — ช่องยังอยู่ในระเบียนและ
+       หน้ารายละเอียดยังแสดงของเดิม แต่ไม่มีที่กรอกอีกแล้ว */
+    expect(keys).toEqual(["identity", "who", "limits", "what", "review"]);
   });
 
   it("ช่องบังคับที่แต่ละชนิดเห็น ไม่เกินเก้าช่อง", () => {
@@ -156,9 +158,16 @@ describe("แบบจำลองข้อมูล", () => {
     for (const k of ["customerGroups", "customers", "areas", "channels", "allowDraftPartner"]) {
       expect(b, `กลุ่ม 3 ขาด ${k}`).toHaveProperty(k);
     }
-    for (const k of ["usePerCustomer", "useTotal", "stackWithPromo", "recordUsage", "needsApproval", "commissionBase"]) {
+    /* `recordUsage` กับ `needsApproval` เคยอยู่ในรายการนี้ — ถอดออกแล้ว
+       ทั้งคู่เป็นกฎของระบบ ไม่ใช่ค่าตั้งของโปรแต่ละใบ: การใช้ถูกบันทึกทุกครั้ง
+       และทุกโปรเดินเส้นทางอนุมัติเดียวกันผ่าน `mayApprovePromotion` ซึ่งไม่เคย
+       อ่านธงนี้เลย ช่องที่ตั้งค่าได้แต่คำตอบมีค่าเดียว คือช่องที่วันหนึ่งจะมีคน
+       ตั้งเป็นอีกค่า แล้วจะมีคนเชื่อว่ามันข้ามด่านอนุมัติได้จริง */
+    for (const k of ["usePerCustomer", "useTotal", "stackWithPromo", "commissionBase"]) {
       expect(b, `กลุ่ม 4 ขาด ${k}`).toHaveProperty(k);
     }
+    expect(b).not.toHaveProperty("recordUsage");
+    expect(b).not.toHaveProperty("needsApproval");
     /* กลุ่ม 5 — งบประมาณและคลัง */
     for (const k of ["budget", "budgetBasis", "budgetUsed", "budgetOver", "budgetWarnAt", "freeGoodsWarehouse"]) {
       expect(b, `กลุ่ม 5 ขาด ${k}`).toHaveProperty(k);
@@ -233,14 +242,19 @@ describe("ราคาเฉลี่ยและราคาขั้นต่�
     expect(promotionApprovalLevel(p)).toBe("admin");
   });
 
-  it("ฐานคิดค่าคอมมีสองตัว ตามที่ตกลงกันไว้ และใช้คำที่ตกลงกัน", () => {
-    /* เคยมีตัวที่สาม "ไม่จ่ายค่าคอม..." — ตัดออกเพราะเป็นการเดานโยบาย
-       ค่าตอบแทน ไม่ใช่ข้อเท็จจริงที่ใครบอกมา ระบบจะไม่เสนอตัวเลือกที่
-       ไม่มีใครตัดสินใจไว้ เทสต์นี้ปักไว้เพื่อไม่ให้มันกลับมาเงียบ ๆ */
+  it("ค่าคอมมีสามคำตอบ รวมคำตอบว่าไม่จ่าย และใช้คำที่ตกลงกัน", () => {
+    /* ตัวที่สามเคยถูกตัดออกเพราะยังไม่มีใครตัดสินนโยบายค่าตอบแทน — ตอนนี้
+       ตัดสินแล้วจึงกลับมา เงื่อนไขเดิมยังยืนอยู่ทั้งข้อ: อยู่ได้เพราะมีคนบอกมา
+       ไม่ใช่เพราะระบบคิดเองว่าน่าจะมี เทสต์ยังปักคำที่ใช้ไว้เหมือนเดิม */
     expect([...COMMISSION_BASES]).toEqual([
       "ยอดที่ลูกค้าจ่ายจริง",
       "มูลค่าบรรทัดหลังเฉลี่ยของแถม",
+      "ไม่จ่ายค่าคอมสำหรับใบที่ใช้โปรนี้",
     ]);
+    expect(NO_COMMISSION).toBe("ไม่จ่ายค่าคอมสำหรับใบที่ใช้โปรนี้");
+    expect(paysCommission({ commissionBase: NO_COMMISSION })).toBe(false);
+    expect(paysCommission({ commissionBase: "" }), "ยังไม่เลือก ไม่ใช่คำตอบว่าไม่จ่าย").toBe(false);
+    expect(paysCommission({ commissionBase: "ยอดที่ลูกค้าจ่ายจริง" })).toBe(true);
 
     /* และข้อมูลตัวอย่างต้องใช้คำเดียวกับที่ระบบเสนอ ไม่ใช่คำที่ตกค้าง */
     for (const p of PROMOTIONS) {
@@ -564,8 +578,6 @@ describe("createPromotion", () => {
     useTotal: 50,
     stackWithPromo: true,
     stackWithCustomerDiscount: false,
-    recordUsage: true,
-    needsApproval: true,
     commissionBase: "ยอดที่ลูกค้าจ่ายจริง",
 
     budget: 80_000,

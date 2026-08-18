@@ -18,7 +18,7 @@ import {
   resumePromotion,
   type PromotionRow,
 } from "@/lib/domain/promotion";
-import { PROMOTION_KINDS } from "@/lib/domain/promotion";
+import { DEPOSIT_TERM, PROMOTION_KINDS } from "@/lib/domain/promotion";
 import { bestLadder } from "@/lib/domain/promotion-ladder";
 import { discountImpact } from "@/lib/domain/promotion-discount";
 import { REDEEM_BASIS_TH, redeemPreview } from "@/lib/domain/promotion-redeem";
@@ -564,10 +564,7 @@ export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
             { label: "ประเภท", value: kindLabel(p) },
             { label: "วันเริ่ม", value: p.from || DASH },
             { label: "วันสิ้นสุด", value: p.to || "ไม่มีกำหนด" },
-            {
-              label: "เหตุผลที่สร้างโปร",
-              value: p.reason || <span className="text-danger">ยังไม่ได้ระบุ</span>,
-            },
+            { label: "เหตุผลที่สร้างโปร", value: p.reason || DASH },
           ],
         },
         {
@@ -615,15 +612,32 @@ export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
           cols: 2,
           items: [
             { label: "จำนวนครั้งต่อลูกค้า", value: p.usePerCustomer === null ? "ไม่จำกัด" : fmt(p.usePerCustomer) },
+            { label: "จำนวนครั้งต่อเขตขาย", value: p.usePerArea === null ? "ไม่จำกัด" : fmt(p.usePerArea) },
             { label: "จำนวนครั้งรวมทั้งโปร", value: p.useTotal === null ? "ไม่จำกัด" : fmt(p.useTotal) },
+            {
+              label: "ของแถมรวมทั้งโปร",
+              value: p.freeQtyCap === null ? "ไม่จำกัด" : `${fmt(p.freeQtyCap)} ชิ้น`,
+            },
             { label: "ซ้ำกับโปรอื่น", value: p.stackWithPromo ? "ให้ซ้ำ" : "ไม่ให้ซ้ำ" },
+            /* รายการที่ซ้อนได้ไม่มีความหมายเมื่อซ้อนไม่ได้ — แสดงก็ทำให้คนอ่าน
+               เข้าใจว่าโปรพวกนั้นซ้อนได้ ทั้งที่สวิตช์ปิดอยู่ */
+            p.stackWithPromo && {
+              label: "ซ้อนได้กับโปร",
+              value: p.stackWithPromos.length ? p.stackWithPromos.join(", ") : "ทุกโปร",
+              span: true,
+            },
             { label: "ซ้ำกับส่วนลดประจำของลูกค้า", value: p.stackWithCustomerDiscount ? "เปิด" : "ปิด" },
-            { label: "บันทึกเลขที่การใช้", value: p.recordUsage ? "เปิด" : "ปิด" },
-            { label: "ต้องอนุมัติก่อนเปิดใช้", value: p.needsApproval ? "เปิด" : "ปิด" },
+            {
+              label: "เงื่อนไขการชำระเงิน",
+              value: p.paymentTerm
+                ? p.paymentTerm === DEPOSIT_TERM
+                  ? `${p.paymentTerm} ${p.depositPct ?? 0}%`
+                  : p.paymentTerm
+                : "ตามเงื่อนไขปกติของลูกค้า",
+            },
             {
               label: "ฐานคิดค่าคอมมิชชัน",
               value: p.commissionBase || <span className="text-danger">ยังไม่ได้เลือก</span>,
-              span: true,
             },
           ],
         },

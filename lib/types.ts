@@ -572,6 +572,15 @@ export type FieldType =
    * fact that there was a question at all until somebody opens it.
    */
   | "choice"
+  /**
+   * A fixed list where picking nothing means everything.
+   *
+   * "Which customer groups?" is answered "all of them" nine times in ten, and
+   * the tenth answer is two or three of five. A grid of Add buttons makes the
+   * common answer look like an empty form somebody forgot to fill in, and
+   * charges a press per row for the rare one.
+   */
+  | "picks"
   /** Emoji stand-in picker plus upload — masters that only need a marker. */
   | "image"
   /** Upload only. A real photograph, no icon to fall back on. */
@@ -602,7 +611,13 @@ export interface GridCol {
     | "computed"
     | "lookup"
     | "seg";
-  options?: string[];
+  /**
+   * A plain string is both the value stored and the text shown. Pass
+   * `{ value, label }` when they differ — a product row stores the code
+   * because every lookup in the system is by code, while the person choosing
+   * needs the name to know which one it is.
+   */
+  options?: (string | SelectOption)[];
   /**
    * Options that depend on the row — a district list belongs to the province
    * picked on that row and nowhere else.
@@ -612,7 +627,7 @@ export interface GridCol {
    * That worked for Bangkok's fifty districts and stops working at seventy-
    * seven provinces. Takes precedence over `options` when both are given.
    */
-  optionsFor?: (row: GridRow) => string[];
+  optionsFor?: (row: GridRow) => (string | SelectOption)[];
   /** Segmented control choices. */
   segOptions?: { val: string; label: string; tone?: "ok" | "danger" | "neutral" }[];
   align?: "right";
@@ -687,6 +702,8 @@ export interface FormField {
   cardOptions?: { key: string; label: string; desc?: string; tone?: BadgeTone }[];
   /** tree field levels */
   levels?: { label: string; codePh?: string; namePh?: string }[];
+  /** picks — what the empty list means, said in the affirmative: "ทุกกลุ่ม". */
+  allLabel?: string;
   /** note field */
   text?: string;
   onText?: string;

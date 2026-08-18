@@ -763,7 +763,7 @@ function StepRail({
 /* ---------- Blocks ---------- */
 
 /** Field types that draw their own heading — the block must not repeat it. */
-const SELF_TITLED = new Set(["cards", "note"]);
+const SELF_TITLED = new Set(["cards", "note", "picks"]);
 
 function BlockView({ block, api }: { block: FormBlock; api: FormApi }) {
   if (block.type === "card") return <CardBlock card={block} api={api} />;

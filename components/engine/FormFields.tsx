@@ -85,6 +85,7 @@ export function FieldView({ field: f, api }: { field: FormField; api: FormApi })
   if (f.type === "grid") return <GridField field={f} api={api} />;
   if (f.type === "tree") return <TreeField field={f} api={api} />;
   if (f.type === "cards") return <CardsField field={f} api={api} />;
+  if (f.type === "picks") return <PicksField field={f} api={api} />;
   if (f.type === "note") return <NoteField field={f} />;
 
   const path = f.path ?? "";
@@ -433,6 +434,89 @@ function NoteField({ field: f }: { field: FormField }) {
         {f.label && <p className="mb-0.5 font-semibold">{f.label}</p>}
         {f.text}
       </div>
+    </div>
+  );
+}
+
+/* ---------- picks — everything, or the two or three that apply ---------- */
+
+/**
+ * A list whose empty state means "all of them".
+ *
+ * The record already says it that way — `areas: []` is every area — so the
+ * control says it too, with the tick that means everything sitting above the
+ * list rather than beside it. Narrowing reveals the options; every one of them
+ * is on the page, tickable in any order, with no row to add first.
+ *
+ * The two states are not symmetrical and the copy must not pretend they are:
+ * unticking "all" and then ticking nothing leaves the record exactly as broad
+ * as it was, so that half-finished state says so instead of looking like a
+ * selection of none.
+ */
+function PicksField({ field: f, api }: { field: FormField; api: FormApi }) {
+  const path = f.path ?? "";
+  /* Anything that is not a string is a leftover from an older shape of this
+     field (a restored draft, say). Dropping it beats writing it back. */
+  const value = ((getPath(api.state, path) ?? []) as unknown[]).filter(
+    (v): v is string => typeof v === "string",
+  );
+  const [narrowed, setNarrowed] = useState(false);
+  const specific = value.length > 0 || narrowed;
+  const options = f.options ?? [];
+  const all = f.allLabel ?? "ทั้งหมด";
+
+  const toggle = (val: string) =>
+    api.set(path, value.includes(val) ? value.filter((v) => v !== val) : [...value, val]);
+
+  return (
+    <div className="col-span-full flex flex-col gap-3">
+      <label className="text-cap font-medium text-ink-2">
+        {f.label}
+        {f.required && <span className="font-semibold text-danger"> *</span>}
+      </label>
+
+      <label className="inline-flex w-fit cursor-pointer items-center gap-2.5 text-body">
+        <Checkbox
+          checked={!specific}
+          onChange={(e) => {
+            if (e.target.checked) {
+              api.set(path, []);
+              setNarrowed(false);
+            } else {
+              setNarrowed(true);
+            }
+          }}
+        />
+        <span className={cn(!specific && "font-medium")}>{all}</span>
+      </label>
+
+      {specific && (
+        <>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-2 rounded-btn border border-line bg-surface p-3 max-[900px]:grid-cols-2 max-md:grid-cols-1">
+            {options.map((o) => {
+              const val = optValue(o);
+              return (
+                <label
+                  key={val}
+                  className="inline-flex cursor-pointer items-center gap-2.5 text-body"
+                >
+                  <Checkbox checked={value.includes(val)} onChange={() => toggle(val)} />
+                  <span className="min-w-0 truncate">{optLabel(o)}</span>
+                </label>
+              );
+            })}
+          </div>
+          <span
+            className={cn("text-cap", value.length === 0 ? "font-medium text-warning-text" : "text-ink-3")}
+          >
+            {value.length === 0
+              ? `ยังไม่ได้เลือกอะไรเลย — ปล่อยไว้แบบนี้มีผลเท่ากับ${all}`
+              : `เลือกไว้ ${value.length} จาก ${options.length}`}
+          </span>
+        </>
+      )}
+
+      {f.hint && <span className="text-cap text-ink-3">{f.hint}</span>}
     </div>
   );
 }
@@ -804,12 +888,17 @@ function MultiAddPicker({
 
   const has = new Set(taken);
   const query = q.trim().toLowerCase();
+  /* ค้นทั้งค่าที่เก็บและข้อความที่อ่าน — คนหาสินค้าพิมพ์ได้ทั้งรหัสและชื่อ
+     และตัวไหนอยู่ในมือตอนนั้นก็แล้วแต่ว่าใครส่งอะไรมาให้ */
   const hits = (col.options ?? []).filter(
-    (o) => !query || o.toLowerCase().includes(query),
+    (o) =>
+      !query ||
+      optValue(o).toLowerCase().includes(query) ||
+      optLabel(o).toLowerCase().includes(query),
   );
   /* "ทั้งหมด" means everything the search found and the grid does not have —
      ticking a row that is already on the grid would add nothing. */
-  const free = hits.filter((o) => !has.has(o));
+  const free = hits.map(optValue).filter((o) => !has.has(o));
   const allOn = free.length > 0 && free.every((o) => picked.includes(o));
 
   const toggle = (o: string) =>
@@ -855,18 +944,19 @@ function MultiAddPicker({
             <p className="px-3 py-8 text-center text-ink-3">ไม่พบรายการที่ค้นหา</p>
           ) : (
             hits.map((o) => {
-              const already = has.has(o);
-              const on = already || picked.includes(o);
+              const val = optValue(o);
+              const already = has.has(val);
+              const on = already || picked.includes(val);
               return (
                 <label
-                  key={o}
+                  key={val}
                   className={cn(
                     "flex items-center gap-3 border-b border-line px-3 py-2 last:border-b-0",
                     already ? "cursor-not-allowed bg-surface text-ink-3" : "cursor-pointer hover:bg-surface",
                   )}
                 >
-                  <Checkbox checked={on} disabled={already} onChange={() => toggle(o)} />
-                  <span className="min-w-0 flex-1 truncate text-[13px] tnum">{o}</span>
+                  <Checkbox checked={on} disabled={already} onChange={() => toggle(val)} />
+                  <span className="min-w-0 flex-1 truncate text-[13px] tnum">{optLabel(o)}</span>
                   {already && <span className="flex-shrink-0 text-cap">อยู่ในตารางแล้ว</span>}
                 </label>
               );
@@ -1013,8 +1103,8 @@ function GridCell({
         <CellSelect value={String(v ?? "")} onChange={(e) => put(e.target.value)}>
           <option value="">{c.placeholder ?? "—"}</option>
           {(c.optionsFor?.(row) ?? c.options ?? []).map((o) => (
-            <option key={o} value={o}>
-              {o}
+            <option key={optValue(o)} value={optValue(o)}>
+              {optLabel(o)}
             </option>
           ))}
         </CellSelect>

@@ -150,8 +150,8 @@ export type PromotionScope = "" | "item" | "set" | "same-price" | "group";
 export const PROMOTION_SCOPE_TH: Record<PromotionScope, string> = {
   "": "— ยังไม่ได้เลือก —",
   item: "รายตัว — แถมสินค้าตัวเดียวกัน",
-  set: "ชุดที่กำหนด — แถมจากชุดที่ระบุ",
   "same-price": "ราคาเดียวกัน — เลือกได้ทั้งกลุ่มที่ซื้อและกลุ่มที่แถม",
+  set: "ชุดที่กำหนด — แถมจากชุดที่ระบุ",
   group: "กลุ่ม — แถมตัวที่ถูกที่สุด",
 };
 
@@ -170,10 +170,13 @@ export const PROMOTION_SCOPE_TH: Record<PromotionScope, string> = {
  * ปิดที่ **ทางเขียน** ไม่ใช่แค่ไม่ใส่ในรายการตัวเลือก — ตัวเลือกที่ซ่อนยังส่งมา
  * ทาง `?scope=group` ได้ และ disabled option ในหลายเบราว์เซอร์ยังโฟกัสได้
  */
+/* เรียงจากแบบที่ตอบคำถาม "ลูกค้าได้อะไร" ได้แน่นอนที่สุด ไปหาแบบที่ตอบได้
+   หลวมที่สุด: รายตัวคือตัวเดิม · ราคาเดียวกันคือตัวไหนก็ได้ในราคาเท่ากัน ·
+   ชุดที่กำหนดคือชุดที่คนตั้งโปรเลือกเอง ซึ่งราคาต่างกันได้ตามใจ */
 export const OPEN_PROMOTION_SCOPES: readonly PromotionScope[] = [
   "item",
-  "set",
   "same-price",
+  "set",
 ];
 
 /** §6c — ตัวเลือกตายตัว ไม่ใช่ช่องพิมพ์อิสระ เพราะต้องเอาไปจัดกลุ่มเทียบผล */
@@ -189,17 +192,40 @@ export const PROMOTION_REASONS = [
 /**
  * §6b กลุ่ม 4 — ฐานคิดค่าคอมมิชชัน
  *
- * สองตัว ตามที่ตกลงกันไว้ และคำที่ใช้คือคำที่ตกลงกัน ไม่ใช่คำที่โค้ดคิดขึ้น
- * สเปคบังคับให้เลือก และบอกว่าต้องเป็นกล่องเตือนไม่ใช่ dropdown ธรรมดา
+ * คำที่ใช้คือคำที่ตกลงกัน ไม่ใช่คำที่โค้ดคิดขึ้น สเปคบังคับให้เลือก และบอกว่า
+ * ต้องเป็นกล่องเตือนไม่ใช่ dropdown ธรรมดา
  *
- * เคยมีตัวที่สาม "ไม่จ่ายค่าคอมสำหรับใบที่ใช้โปรนี้" — ตัดออกแล้ว มันคือ
- * การเดานโยบายค่าตอบแทน ไม่ใช่ข้อเท็จจริงที่ใครบอกมา และเป็นเรื่องที่กระทบ
- * รายได้พนักงาน ระบบจะไม่เสนอตัวเลือกที่ไม่มีใครตัดสินใจไว้
+ * ตัวที่สาม "ไม่จ่ายค่าคอมสำหรับใบที่ใช้โปรนี้" เคยถูกตัดออก ด้วยเหตุผลว่าเป็น
+ * การเดานโยบายค่าตอบแทนที่ยังไม่มีใครตัดสิน — ตอนนี้ตัดสินแล้ว จึงกลับมา และ
+ * เหตุผลเดิมก็ยังยืนอยู่ทั้งข้อ: ตัวเลือกนี้อยู่ได้เพราะมีคนบอกมา ไม่ใช่เพราะ
+ * ระบบคิดเองว่าน่าจะมี
+ *
+ * และมันไม่ใช่ "ฐาน" ที่สาม มันคือคำตอบว่าไม่มีฐาน — โปรที่ไม่จ่ายค่าคอมเคย
+ * ต้องจดไว้นอกระบบ แล้วรอบจ่ายเงินก็เถียงกันจากกระดาษคนละใบ
  */
 export const COMMISSION_BASES = [
   "ยอดที่ลูกค้าจ่ายจริง",
   "มูลค่าบรรทัดหลังเฉลี่ยของแถม",
+  "ไม่จ่ายค่าคอมสำหรับใบที่ใช้โปรนี้",
 ] as const;
+
+/** จ่ายค่าคอมจากใบที่ใช้โปรนี้ไหม — ยังไม่ได้เลือก ยังไม่ใช่คำตอบว่าไม่จ่าย */
+export const paysCommission = (p: Pick<PromotionRow, "commissionBase">): boolean =>
+  Boolean(p.commissionBase) && p.commissionBase !== NO_COMMISSION;
+
+/** คำตอบว่าไม่มีฐาน — อ้างค่าคงที่ ไม่ใช่พิมพ์สตริงเดิมซ้ำในที่ที่ต้องเทียบ */
+export const NO_COMMISSION = "ไม่จ่ายค่าคอมสำหรับใบที่ใช้โปรนี้";
+
+/**
+ * เงื่อนไขการชำระเงินของใบที่ใช้โปรนี้
+ *
+ * ว่าง = ไม่กำหนดเพิ่ม ใช้เงื่อนไขปกติของลูกค้ารายนั้น ซึ่งเป็นคำตอบของเกือบ
+ * ทุกโปร — สองตัวนี้มีไว้สำหรับโปรที่ลดลึกจนไม่ควรปล่อยเครดิต
+ */
+export const PAYMENT_TERMS = ["จ่ายสดเท่านั้น", "มัดจำก่อนส่งของ"] as const;
+
+/** ตัวที่ต้องบอกต่อว่ากี่ % — อ้างค่าคงที่ ไม่ใช่พิมพ์สตริงซ้ำในที่ที่ต้องเทียบ */
+export const DEPOSIT_TERM = "มัดจำก่อนส่งของ";
 
 /** §6e — งบคิดจากอะไร ไม่มีค่าเริ่มต้น ต้องเลือกเอง */
 export type BudgetBasis = "" | "cost" | "price";
@@ -259,18 +285,53 @@ export interface PromotionRow extends RecordBase {
   customers: string[];
   areas: string[];
   channels: string[];
+  /**
+   * ฟอร์มไม่ถามแล้ว — ทุกใบใหม่จึงได้ `false` จาก `blankPromotion()` ซึ่งเป็น
+   * ด้านที่แคบกว่า: ลูกค้าที่ผู้แทนขายเพิ่งเปิดไว้ยังใช้โปรไม่ได้จนกว่าจะยืนยัน
+   * ตัวตน ถ้าวันหนึ่งต้องเปิดให้บางโปร ที่กรอกต้องกลับมาพร้อมกับคนที่ตัดสินว่า
+   * โปรแบบไหนควรเปิด — ไม่ใช่ปล่อยให้ค่าเริ่มต้นตัดสินแทนเงียบ ๆ
+   */
   allowDraftPartner: boolean;
 
-  /* ---------- กลุ่ม 4 · ข้อจำกัดและผลกระทบ ---------- */
-  usePerCustomer: number | null;
-  useTotal: number | null;
-  stackWithPromo: boolean;
-  stackWithCustomerDiscount: boolean;
-  recordUsage: boolean;
-  needsApproval: boolean;
-  commissionBase: string;
+  /* ---------- กลุ่ม 4 · ข้อจำกัดและผลกระทบ ----------
 
-  /* ---------- กลุ่ม 5 · งบประมาณและคลัง ---------- */
+     เพดานทุกตัวใช้ `null` แปลว่าไม่จำกัด ไม่ใช่ 0 — 0 คือ "ใช้ไม่ได้เลย"
+     ซึ่งเป็นคนละเรื่องกับ "ไม่ได้กำหนดเพดานไว้" */
+  usePerCustomer: number | null;
+  /** เพดานต่อเขตขายหนึ่งเขต — เพดานเดียวกันทุกเขต ไม่ใช่รายเขต */
+  usePerArea: number | null;
+  useTotal: number | null;
+  /**
+   * เพดานจำนวนของแถมรวมทั้งโปร (ชิ้น)
+   *
+   * คนละเรื่องกับจำนวนครั้ง — โปรที่ใช้ได้ 100 ครั้งแต่แต่ละครั้งแถม 15 ชิ้น
+   * คือของ 1,500 ชิ้น เพดานที่คนตั้งโปรคิดไว้มักเป็นจำนวนของ ไม่ใช่จำนวนครั้ง
+   */
+  freeQtyCap: number | null;
+  stackWithPromo: boolean;
+  /**
+   * ซ้อนได้กับโปรตัวไหนบ้าง — ว่าง = ทุกตัว (เมื่อ `stackWithPromo` เปิด)
+   *
+   * มีความหมายเฉพาะตอน `stackWithPromo` เปิด ปิดอยู่แล้วรายการนี้ไม่ถูกอ่าน
+   * — เก็บไว้ไม่ล้าง เพราะคนที่ปิดชั่วคราวแล้วเปิดกลับ ไม่ควรต้องเลือกใหม่หมด
+   */
+  stackWithPromos: string[];
+  stackWithCustomerDiscount: boolean;
+  commissionBase: string;
+  /** ว่าง = ไม่กำหนดเพิ่ม ใช้เงื่อนไขปกติของลูกค้า ดู `PAYMENT_TERMS` */
+  paymentTerm: string;
+  /** กี่ % — มีความหมายเฉพาะเมื่อ `paymentTerm` เป็น `DEPOSIT_TERM` */
+  depositPct: number | null;
+
+  /* ---------- กลุ่ม 5 · งบประมาณและคลัง ----------
+
+     ฟอร์มไม่ถามทั้งกลุ่มนี้แล้ว โปรใหม่จึงได้ `budget: null` (ไม่จำกัดงบ) และ
+     `freeGoodsWarehouse: ""` จาก `blankPromotion()` ระเบียนเก่าที่มีค่าอยู่ยัง
+     แสดงและยังคิดตามเดิม — `promotionApprovalLevel` ยังส่งใบที่งบเกินเพดานไป
+     ให้ผู้จัดการเหมือนเดิม เพียงแต่ใบใหม่จะไม่มีงบให้เกิน
+
+     ของแถมที่ไม่ได้ระบุคลัง แปลว่ายังไม่มีใครบอกว่าของหายไปจากคลังไหน —
+     ตราบใดที่ยังไม่มีการตัดสต๊อกจริงตอนออกบิล ค่านี้ยังไม่มีใครอ่าน */
   budget: number | null;
   budgetBasis: BudgetBasis;
   budgetUsed: number;
@@ -372,12 +433,17 @@ export const blankPromotion = (): PromotionRow => ({
   allowDraftPartner: false,
 
   usePerCustomer: null,
+  usePerArea: null,
   useTotal: null,
+  freeQtyCap: null,
   stackWithPromo: false,
+  stackWithPromos: [],
   stackWithCustomerDiscount: false,
-  recordUsage: true,
-  needsApproval: true,
   commissionBase: "",
+  /* ว่างไว้ = ใช้เงื่อนไขปกติของลูกค้า — โปรไม่ควรเปลี่ยนเทอมการจ่ายเงินของ
+     ใครโดยที่ไม่มีใครสั่ง */
+  paymentTerm: "",
+  depositPct: null,
 
   budget: null,
   budgetBasis: "",
@@ -823,6 +889,8 @@ export const PROMOTION_CONDITION_FIELDS: readonly (keyof PromotionRow)[] = [
   "tiers", "discountTiers", "discountMode",
   "redeemBasis", "redeemThreshold", "redeemItems", "redeemDiscPct", "redeemPerRound",
   "priceLists", "minOrder", "minOrderBasis",
+  "usePerArea", "freeQtyCap", "stackWithPromos",
+  "paymentTerm", "depositPct",
   "nearExpiryOnly", "nearExpiryDays", "customerGroups", "customers", "areas",
   "channels", "allowDraftPartner", "usePerCustomer", "useTotal", "stackWithPromo",
   "stackWithCustomerDiscount", "commissionBase", "budget", "budgetBasis",
@@ -916,7 +984,12 @@ export function applyPromotionPatch(
     (k) => k in patch && JSON.stringify(patch[k]) !== JSON.stringify(p[k]),
   );
 
-  Object.assign(p, patch);
+  /* รหัสถูกตัดออกจาก patch เสมอ — ระเบียนที่เปลี่ยนรหัสได้ คือระเบียนที่ทำให้
+     เอกสารทุกใบที่อ้างถึงมันกลายเป็นเอกสารที่อ้างถึงของที่ไม่มีอยู่ ตัดที่นี่
+     ที่เดียว เพราะทั้งตอนสร้างและตอนแก้เดินผ่านฟังก์ชันนี้ทางเดียว
+     (`createPromotion` ตั้งรหัสลงแถวก่อนเรียกตัวนี้) */
+  const { code: _code, ...writable } = patch;
+  Object.assign(p, writable);
 
   /* §6g — แก้เงื่อนไขระหว่างหยุด ต้องขออนุมัติใหม่ ไม่งั้นจะเป็นช่องให้
      เปลี่ยนโปรที่อนุมัติแล้วโดยไม่ผ่านใคร */
@@ -1043,9 +1116,25 @@ export function createPromotion(
   const guard = mayCreatePromotion();
   if (!guard.ok) return { ...guard, row: null };
 
+  /* รหัสที่พิมพ์มาเอง — ว่างไว้แปลว่าให้ระบบออกให้ตามลำดับเดิม
+     ตรวจที่นี่ ไม่ใช่ที่ฟอร์ม เพราะรหัสซ้ำคือระเบียนสองใบที่ `getPromotion`
+     ตอบได้ใบเดียว อีกใบจะเปิดไม่ขึ้นทั้งที่อยู่ในทะเบียน — และคำสั่งสร้าง
+     ไม่ได้มาจากฟอร์มเสมอไป */
+  const typed = String(patch.code ?? "").trim().toUpperCase();
+  if (/\s/.test(typed)) {
+    return { ok: false, reason: "รหัสโปรห้ามมีช่องว่าง", row: null };
+  }
+  if (typed && getPromotion(typed)) {
+    return {
+      ok: false,
+      reason: `รหัส ${typed} มีอยู่แล้วในทะเบียน — ใช้รหัสอื่น หรือปล่อยว่างให้ระบบออกให้`,
+      row: null,
+    };
+  }
+
   const row: PromotionRow = {
     ...blankPromotion(),
-    code: nextPromotionCode(),
+    code: typed || nextPromotionCode(),
     created: stamp(),
     createdBy: currentUser().name,
   };
