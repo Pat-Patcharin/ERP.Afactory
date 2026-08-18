@@ -725,7 +725,13 @@ export const PROMO_DETAIL: DetailSchema<PromotionRow> = {
                 title: "ขั้นที่หลุดราคาขั้นต่ำ",
                 rows: breaches,
                 cols: [
-                  { key: "code", label: "สินค้า", cell: (b) => b.code },
+                  {
+                    key: "code",
+                    label: "สินค้า",
+                    /* ของแถมที่หลุดราคาขั้นต่ำอ่านไม่รู้เรื่องถ้าไม่บอกว่าเป็นของแถม
+                       — คนอ่านจะหาว่าซื้อตัวนี้ตรงไหน ทั้งที่ไม่มีใครซื้อมัน */
+                    cell: (b) => (b.side === "free" ? `${b.code} (ของแถม)` : b.code),
+                  },
                   { key: "tier", label: "ขั้น", cell: (b) => `${fmt(b.tier.buy)} แถม ${fmt(b.tier.free)}` },
                   {
                     key: "average",

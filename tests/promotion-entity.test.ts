@@ -26,10 +26,17 @@ import {
   nextPromotionCode,
   pausePromotion,
   promotionApprovalLevel,
+  productFloor,
   promotionFloorBreaches,
+  ladderFloorBreaches,
+  ladderFreeSide,
+  setUnitPrice,
+  cheapestByStandardPrice,
+  tierAverages,
   resumePromotion,
   type PromotionRow,
 } from "@/lib/domain/promotion";
+import { catalogPrice } from "@/lib/domain/pricing";
 import { getSchemas } from "@/schemas/registry";
 import { NAV_INDEX } from "@/lib/nav";
 import { pageHref } from "@/lib/routes";
@@ -261,6 +268,123 @@ describe("ราคาเฉลี่ยและราคาขั้นต่�
       if (!p.commissionBase) continue;
       expect([...COMMISSION_BASES], p.code).toContain(p.commissionBase);
     }
+  });
+});
+
+/* ============================================================
+   PM-5 — ฝั่งของแถมเข้าสูตรแล้ว
+
+   ก่อนหน้านี้สูตรถือว่าของแถมเป็นสินค้าตัวเดียวกับที่ซื้อเสมอ ซึ่งจริงเฉพาะ
+   แบบรายตัว ⇒ แจกของ 320 บาทกับแจกของ 1,396,000 บาท `promotionFloorBreaches`
+   ตอบ 0 เท่ากัน และเท่ากับตอนไม่ระบุของแถมเลย
+
+   §4.2 ของสเปครอบที่ 1 บอกว่าของแถม **ไม่ตั้งราคา 0** แต่ลงบรรทัดด้วยราคา
+   เฉลี่ยของบิล ⇒ ของแถมราคาแพงจะถูกลงบรรทัดต่ำกว่าราคาขั้นต่ำของตัวมันเอง
+   ทันที นั่นคือสิ่งที่ต้องจับได้
+   ============================================================ */
+
+describe("PM-5 ฝั่งของแถมเข้าสูตร", () => {
+  const ABC = "D-AD001-01";
+  const CHEAP = "B-GE006-01";
+  const DEAR = "F-DC004-01";
+  const T104 = { buy: 10, free: 4 };
+
+  const setInput = (freeItems: string[]) => ({
+    scope: "set" as const,
+    items: [ABC],
+    freeItems,
+    tiers: [T104],
+  });
+
+  it("ราคากลางที่เทสต์ชุดนี้ยืนอยู่บน", () => {
+    expect(catalogPrice(ABC)).toBe(650);
+    expect(productFloor(ABC)).toBe(280);
+    expect(catalogPrice(CHEAP)).toBe(80);
+    expect(productFloor(CHEAP)).toBe(70);
+    expect(catalogPrice(DEAR)).toBe(349_000);
+    expect(productFloor(DEAR)).toBe(201_000);
+  });
+
+  it("แถมของถูกกับแถมของแพง ให้ผลต่างกัน — เคยตอบ 0 เท่ากันทั้งคู่", () => {
+    /* 650 × 10 ÷ 14 = 464.29 ลงบรรทัดของทั้งของที่ซื้อและของที่แถม */
+    const cheap = ladderFloorBreaches(setInput([CHEAP]));
+    const dear = ladderFloorBreaches(setInput([DEAR]));
+
+    expect(cheap, `ของแถม 80 อยู่เหนือขั้นต่ำ 70 ของตัวเอง`).toHaveLength(0);
+    expect(dear).toHaveLength(1);
+    expect(dear[0].code).toBe(DEAR);
+    expect(dear[0].side, "ตัวที่หลุดคือของแถม ไม่ใช่ของที่ซื้อ").toBe("free");
+    expect(dear[0].average).toBeCloseTo(464.29, 2);
+    expect(dear[0].floor).toBe(201_000);
+
+    /* ข้อที่ PM-5 วัดไว้: สองเคสนี้ต้องไม่เท่ากันอีกต่อไป */
+    expect(dear.length).not.toBe(cheap.length);
+  });
+
+  it("ของแถมแพงดันโปรขึ้นผู้จัดการ ของแถมถูกไม่ดัน", () => {
+    setCurrentUser(SALES_ADMIN);
+    const row = (freeItems: string[]): PromotionRow => ({
+      ...blankPromotion(),
+      kind: "free-goods",
+      scope: "set",
+      items: [ABC],
+      freeItems,
+      tiers: [T104],
+    });
+    expect(promotionApprovalLevel(row([CHEAP]))).toBe("admin");
+    expect(promotionApprovalLevel(row([DEAR]))).toBe("manager");
+  });
+
+  it("ยังไม่ระบุของแถม ≠ ตรวจแล้วผ่าน", () => {
+    expect(ladderFreeSide(setInput([])).missing).toBe(true);
+    expect(ladderFreeSide(setInput([CHEAP])).missing).toBe(false);
+    /* แบบรายตัวไม่มีฝั่งแยกให้ระบุ จึงไม่เคย missing */
+    expect(
+      ladderFreeSide({ scope: "item", items: [ABC], freeItems: [] }).missing,
+    ).toBe(false);
+  });
+
+  it("แบบกลุ่ม — ของแถมคือตัวราคามาตรฐานต่ำสุดในรายการที่นับ", () => {
+    expect(cheapestByStandardPrice([ABC, CHEAP, DEAR])).toBe(CHEAP);
+    /* ตัวที่ยังไม่มีราคาไม่ถูกเลือกเป็นของถูกที่สุด — ไม่มีราคา ≠ ราคา 0 */
+    expect(cheapestByStandardPrice(["ไม่มีรหัสนี้", ABC])).toBe(ABC);
+
+    const group = { scope: "group" as const, items: [ABC, CHEAP], freeItems: [], tiers: [T104] };
+    expect(ladderFreeSide(group).codes).toEqual([CHEAP]);
+    /* ราคาชุด = (650 + 80) ÷ 2 = 365 · 365 × 10 ÷ 14 = 260.71 */
+    expect(setUnitPrice([ABC, CHEAP])).toBe(365);
+    const rows = tierAverages(group, T104);
+    for (const r of rows) expect(r.average).toBeCloseTo(260.71, 2);
+    /* 260.71 ต่ำกว่าขั้นต่ำ 280 ของตัวที่แพงกว่า — กลุ่มที่ราคากระจายมาก
+       ดึงราคาเฉลี่ยลงจนของแพงในกลุ่มหลุดขั้นต่ำ */
+    const br = ladderFloorBreaches(group);
+    expect(br).toHaveLength(1);
+    expect(br[0].code).toBe(ABC);
+    expect(br[0].side).toBe("counted");
+  });
+
+  it("แบบรายตัวไม่เปลี่ยนพฤติกรรม และไม่สนใจ freeItems เลย", () => {
+    const item = { scope: "item" as const, items: [ABC, CHEAP], freeItems: [], tiers: [T104] };
+    const rows = tierAverages(item, T104);
+    /* แต่ละตัวคิดจากราคาตัวเอง ไม่ใช่ราคาชุด — 650×10÷14 และ 80×10÷14 */
+    expect(rows.map((r) => r.code).sort()).toEqual([ABC, CHEAP].sort());
+    expect(rows.find((r) => r.code === ABC)!.average).toBeCloseTo(464.29, 2);
+    expect(rows.find((r) => r.code === CHEAP)!.average).toBeCloseTo(57.14, 2);
+    for (const r of rows) expect(r.side).toBe("counted");
+
+    /* ยัด freeItems แพง ๆ เข้าไปแล้วผลต้องไม่ขยับ — แบบรายตัวแถมตัวเดียวกับที่ซื้อ */
+    expect(ladderFloorBreaches({ ...item, freeItems: [DEAR] })).toEqual(
+      ladderFloorBreaches(item),
+    );
+  });
+
+  it("สูตรของแบบชุดไม่ใช่สูตรของแบบรายตัวที่เปลี่ยนชื่อ", () => {
+    /* ทริปไวร์ — ถ้าใครทำให้แบบชุดกลับไปคิดทีละตัวจากราคาตัวเอง ของแถม
+       349,000 จะได้เฉลี่ย 249,285.71 ซึ่งไม่หลุดขั้นต่ำ 201,000 และข้อนี้แดง */
+    const dear = tierAverages(setInput([DEAR]), T104).find((r) => r.code === DEAR)!;
+    expect(dear.average).toBeCloseTo(464.29, 2);
+    expect(dear.average).not.toBeCloseTo(249_285.71, 2);
+    expect(dear.below).toBe(true);
   });
 });
 

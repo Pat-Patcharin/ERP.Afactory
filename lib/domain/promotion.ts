@@ -698,10 +698,14 @@ export const priceClusterText = (clusters: PriceCluster[]): string =>
     )
     .join(" · ");
 
-/** ราคาเฉลี่ยของสินค้าตัวหนึ่งที่ขั้นหนึ่ง พร้อมระยะห่างจากราคาขั้นต่ำของตัวมันเอง */
+/** สินค้าตัวนี้อยู่ฝั่งไหนของโปร — ฝั่งที่ลูกค้าจ่ายเงินซื้อ หรือฝั่งที่ได้ฟรี */
+export type LadderSide = "counted" | "free";
+
+/** ราคาเฉลี่ยที่ตกกับสินค้าตัวหนึ่งที่ขั้นหนึ่ง พร้อมระยะห่างจากราคาขั้นต่ำของตัวมันเอง */
 export interface ItemTierAverage {
   code: string;
   name: string;
+  side: LadderSide;
   /** ราคาแคตตาล็อกของตัวนี้ */
   price: number;
   average: number;
@@ -731,13 +735,29 @@ export interface ItemTierAverage {
 export function itemTierAverage(code: string, tier: LadderTier): ItemTierAverage | null {
   const price = catalogPrice(code);
   if (!(price > 0)) return null;
-  if (!(tier.buy > 0)) return null;
+  return atAverage(code, tierAveragePrice(price, tier), price, tier, `counted`);
+}
 
-  const average = tierAveragePrice(price, tier);
+/**
+ * สินค้าตัวหนึ่งที่ถูกลงบรรทัดด้วยราคาเฉลี่ยค่านี้
+ *
+ * แยกออกมาเพราะราคาเฉลี่ยของโปรแบบชุดเป็น **ค่าเดียวของทั้งใบ** ที่ตกกับ
+ * สินค้าหลายตัว รวมทั้งของแถมที่ลูกค้าไม่ได้จ่ายเงินซื้อ — ตัวเลขเดียวกันนั้น
+ * ต้องผ่านราคาขั้นต่ำของทุกตัวที่มันไปลง
+ */
+function atAverage(
+  code: string,
+  average: number,
+  price: number,
+  tier: LadderTier,
+  side: LadderSide,
+): ItemTierAverage | null {
+  if (!(tier.buy > 0)) return null;
   const floor = productFloor(code);
   return {
     code,
     name: PRODUCTS.find((x) => x.code === code)?.name ?? code,
+    side,
     price,
     average,
     floor,
@@ -746,20 +766,131 @@ export function itemTierAverage(code: string, tier: LadderTier): ItemTierAverage
   };
 }
 
+/* ============================================================
+   ฝั่งของแถม — ใครถูกแจก และราคาชุดคิดยังไง
+
+   §ฉ.1 (ตัดสินแล้ว) ราคาเฉลี่ยของชุด = ราคารวมของชุด ÷ จำนวนชิ้นรวม
+   สินค้าในชุดถือว่าราคาใกล้เคียงกันตามการใช้งานจริง — ชุดที่ราคากระจาย
+   มากจะถูกเตือน (ขั้นถัดไป) ไม่ใช่ถูกบล็อก เพราะอาจมีเคสที่ตั้งใจ
+
+   §ฉ.2 (ตัดสินแล้ว) "ถูกที่สุด" วัดจาก **ราคามาตรฐาน** ตัวเดียวกับที่ทั้ง
+   โมดูลใช้คิดส่วนลดเปอร์เซ็นต์ — ไม่ใช่ราคาหลังหักส่วนลดของลูกค้ารายนั้น
+   (เปลี่ยนไปตามลูกค้า เตือนตอนตั้งโปรไม่ได้) และไม่ใช่ต้นทุน (ของที่ต้นทุน
+   ถูกสุดอาจขายแพงสุด แถมแล้วเสียกำไรมากกว่า)
+   ============================================================ */
+
 /**
- * ราคาเฉลี่ยของทุกสินค้าที่ขั้นนั้น เรียงจากตัวที่แย่ที่สุดก่อน
+ * ราคาต่อชิ้นของชุด — ผลรวมราคา ÷ จำนวนสินค้าในชุด
  *
- * โปรใบเดียวมีสินค้าหลายตัวคนละราคาได้ ราคาเฉลี่ยจึงไม่ใช่ตัวเลขเดียว —
- * ช่องบนหน้าจอที่มีที่ว่างให้เลขเดียวต้องแสดงตัวที่แย่ที่สุด เพราะนั่นคือตัวที่
- * ตัดสินว่าทั้งใบต้องขึ้นผู้จัดการหรือไม่ ตัวที่เหลือบอกเป็นจำนวนได้
+ * ตัวที่ยังไม่มีราคาไม่ถูกนับเข้าทั้งเศษและส่วน — ราคา 0 ไม่ใช่ของฟรี มันคือ
+ * ยังไม่รู้ราคา และการนับมันเป็น 0 จะดึงราคาชุดลงจนทุกขั้นดูเหมือนหลุดขั้นต่ำ
+ *
+ * ยังไม่มีที่เก็บจำนวนต่อสินค้าในชุด สมาชิกทุกตัวจึงนับเป็นหนึ่งชิ้นเท่ากัน
+ * ถ้าวันหนึ่งชุดมีจำนวนต่อตัว สูตรนี้คือที่ที่ต้องแก้ ที่เดียว
  */
-export function tierAverages(
-  items: readonly string[],
-  tier: LadderTier,
-): ItemTierAverage[] {
-  return items
-    .map((code) => itemTierAverage(code, tier))
-    .filter((a): a is ItemTierAverage => a !== null)
+export function setUnitPrice(codes: readonly string[]): number | null {
+  const prices = codes.map((c) => catalogPrice(c)).filter((p) => p > 0);
+  if (!prices.length) return null;
+  return prices.reduce((a, b) => a + b, 0) / prices.length;
+}
+
+/** ตัวที่ราคามาตรฐานต่ำที่สุดในรายการ — ของแถมของแบบกลุ่ม */
+export function cheapestByStandardPrice(codes: readonly string[]): string | null {
+  let best: { code: string; price: number } | null = null;
+  for (const code of codes) {
+    const price = catalogPrice(code);
+    if (!(price > 0)) continue;
+    if (!best || price < best.price) best = { code, price };
+  }
+  return best?.code ?? null;
+}
+
+/** สิ่งที่ต้องรู้เพื่อคิดขั้นบันไดหนึ่งชุด — ฟอร์มมีครบก่อนมีระเบียน */
+export interface LadderInput {
+  scope: PromotionScope;
+  items: readonly string[];
+  freeItems: readonly string[];
+  tiers: readonly LadderTier[];
+}
+
+export interface FreeSide {
+  /** สินค้าที่ถูกแถมจริงตามรูปแบบนี้ · ว่างสำหรับแบบรายตัว (แถมตัวเดียวกับที่ซื้อ) */
+  codes: string[];
+  /**
+   * รูปแบบนี้ต้องระบุของแถม แต่ยังไม่ได้ระบุ
+   *
+   * ต่างจาก "ตรวจแล้วผ่าน" — ยังตรวจราคาขั้นต่ำของฝั่งแถมไม่ได้เลยเพราะยัง
+   * ไม่รู้ว่าจะแถมอะไร ผู้เรียกต้องบอกคนกรอก ไม่ใช่รายงานว่าไม่มีปัญหา
+   */
+  missing: boolean;
+}
+
+/** ของแถมของโปรใบนี้คือใคร — ต่างกันตามรูปแบบ ไม่ใช่ตามชนิด */
+export function ladderFreeSide(
+  input: Pick<LadderInput, "scope" | "items" | "freeItems">,
+): FreeSide {
+  const free = input.freeItems.filter(Boolean);
+  switch (input.scope) {
+    case "set":
+    case "same-price":
+      return { codes: [...free], missing: free.length === 0 };
+    case "group": {
+      /* แถมตัวที่ถูกที่สุดในรายการที่นับ — ของแถมอยู่ในรายการเดียวกับที่ซื้อ
+         จึงไม่มีทางไม่ได้ระบุ */
+      const cheapest = cheapestByStandardPrice(input.items);
+      return { codes: cheapest ? [cheapest] : [], missing: false };
+    }
+    default:
+      /* รายตัว — ของแถมคือสินค้าตัวเดียวกับที่ซื้อ ไม่มีฝั่งแยกให้ระบุ */
+      return { codes: [], missing: false };
+  }
+}
+
+/**
+ * ราคาเฉลี่ยที่ขั้นนั้นทำให้เกิด แยกรายสินค้า เรียงจากตัวที่แย่ที่สุดก่อน
+ *
+ * **สองโหมด และต่างกันจริง ไม่ใช่ต่างกันแค่ชื่อ**
+ *
+ *   รายตัว   สินค้าแต่ละตัวเป็นโปรของตัวเอง — ซื้อ X ได้ X ราคาเฉลี่ยจึงเป็น
+ *            ของ X ล้วน ๆ และมีคนละค่าต่อสินค้าหนึ่งตัว
+ *
+ *   ชุด/กลุ่ม/ราคาเดียวกัน
+ *            ทั้งใบมีราคาเฉลี่ยค่าเดียว = ราคาชุดที่ซื้อ × จำนวนที่จ่าย ÷
+ *            จำนวนที่ได้รับ แล้วค่านั้นไปลงบรรทัดของ **ทั้งของที่ซื้อและ
+ *            ของที่แถม** ตามสเปครอบที่ 1 §4.1/§4.2 (ของแถมไม่ตั้งราคา 0)
+ *            ⇒ ของแถมราคาแพงจะหลุดราคาขั้นต่ำของตัวมันเองทันที ซึ่งเป็น
+ *            รูที่ PM-5 วัดไว้: แจกของ 320 บาทกับ 1,396,000 บาท ระบบเคย
+ *            ตอบเหมือนกันเพราะฝั่งแถมไม่เคยเข้าสูตร
+ *
+ * ช่องบนหน้าจอที่มีที่ว่างให้เลขเดียวแสดงตัวแรกของรายการนี้ (แย่ที่สุด)
+ * เพราะนั่นคือตัวที่ตัดสินว่าทั้งใบต้องขึ้นผู้จัดการหรือไม่
+ */
+export function tierAverages(input: LadderInput, tier: LadderTier): ItemTierAverage[] {
+  const perItem = input.scope !== `set` && input.scope !== `same-price` && input.scope !== `group`;
+
+  const rows: ItemTierAverage[] = perItem
+    ? input.items
+        .map((code) => itemTierAverage(code, tier))
+        .filter((a): a is ItemTierAverage => a !== null)
+    : (() => {
+        const setPrice = setUnitPrice(input.items);
+        if (setPrice === null) return [];
+        const average = averageUnitPrice(setPrice, tier.buy, tier.free);
+        const free = ladderFreeSide(input);
+        /* ฝั่งที่ซื้อก่อน แล้วฝั่งที่แถม — ตัวที่อยู่ทั้งสองฝั่ง (แบบกลุ่ม)
+           นับครั้งเดียวในฝั่งที่แถม เพราะนั่นคือฝั่งที่อธิบายว่าทำไมมันโดน */
+        const freeSet = new Set(free.codes);
+        return [
+          ...input.items
+            .filter((code) => !freeSet.has(code))
+            .map((code) => atAverage(code, average, catalogPrice(code), tier, `counted`)),
+          ...free.codes.map((code) =>
+            atAverage(code, average, catalogPrice(code), tier, `free`),
+          ),
+        ].filter((a): a is ItemTierAverage => a !== null);
+      })();
+
+  return rows
     .sort((a, b) => {
       /* ตัวที่หลุดมาก่อนเสมอ แล้วเรียงตามระยะที่หลุดลึกที่สุด
          ตัวที่ไม่มีขั้นต่ำหลุดไม่ได้ จึงไปท้ายแถวและไม่มีวันเป็น "แย่ที่สุด" */
@@ -772,13 +903,15 @@ export function tierAverages(
 
 /** ตัวที่ตัดสินว่าขั้นนี้ต้องขึ้นผู้จัดการหรือไม่ · null เมื่อยังไม่มีสินค้าที่มีราคา */
 export const worstTierAverage = (
-  items: readonly string[],
+  input: LadderInput,
   tier: LadderTier,
-): ItemTierAverage | null => tierAverages(items, tier)[0] ?? null;
+): ItemTierAverage | null => tierAverages(input, tier)[0] ?? null;
 
 export interface FloorBreach {
   code: string;
   name: string;
+  /** ตัวนี้เป็นของที่ซื้อ หรือของที่แถม — ของแถมที่หลุดอ่านไม่รู้เรื่องถ้าไม่บอก */
+  side: LadderSide;
   tier: LadderTier;
   /** ราคาเฉลี่ยที่ขั้นนี้ทำให้เกิด */
   average: number;
@@ -792,17 +925,19 @@ export interface FloorBreach {
  * เรียกตัวนี้ตอนตัดสินระดับอนุมัติ ทั้งสองทางจึงตอบเหมือนกันเสมอโดยโครงสร้าง
  * ไม่ใช่โดยบังเอิญ
  */
-export function ladderFloorBreaches(
-  items: readonly string[],
-  tiers: readonly LadderTier[],
-): FloorBreach[] {
+export function ladderFloorBreaches(input: LadderInput): FloorBreach[] {
   const out: FloorBreach[] = [];
-  /* วนสินค้าเป็นวงนอกเหมือนเดิม ลำดับผลลัพธ์จึงไม่เปลี่ยนจากของเดิม */
-  for (const code of items) {
-    for (const tier of tiers) {
-      const a = itemTierAverage(code, tier);
-      if (!a || a.floor === null || !a.below) continue;
-      out.push({ code, name: a.name, tier, average: a.average, floor: a.floor });
+  for (const tier of input.tiers) {
+    for (const a of tierAverages(input, tier)) {
+      if (a.floor === null || !a.below) continue;
+      out.push({
+        code: a.code,
+        name: a.name,
+        side: a.side,
+        tier,
+        average: a.average,
+        floor: a.floor,
+      });
     }
   }
   return out;
@@ -831,7 +966,12 @@ export function promotionFloorBreaches(p: PromotionRow): FloorBreach[] {
   /* สูตรอยู่ที่ `ladderFloorBreaches` ตัวเดียว ตรงนี้เหลือแค่ด่านชนิด —
      ฟอร์มเรียกตัวนั้นตรง ๆ ระหว่างพิมพ์ ถ้าที่นี่ยังคิดเองอีกชุด วันหนึ่ง
      สองที่จะตอบไม่ตรงกัน แล้วคนตั้งโปรจะเชื่อที่ที่ผิด */
-  return ladderFloorBreaches(p.items, p.tiers);
+  return ladderFloorBreaches({
+    scope: p.scope,
+    items: p.items,
+    freeItems: p.freeItems,
+    tiers: p.tiers,
+  });
 }
 
 /* ============================================================

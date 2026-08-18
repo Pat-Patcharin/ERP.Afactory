@@ -9,6 +9,7 @@ import {
   PROMOTION_KINDS,
   applyPromotionPatch,
   ladderFloorBreaches,
+  ladderFreeSide,
   worstTierAverage,
   createPromotion,
   getPromotion,
@@ -16,6 +17,7 @@ import {
   priceClusters,
   priceClusterText,
   type ItemTierAverage,
+  type LadderInput,
   type PromotionRow,
 } from "@/lib/domain/promotion";
 import {
@@ -89,6 +91,19 @@ const picksFreeItems = (st: FormState) =>
 
 /** แบบราคาเดียวกัน — ทั้งกลุ่มที่นับและกลุ่มที่แถมต้องราคาเท่ากันในกลุ่มตัวเอง */
 const isSamePriceScope = (st: FormState) => scopeOf(st) === "same-price";
+
+/**
+ * ทุกอย่างที่ตัวคำนวณขั้นบันไดต้องรู้ ประกอบจาก state ที่กำลังพิมพ์
+ *
+ * ฟอร์มไม่ตัดสินเองว่าของแถมคือใคร — ส่งรูปแบบกับสองรายการเข้าไป แล้วให้
+ * โดเมนตอบ ตัวเดียวกับที่ `promotionFloorBreaches` ใช้ตอนตัดสินระดับอนุมัติ
+ */
+const ladderInputOf = (st: FormState): LadderInput => ({
+  scope: scopeOf(st) as PromotionRow[`scope`],
+  items: itemCodes(st),
+  freeItems: codesIn(st, `freeItems`),
+  tiers: ladderTiersOf(st),
+});
 
 /** รหัสในกริดหนึ่ง — ใช้ตรวจราคาของกลุ่มนั้น */
 const codesIn = (st: FormState, path: string): string[] =>
@@ -822,6 +837,14 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
         ...(() => {
           if (!isFreeGoods(s)) return [];
           const codes = itemCodes(s);
+          const input = ladderInputOf(s);
+          const free = ladderFreeSide(input);
+          /* จำนวนสินค้าที่ราคาเฉลี่ยค่านั้นไปลง — แบบชุดรวมฝั่งแถมด้วย
+             เพราะของแถมถูกลงบรรทัดด้วยราคาเดียวกัน (§4.2 ไม่ตั้งราคา 0) */
+          const covered =
+            input.scope === `set` || input.scope === `same-price` || input.scope === `group`
+              ? new Set([...codes, ...free.codes]).size
+              : codes.length;
 
           /* ---------- ฟอร์มไม่คิดราคาเฉลี่ยเอง ----------
 
@@ -840,7 +863,7 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
           const worstOf = (r: GridRow): ItemTierAverage | null => {
             const buy = num(r.buy);
             if (buy <= 0 || !codes.length) return null;
-            return worstTierAverage(codes, { buy, free: num(r.free) });
+            return worstTierAverage(input, { buy, free: num(r.free) });
           };
 
           const grid: FormBlock = {
@@ -852,9 +875,11 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
             hint:
               codes.length === 0
                 ? "เลือกสินค้าที่เข้าโปรก่อน แล้วราคาเฉลี่ยจะคำนวณให้"
-                : codes.length === 1
-                  ? `ราคาเฉลี่ยคิดจาก ${codes[0]} เทียบกับราคาขั้นต่ำของตัวมันเอง`
-                  : `คิดจากสินค้าทุกตัวในโปร (${fmt(codes.length)} ตัว) — ช่องเฉลี่ยแสดงตัวที่ใกล้หลุดราคาขั้นต่ำที่สุด เพราะตัวนั้นคือตัวที่ตัดสินว่าทั้งใบต้องขึ้นผู้จัดการหรือไม่`,
+                : scopeOf(s) === `item` || scopeOf(s) === ``
+                  ? codes.length === 1
+                    ? `ราคาเฉลี่ยคิดจาก ${codes[0]} เทียบกับราคาขั้นต่ำของตัวมันเอง`
+                    : `คิดจากสินค้าทุกตัวในโปร (${fmt(codes.length)} ตัว) — ช่องเฉลี่ยแสดงตัวที่ใกล้หลุดราคาขั้นต่ำที่สุด เพราะตัวนั้นคือตัวที่ตัดสินว่าทั้งใบต้องขึ้นผู้จัดการหรือไม่`
+                  : `ราคาชุดที่ซื้อ × จำนวนที่จ่าย ÷ จำนวนที่ได้รับ — ราคาเดียวนี้ลงบรรทัดของทั้งของที่ซื้อและของที่แถม (${fmt(covered)} ตัว) จึงต้องผ่านราคาขั้นต่ำของทุกตัว`,
             cols: [
               {
                 key: "buy",
@@ -878,13 +903,13 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
                 /* หัวคอลัมน์บอกตรง ๆ ว่าเลขในช่องเป็นของตัวไหน เมื่อมีหลายตัว —
                    "ราคาเฉลี่ยต่อชิ้น" เฉย ๆ อ่านว่าเป็นเลขของทั้งโปร ซึ่งไม่มี
                    อยู่จริงเมื่อสินค้าคนละราคา */
-                label: codes.length > 1 ? "ราคาเฉลี่ย — ตัวที่แย่ที่สุด" : "ราคาเฉลี่ยต่อชิ้น",
+                label: covered > 1 ? "ราคาเฉลี่ย — ตัวที่แย่ที่สุด" : "ราคาเฉลี่ยต่อชิ้น",
                 type: "computed",
                 align: "right",
                 get: (r) => {
                   const w = worstOf(r);
                   if (!w) return DASH;
-                  const more = codes.length > 1 ? ` · อีก ${fmt(codes.length - 1)} ตัว` : "";
+                  const more = covered > 1 ? ` · อีก ${fmt(covered - 1)} ตัว` : "";
                   return `${money(w.average)}${w.below ? " ⚠" : ""}${more}`;
                 },
                 /* สีเตือนใช้ token เดิมของระบบ ไม่ได้ตั้งสีใหม่ */
@@ -897,25 +922,42 @@ export const PROMO_FORM: FormSchema<PromotionRow> = {
         /* สรุปเป็นข้อความด้วย เพราะสีในตารางอ่านไม่ออกถ้าตารางเลื่อนออกนอกจอ */
         ...(() => {
           if (!isFreeGoods(s)) return [];
+          const input = ladderInputOf(s);
+          const out: FormBlock[] = [];
+
+          /* ยังไม่ระบุของแถม ≠ ตรวจแล้วผ่าน — ราคาเฉลี่ยของแบบชุดลงบรรทัดของ
+             ของแถมด้วย ตราบใดที่ยังไม่รู้ว่าแถมอะไร ก็ยังตรวจไม่ครบทั้งใบ
+             (กฎที่บล็อกการบันทึกอยู่แล้วเป็นคนละชั้น ตัวนี้อธิบายว่าทำไมตัวเลข
+             ที่เห็นยังเชื่อไม่ได้) */
+          if (ladderFreeSide(input).missing && input.tiers.length > 0) {
+            out.push({
+              type: `note`,
+              label: `ยังไม่ได้ระบุของแถม — ราคาเฉลี่ยที่เห็นยังตรวจไม่ครบ`,
+              text: `ของแถมถูกลงบรรทัดด้วยราคาเฉลี่ยเดียวกับของที่ซื้อ ของแถมราคาสูงจึงหลุดราคาขั้นต่ำของตัวมันเองได้ทั้งที่ของที่ซื้อผ่าน — เลือกของแถมก่อน แล้วตัวเลขข้างบนจึงจะเป็นคำตอบของทั้งใบ`,
+            });
+          }
+
           /* ตัวเดียวกับที่ `promotionFloorBreaches` เรียก — กล่องนี้จึงบอกสิ่ง
              เดียวกับที่ด่านอนุมัติจะตอบ ไม่ใช่ข้อสรุปคู่ขนานที่คิดจากสินค้าตัวเดียว */
-          const breaches = ladderFloorBreaches(itemCodes(s), ladderTiersOf(s));
-          if (!breaches.length) return [];
-          return [
-            {
-              type: "note",
+          const breaches = ladderFloorBreaches(input);
+          if (breaches.length) {
+            out.push({
+              type: `note`,
               label: `⚠ มี ${breaches.length} รายการที่ราคาเฉลี่ยต่ำกว่าราคาขั้นต่ำ`,
               text:
                 breaches
                   .map(
                     (b) =>
-                      `${b.code} ซื้อ ${fmt(b.tier.buy)} แถม ${fmt(b.tier.free)} → เฉลี่ย ${money(
+                      `${b.code}${b.side === `free` ? ` (ของแถม)` : ``} ซื้อ ${fmt(
+                        b.tier.buy,
+                      )} แถม ${fmt(b.tier.free)} → เฉลี่ย ${money(
                         b.average,
                       )} ต่ำกว่าราคาขั้นต่ำ ${money(b.floor)}`,
                   )
                   .join(" · ") + " — โปรนี้ต้องให้ผู้จัดการฝ่ายขายอนุมัติ",
-            } as FormBlock,
-          ];
+            });
+          }
+          return out;
         })(),
         /* ---------- สิทธิแลกซื้อ — เงื่อนไข และสิทธิที่ได้ ---------- */
         isRedeem(s) && {

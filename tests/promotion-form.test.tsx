@@ -1444,7 +1444,10 @@ describe("ตารางขั้นบันได", () => {
           ).toBe(domainSaysBreach);
 
           /* และเลขในช่องคือค่าเฉลี่ยของตัวที่แย่ที่สุดจริง ไม่ใช่ตัวใดตัวหนึ่ง */
-          const worst = worstTierAverage(codes, tier)!;
+          const worst = worstTierAverage(
+            { scope: "item", items: codes, freeItems: [], tiers: [tier] },
+            tier,
+          )!;
           expect(cell.value, "เลข: " + tag).toContain(money(worst.average));
 
           if (domainSaysBreach) red++;
@@ -1455,6 +1458,53 @@ describe("ตารางขั้นบันได", () => {
       /* เมทริกซ์ต้องมีทั้งสองฝั่ง ไม่งั้นข้อนี้ผ่านเพราะไม่มีอะไรให้ผิด */
       expect(red, "ต้องมีเคสที่หลุดขั้นต่ำ").toBeGreaterThan(0);
       expect(green, "ต้องมีเคสที่ผ่าน").toBeGreaterThan(0);
+    });
+
+    it("แบบชุด — ของแถมแพงขึ้นสีเตือน และบอกว่าเป็นฝั่งของแถม", () => {
+      /* ของแถมถูกลงบรรทัดด้วยราคาเฉลี่ยเดียวกับของที่ซื้อ (§4.2 ไม่ตั้งราคา 0)
+         ⇒ 650 × 10 ÷ 14 = 464.29 ต่ำกว่าขั้นต่ำ 201,000 ของ F-DC004-01 */
+      const T104 = { buy: 10, free: 4 };
+      const st: FormState = {
+        ...freeGoodsState(),
+        scope: "set",
+        items: g(["D-AD001-01"]),
+        freeItems: g([DEAR]),
+        tiers: [T104] as unknown as GridRow[],
+      };
+
+      const cell = computed(st, "tiers", "avg", T104 as unknown as GridRow);
+      expect(cell.value).toContain("464.29");
+      expect(cell.cls).toContain("text-danger");
+
+      const notes = noteTexts(st).join(" ");
+      expect(notes).toContain(DEAR);
+      expect(notes, "ต้องบอกว่าตัวที่หลุดคือของแถม").toContain("(ของแถม)");
+      expect(notes).toContain("ต่ำกว่าราคาขั้นต่ำ");
+
+      /* ของแถมถูกในโปรใบเดียวกันต้องไม่ขึ้นเตือน */
+      const okay = { ...st, freeItems: g([CHEAP]) };
+      expect(computed(okay, "tiers", "avg", T104 as unknown as GridRow).cls).toBe("");
+      expect(noteTexts(okay).join(" ")).not.toContain("ต่ำกว่าราคาขั้นต่ำ");
+    });
+
+    it("แบบชุดที่ยังไม่ระบุของแถม — บอกว่าตรวจไม่ครบ ไม่ใช่เงียบเหมือนผ่าน", () => {
+      const st: FormState = {
+        ...freeGoodsState(),
+        scope: "set",
+        items: g(["D-AD001-01"]),
+        freeItems: [],
+      };
+      const notes = noteTexts(st).join(" ");
+      expect(notes).toContain("ยังไม่ได้ระบุของแถม");
+      expect(notes).toContain("ยังตรวจไม่ครบ");
+
+      /* ระบุแล้วคำเตือนนั้นหายไป */
+      expect(
+        noteTexts({ ...st, freeItems: g([CHEAP]) }).join(" "),
+      ).not.toContain("ยังไม่ได้ระบุของแถม");
+
+      /* และแบบรายตัวไม่เคยขึ้นคำเตือนนี้ เพราะแถมตัวเดียวกับที่ซื้อ */
+      expect(noteTexts(freeGoodsState()).join(" ")).not.toContain("ยังไม่ได้ระบุของแถม");
     });
 
     it("สินค้าตัวเดียวยังอ่านเหมือนเดิม ไม่มี 'อีก N ตัว' มาเกะกะ", () => {
